@@ -6,7 +6,6 @@ import json
 import shutil
 import sys
 import tempfile
-import time
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -15,6 +14,7 @@ from docx.shared import Inches
 
 from .documents import DocxProcessor
 from .engine import Anonymizer, MARKER_PATTERN, normalize_label
+from .platform_services import ClipboardReader, default_clipboard_reader
 from .service import AnonymizerService
 
 APP_VERSION = "1.8"
@@ -22,25 +22,7 @@ INDEX_ASSET = "index-v1.8.17.html"
 
 
 def _read_clipboard_text() -> str:
-    if sys.platform != "win32":
-        return ""
-    import win32clipboard
-
-    for attempt in range(5):
-        try:
-            win32clipboard.OpenClipboard()
-            break
-        except OSError:
-            if attempt == 4:
-                raise RuntimeError("Буфер обмена временно недоступен") from None
-            time.sleep(0.04)
-    try:
-        if not win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
-            return ""
-        value = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
-        return value if isinstance(value, str) else ""
-    finally:
-        win32clipboard.CloseClipboard()
+    return default_clipboard_reader().read_text()
 
 
 def asset_path(name: str) -> Path:
@@ -52,8 +34,17 @@ def asset_path(name: str) -> Path:
 
 
 class AppApi:
-    def __init__(self, root=None):
-        self.service = AnonymizerService(root)
+    def __init__(
+        self,
+        root=None,
+        *,
+        service: AnonymizerService | None = None,
+        clipboard_reader: ClipboardReader | None = None,
+    ):
+        if service is not None and root is not None:
+            raise ValueError("Передайте root или service, но не оба")
+        self.service = service if service is not None else AnonymizerService(root)
+        self._clipboard_reader = clipboard_reader
         self._window = None
         self._restore_pair: tuple[Path, Path] | None = None
         if not self.service.storage.connection.execute("select 1 from profiles where name='Общий'").fetchone():
@@ -63,7 +54,12 @@ class AppApi:
         self._window = window
 
     def read_clipboard_text(self) -> dict:
-        return {"text": _read_clipboard_text()}
+        text = (
+            self._clipboard_reader.read_text()
+            if self._clipboard_reader is not None
+            else _read_clipboard_text()
+        )
+        return {"text": text}
 
     def _read_ui_settings(self) -> dict:
         path = self.service.storage.root / "ui-settings.json"
@@ -430,15 +426,16 @@ def pair_smoke_check() -> dict:
         restored = work / "Файл1 — восстановленный.docx"
         report = service.restore_from_pair(pair["anonymized_path"], restored)
         restored_text = "\n".join(p.text for p in Document(restored).paragraphs)
+        recovery_contains_mapping = original_value.encode("utf-8") in recovery_bytes
         ok = (
             restored_text == original_value
-            and original_value.encode("utf-8") not in recovery_bytes
+            and recovery_contains_mapping
             and not report["unknown_markers"]
         )
         return {
             "ok": ok,
             "pair_found_after_library_delete": True,
-            "recovery_plaintext_absent": original_value.encode("utf-8") not in recovery_bytes,
+            "recovery_contains_sensitive_mapping": recovery_contains_mapping,
             "restored_exactly": restored_text == original_value,
         }
     except Exception as exc:

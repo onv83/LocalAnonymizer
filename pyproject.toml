@@ -1,12 +1,14 @@
 [project]
 name = "local-anonymizer"
 version = "0.1.0"
-description = "Локальный обезличиватель DOCX для Windows"
+description = "Локальный обезличиватель документов"
 requires-python = ">=3.11,<3.12"
 dependencies = [
   "python-docx>=1.2.0,<2",
   "openpyxl>=3.1,<4",
-  "pywebview>=5.4,<7",
+  "pywebview>=5.4,<7; sys_platform == 'win32'",
+  "pywebview>=5.4,<7; sys_platform == 'darwin'",
+  "pywebview[gtk]>=5.4,<7; sys_platform == 'linux'",
   "pywin32>=311; sys_platform == 'win32'",
 ]
 

@@ -11,6 +11,7 @@ import tempfile
 import threading
 import uuid
 from contextlib import contextmanager
+from collections.abc import Callable
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from docx import Document
@@ -166,8 +167,12 @@ def _verify_artifact_stamp(path: Path, document_id: str, operation_id: str) -> s
 
 
 class AnonymizerService:
-    def __init__(self, root: str | Path | None = None):
-        self.storage = Storage(root)
+    def __init__(self, root: str | Path | None = None, *, storage: Storage | None = None,
+                 legacy_document_converter: Callable[[Path, Path], Path] | None = None):
+        if root is not None and storage is not None:
+            raise ValueError("Передайте root или storage, но не оба параметра")
+        self.storage = storage if storage is not None else Storage(root)
+        self._legacy_document_converter = legacy_document_converter
         self._document_locks_guard = threading.Lock()
         self._document_locks: dict[str, list] = {}
 
@@ -198,7 +203,12 @@ class AnonymizerService:
                 row = self.storage.get_document(doc_id)
                 legacy = Path(row["owned_source"])
                 converted = legacy.with_name("converted.docx")
-                convert_doc_to_docx(legacy, converted)
+                converter = (
+                    self._legacy_document_converter
+                    if self._legacy_document_converter is not None
+                    else convert_doc_to_docx
+                )
+                converter(legacy, converted)
                 self.storage.connection.execute("update documents set owned_source=?,status=? where id=?",
                                                 (str(converted), "Преобразован из DOC", doc_id))
                 self.storage.connection.commit()

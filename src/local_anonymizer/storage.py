@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sqlite3
 import threading
 import uuid
 from pathlib import Path
 
-import win32crypt
-
 from .engine import normalize_label
+from .platform_services import (
+    DataProtector,
+    default_data_dir,
+    default_data_protector,
+    restrict_private_directory,
+    restrict_private_file,
+)
 
 
 class MappingError(RuntimeError):
@@ -18,17 +22,23 @@ class MappingError(RuntimeError):
 
 
 class Storage:
-    def __init__(self, root: str | Path | None = None):
-        self.root = Path(root or (Path(os.environ["LOCALAPPDATA"]) / "LocalAnonymizer")).resolve()
+    def __init__(self, root: str | Path | None = None, *, protector: DataProtector | None = None):
+        self.root = Path(root if root is not None else default_data_dir()).resolve()
+        self.protector = protector if protector is not None else default_data_protector()
         self.documents_dir = self.root / "documents"
         self.temp_dir = self.root / "temp"
-        self.documents_dir.mkdir(parents=True, exist_ok=True)
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        restrict_private_directory(self.root)
+        for directory in (self.documents_dir, self.temp_dir):
+            directory.mkdir(exist_ok=True)
+            restrict_private_directory(directory)
         self._database_path = self.root / "library.db"
         self._connections = threading.local()
-        self.connection.execute("pragma journal_mode=DELETE")
-        self.connection.execute("pragma secure_delete=ON")
-        self.connection.executescript("""
+        connection = self.connection
+        restrict_private_file(self._database_path)
+        connection.execute("pragma journal_mode=DELETE")
+        connection.execute("pragma secure_delete=ON")
+        connection.executescript("""
           create table if not exists documents(
             id text primary key, display_name text not null, source_path text not null,
             owned_source text, output_path text, operation_id text, status text not null,
@@ -39,7 +49,7 @@ class Storage:
           create table if not exists profiles(
             name text primary key, envelope blob not null);
         """)
-        self.connection.commit()
+        connection.commit()
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -52,13 +62,11 @@ class Storage:
             self._connections.connection = connection
         return connection
 
-    @staticmethod
-    def _protect(data: bytes, description: str) -> bytes:
-        return win32crypt.CryptProtectData(data, description, None, None, None, 0)
+    def _protect(self, data: bytes, description: str) -> bytes:
+        return self.protector.protect(data, description)
 
-    @staticmethod
-    def _unprotect(data: bytes) -> bytes:
-        return win32crypt.CryptUnprotectData(data, None, None, None, 0)[1]
+    def _unprotect(self, data: bytes) -> bytes:
+        return self.protector.unprotect(data)
 
     def import_document(self, source: str | Path, *, copy_source: bool = True) -> str:
         source = Path(source).resolve()
@@ -72,8 +80,10 @@ class Storage:
         try:
             if folder is not None:
                 folder.mkdir()
+                restrict_private_directory(folder)
                 target = folder / ("original" + source.suffix.lower())
                 shutil.copy2(source, target)
+                restrict_private_file(target)
                 owned = str(target)
             self.connection.execute("insert into documents(id,display_name,source_path,owned_source,status) values(?,?,?,?,?)",
                                     (doc_id, source.name, str(source), owned, "Импортирован"))
@@ -112,6 +122,7 @@ class Storage:
         path = self._owned(path)
         if not path.is_file():
             raise FileNotFoundError(path)
+        restrict_private_file(path)
         self.connection.execute("update documents set output_path=?,operation_id=?,status=? where id=?",
                                 (str(path), operation_id, status, document_id))
         self.connection.commit()
@@ -138,6 +149,7 @@ class Storage:
         output = self._owned(output_path)
         if not output.is_file():
             raise FileNotFoundError(output)
+        restrict_private_file(output)
         payload = {"schema": 2 if package_archive is not None else 1,
                    "document_id": document_id, "operation_id": operation_id,
                    "marker_manifest": sorted(mapping), "mapping": mapping}
