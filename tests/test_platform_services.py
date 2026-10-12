@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from local_anonymizer.platform_services import (
+    CommandClipboardReader,
     DataProtectionUnavailable,
+    KeyringAesGcmProtector,
+    WindowsDpapiProtector,
     default_clipboard_reader,
     default_data_dir,
     restrict_private_directory,
@@ -21,17 +24,20 @@ class ReversibleTestProtector:
     def protect(self, data: bytes, purpose: str) -> bytes:
         return b"TEST\0" + purpose.encode("utf-8") + b"\0" + data[::-1]
 
-    def unprotect(self, envelope: bytes) -> bytes:
+    def unprotect(self, envelope: bytes, purpose: str) -> bytes:
         if not envelope.startswith(b"TEST\0"):
             raise ValueError("invalid test envelope")
-        return envelope.split(b"\0", 2)[2][::-1]
+        _, stored_purpose, payload = envelope.split(b"\0", 2)
+        if stored_purpose.decode("utf-8") != purpose:
+            raise ValueError("wrong purpose")
+        return payload[::-1]
 
 
 class UnavailableTestProtector:
     def protect(self, data: bytes, purpose: str) -> bytes:
         raise DataProtectionUnavailable("secure storage unavailable")
 
-    def unprotect(self, envelope: bytes) -> bytes:
+    def unprotect(self, envelope: bytes, purpose: str) -> bytes:
         raise DataProtectionUnavailable("secure storage unavailable")
 
 
@@ -140,23 +146,131 @@ def test_app_api_uses_injected_clipboard_reader(tmp_path):
     from local_anonymizer.service import AnonymizerService
 
     class FakeClipboardReader:
+        def __init__(self):
+            self.written = []
+
         def read_text(self) -> str:
             return "Текст из адаптера"
 
+        def write_text(self, text: str) -> None:
+            self.written.append(text)
+
     storage = Storage(tmp_path / "app", protector=ReversibleTestProtector())
+    clipboard = FakeClipboardReader()
     api = AppApi(
         service=AnonymizerService(storage=storage),
-        clipboard_reader=FakeClipboardReader(),
+        clipboard_reader=clipboard,
     )
 
     assert api.read_clipboard_text() == {"text": "Текст из адаптера"}
+    assert api.write_clipboard_text("Обезличенный текст") == {"ok": True}
+    assert clipboard.written == ["Обезличенный текст"]
 
 
 def test_non_windows_clipboard_factory_is_safe_and_explicit():
-    reader = default_clipboard_reader("linux")
+    reader = default_clipboard_reader("linux", environment={}, which=lambda command: None)
 
     assert reader.read_text() == ""
     assert reader.available is False
+
+
+def test_keyring_aes_gcm_protector_roundtrips_and_detects_tampering():
+    import hmac
+
+    class FakeAesGcm:
+        def __init__(self, key):
+            self.key = key
+
+        def encrypt(self, nonce, data, aad):
+            body = bytes(value ^ self.key[index % len(self.key)] for index, value in enumerate(data))
+            return body + hmac.digest(self.key, nonce + aad + body, "sha256")
+
+        def decrypt(self, nonce, data, aad):
+            body, tag = data[:-32], data[-32:]
+            expected = hmac.digest(self.key, nonce + aad + body, "sha256")
+            if not hmac.compare_digest(tag, expected):
+                raise ValueError("invalid tag")
+            return bytes(value ^ self.key[index % len(self.key)] for index, value in enumerate(body))
+
+    class FakeSecretServiceKeyring:
+        priority = 5
+
+        def __init__(self):
+            self.values = {}
+
+        def get_password(self, service, account):
+            return self.values.get((service, account))
+
+        def set_password(self, service, account, value):
+            self.values[(service, account)] = value
+
+    FakeSecretServiceKeyring.__module__ = "keyring.backends.SecretService"
+    backend = FakeSecretServiceKeyring()
+    protector = KeyringAesGcmProtector(
+        "linux",
+        backend=backend,
+        account="alice",
+        aesgcm_cls=FakeAesGcm,
+        random_bytes=lambda size: bytes(range(size)),
+    )
+
+    envelope = protector.protect(b"sensitive mapping", "mapping:test")
+
+    assert b"sensitive mapping" not in envelope
+    assert protector.unprotect(envelope, "mapping:test") == b"sensitive mapping"
+    with pytest.raises(DataProtectionUnavailable, match="(?i)назначени|расшифровать"):
+        protector.unprotect(envelope, "mapping:other")
+    with pytest.raises(DataProtectionUnavailable, match="повреждены|расшифровать"):
+        protector.unprotect(envelope[:-1] + bytes([envelope[-1] ^ 1]), "mapping:test")
+
+    backend.values.clear()
+    with pytest.raises(DataProtectionUnavailable, match="(?i)ключ.*не найден"):
+        protector.unprotect(envelope, "mapping:test")
+    assert backend.values == {}
+
+
+def test_keyring_protector_rejects_plaintext_or_unknown_backends():
+    class PlaintextBackend:
+        priority = 1
+
+        def get_password(self, service, account):
+            return None
+
+        def set_password(self, service, account, value):
+            raise AssertionError("must reject before storing a key")
+
+    PlaintextBackend.__module__ = "keyring.backends.fail"
+
+    with pytest.raises(DataProtectionUnavailable, match="безопасный.*keyring"):
+        KeyringAesGcmProtector("linux", backend=PlaintextBackend(), account="alice")
+
+
+def test_command_clipboard_reader_uses_native_command_without_shell():
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "Буфер обмена"
+        stderr = ""
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return Result()
+
+    reader = CommandClipboardReader(
+        "linux",
+        environment={"WAYLAND_DISPLAY": "wayland-0"},
+        which=lambda command: f"/usr/bin/{command}" if command in {"wl-paste", "wl-copy"} else None,
+        runner=runner,
+    )
+
+    assert reader.available is True
+    assert reader.read_text() == "Буфер обмена"
+    reader.write_text("Обезличенный текст")
+    assert calls[0][0] == ["/usr/bin/wl-paste", "--no-newline"]
+    assert calls[0][1]["shell"] is False
+    assert calls[1][0] == ["/usr/bin/wl-copy"]
+    assert calls[1][1]["input"] == "Обезличенный текст"
 
 
 def test_posix_permission_helpers_enforce_private_modes(monkeypatch, tmp_path):

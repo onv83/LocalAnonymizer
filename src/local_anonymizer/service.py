@@ -21,11 +21,17 @@ from lxml import etree
 from .documents import DocxProcessor, _paragraph_text, _paragraphs
 from .docx_preview import render_docx_preview
 from .formats import XlsxProcessor, _read_text, process_text_file, restore_text_file
+from .odt import (
+    OdtProcessor,
+    extract_odt_text,
+    read_odt_artifact_stamp,
+    write_odt_artifact_stamp,
+)
 from .storage import MappingError, Storage
 from .word_com import convert_doc_to_docx
 
 
-SUPPORTED = {".docx", ".doc", ".xlsx", ".txt", ".csv", ".md", ".log"}
+SUPPORTED = {".docx", ".doc", ".odt", ".xlsx", ".txt", ".csv", ".md", ".log"}
 _TEXT_STAMP_PREFIX = "<!-- LocalAnonymizer-Artifact:"
 _CORE_PROPERTIES_PART = "docProps/core.xml"
 _DC_IDENTIFIER = "{http://purl.org/dc/elements/1.1/}identifier"
@@ -83,6 +89,8 @@ def _reject_anonymized_source(path: Path) -> None:
             # Normal format validation reports malformed packages later.  This
             # guard is only responsible for positively identified artifacts.
             return
+    elif suffix == ".odt":
+        actual = read_odt_artifact_stamp(path)
     elif suffix != ".doc":
         try:
             marker = _read_text(path).partition("\n")[0]
@@ -102,6 +110,8 @@ def _read_artifact_identity(path: Path) -> tuple[str, str]:
     try:
         if suffix in {".docx", ".xlsx"}:
             _, actual = _read_core_properties(path)
+        elif suffix == ".odt":
+            actual = read_odt_artifact_stamp(path)
         else:
             marker = _read_text(path).partition("\n")[0]
             actual = marker[len(_TEXT_STAMP_PREFIX):].strip().removesuffix("-->").strip() \
@@ -141,6 +151,8 @@ def _stamp_artifact(path: Path, document_id: str, operation_id: str) -> None:
     suffix = path.suffix.lower()
     if suffix in {".docx", ".xlsx"}:
         _write_core_identifier(path, stamp)
+    elif suffix == ".odt":
+        write_odt_artifact_stamp(path, stamp)
     else:
         body = _read_text(path)
         path.write_text(f"{_TEXT_STAMP_PREFIX} {stamp} -->\n{body}", encoding="utf-8")
@@ -152,6 +164,8 @@ def _verify_artifact_stamp(path: Path, document_id: str, operation_id: str) -> s
     try:
         if suffix in {".docx", ".xlsx"}:
             _, actual = _read_core_properties(path)
+        elif suffix == ".odt":
+            actual = read_odt_artifact_stamp(path)
         else:
             text = _read_text(path)
             marker, separator, body = text.partition("\n")
@@ -228,6 +242,8 @@ class AnonymizerService:
             document = Document(source)
             text = "\n".join(_paragraph_text(p) for p in _paragraphs(document) if _paragraph_text(p))
             rich_html = render_docx_preview(document)
+        elif suffix == ".odt":
+            text = extract_odt_text(source)
         elif suffix == ".xlsx":
             workbook = load_workbook(source, data_only=False, read_only=True, keep_links=False)
             try:
@@ -280,6 +296,8 @@ class AnonymizerService:
                 result = DocxProcessor(engine).anonymize(
                     source, output, redact_graphics=redact_graphics
                 )
+            elif suffix == ".odt":
+                result = OdtProcessor(engine).anonymize(source, output)
             elif suffix == ".xlsx":
                 result = XlsxProcessor(engine).anonymize(source, output)
             else:
@@ -287,7 +305,7 @@ class AnonymizerService:
             if not output.is_file():
                 raise RuntimeError("Выходной файл не создан")
             _stamp_artifact(output, document_id, operation_id)
-            if suffix == ".docx" and isinstance(result.package_archive, dict):
+            if suffix in {".docx", ".odt"} and isinstance(result.package_archive, dict):
                 exact_keys = {
                     "exact_source_b64",
                     "exact_source_sha256",
@@ -295,7 +313,7 @@ class AnonymizerService:
                 }
                 present = exact_keys.intersection(result.package_archive)
                 if present and present != exact_keys:
-                    raise RuntimeError("Повреждён точный снимок исходного DOCX")
+                    raise RuntimeError(f"Повреждён точный снимок исходного {suffix[1:].upper()}")
                 if present == exact_keys:
                     result.package_archive["exact_anonymized_sha256"] = hashlib.sha256(
                         output.read_bytes()
@@ -340,7 +358,7 @@ class AnonymizerService:
                              operation_id: str, mapping: dict[str, str],
                              package_archive: dict | None) -> dict:
         suffix = edited.suffix.lower()
-        if suffix not in {".docx", ".xlsx", ".txt", ".csv", ".md", ".log"}:
+        if suffix not in {".docx", ".odt", ".xlsx", ".txt", ".csv", ".md", ".log"}:
             raise ValueError("Неподдерживаемый формат восстановления")
         if output.suffix.lower() != suffix:
             raise ValueError("Формат сохраняемого файла должен совпадать с восстанавливаемым")
@@ -356,6 +374,10 @@ class AnonymizerService:
             text_body = _verify_artifact_stamp(snapshot, document_id, operation_id)
             if suffix == ".docx":
                 unknown = DocxProcessor().restore(
+                    snapshot, output, mapping, package_archive=package_archive
+                )
+            elif suffix == ".odt":
+                unknown = OdtProcessor().restore(
                     snapshot, output, mapping, package_archive=package_archive
                 )
             elif suffix == ".xlsx":

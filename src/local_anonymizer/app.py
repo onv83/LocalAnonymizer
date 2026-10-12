@@ -18,7 +18,8 @@ from .platform_services import ClipboardReader, default_clipboard_reader
 from .service import AnonymizerService
 
 APP_VERSION = "1.8"
-INDEX_ASSET = "index-v1.8.17.html"
+INDEX_ASSET = "index-v1.8.18.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.18.html"
 
 
 def _read_clipboard_text() -> str:
@@ -61,6 +62,19 @@ class AppApi:
         )
         return {"text": text}
 
+    def write_clipboard_text(self, text: str) -> dict:
+        if not isinstance(text, str):
+            raise TypeError("Текст буфера обмена должен быть строкой")
+        if len(text.encode("utf-8")) > 10 * 1024 * 1024:
+            raise ValueError("Содержимое буфера обмена слишком велико")
+        clipboard = (
+            self._clipboard_reader
+            if self._clipboard_reader is not None
+            else default_clipboard_reader()
+        )
+        clipboard.write_text(text)
+        return {"ok": True}
+
     def _read_ui_settings(self) -> dict:
         path = self.service.storage.root / "ui-settings.json"
         try:
@@ -97,6 +111,16 @@ class AppApi:
         self._write_ui_settings(design_mode=design_mode)
         return {"ok": True, "design_mode": design_mode}
 
+    def get_language(self) -> str:
+        language = self._read_ui_settings().get("language")
+        return language if language in {"ru", "en"} else "ru"
+
+    def set_language(self, language: str) -> dict:
+        if language not in {"ru", "en"}:
+            raise ValueError("Неизвестный язык")
+        self._write_ui_settings(language=language)
+        return {"ok": True, "language": language}
+
     def list_documents(self) -> list[dict]:
         allowed = ("id", "display_name", "status")
         return [{key: row[key] for key in allowed} for row in self.service.storage.list_documents()]
@@ -126,7 +150,7 @@ class AppApi:
         if self._window is None:
             return {"ok": False, "ids": [], "errors": [{"error": "NoWindow"}]}
         paths = self._window.create_file_dialog(10, allow_multiple=True,
-            file_types=("Поддерживаемые (*.docx;*.doc;*.xlsx;*.txt;*.csv;*.md;*.log)",)) or []
+            file_types=("Поддерживаемые (*.docx;*.doc;*.odt;*.xlsx;*.txt;*.csv;*.md;*.log)",)) or []
         return self.import_paths(list(paths))
 
     def _engine(self, paranoid=False, rules="", whitelist="", disabled=None,
@@ -173,7 +197,7 @@ class AppApi:
             10,
             allow_multiple=False,
             directory=str(Path.home().resolve()),
-            file_types=("Обезличенный файл (*.docx;*.xlsx;*.txt;*.csv;*.md;*.log)",),
+            file_types=("Обезличенный файл (*.docx;*.odt;*.xlsx;*.txt;*.csv;*.md;*.log)",),
         ) if self._window else None
         if not paths:
             return {"ok": False}
@@ -238,7 +262,7 @@ class AppApi:
             10,
             allow_multiple=False,
             directory=str(initial_directory.resolve()),
-            file_types=("Поддерживаемые (*.docx;*.xlsx;*.txt;*.csv;*.md;*.log)",),
+            file_types=("Поддерживаемые (*.docx;*.odt;*.xlsx;*.txt;*.csv;*.md;*.log)",),
         ) if self._window else None
         if not paths:
             return {"ok": False}
@@ -459,8 +483,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result["ok"] else 1
     import webview
     api = AppApi()
-    entry_url = asset_path(INDEX_ASSET).as_uri()
-    window = webview.create_window("Локальный обезличиватель документов", entry_url, js_api=api,
+    language = api.get_language()
+    entry_asset = ENGLISH_INDEX_ASSET if language == "en" else INDEX_ASSET
+    entry_url = asset_path(entry_asset).as_uri()
+    title = "Local Document Anonymizer" if language == "en" else "Локальный обезличиватель документов"
+    window = webview.create_window(title, entry_url, js_api=api,
                           width=1440, height=920, min_size=(720, 700))
     api.set_window(window)
     webview.start(debug=False, private_mode=True)

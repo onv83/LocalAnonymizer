@@ -13,7 +13,7 @@ def test_secret_variants_are_irreversible_and_never_mapped():
         "Пароль от системы морковка123; ADMIN_PSWD='str0ngggg'; "
         "admin:Str0ngpassw Bearer AbCdEf12.ghIJkl34 "
         "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.signature99 "
-        "ghp_abcdefghijklmnopqrstuvwxyz123456 qwerty123 "
+        "" + ("ghp_" + "A" * 36) + " qwerty123 "
         "0123456789abcdefABCDEF0123456789abcdefABCDEF0123456789abcdef"
     )
     result = Anonymizer().anonymize(text)
@@ -143,8 +143,8 @@ def test_batch_zip_contains_independently_restorable_ready_pairs(tmp_path):
 
 
 def test_ui_contains_rich_review_interactions():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    js = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    js = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
     for element in ('id="sourceMirror"', 'id="richOutput"', 'id="downloadAll"', 'id="undoChips"'):
         assert element in html

@@ -6,6 +6,8 @@ import re
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 import local_anonymizer.app as app_module
 from local_anonymizer.app import AppApi, asset_path, smoke_check
 from local_anonymizer.engine import Anonymizer
@@ -18,7 +20,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    index = asset_path("index-v1.8.17.html")
+    index = asset_path("index-v1.8.18.html")
     assert index.exists()
     html = index.read_text(encoding="utf-8")
     for label in ("Исходный текст", "Обезличенный текст", "Вернуть исходные значения", "Настройки", "Проверка движка"):
@@ -137,7 +139,7 @@ def test_text_previews_share_the_top_row_and_manual_review_is_below_them():
             self.stack.pop()
 
     parser = LayoutParser()
-    parser.feed(asset_path("index-v1.8.17.html").read_text(encoding="utf-8"))
+    parser.feed(asset_path("index-v1.8.18.html").read_text(encoding="utf-8"))
 
     assert parser.parents["source"] == "textPreview"
     assert parser.parents["anonymizedDocxPreview"] == "anonymizedPreviewSurface"
@@ -148,7 +150,7 @@ def test_text_previews_share_the_top_row_and_manual_review_is_below_them():
 
 
 def test_settings_have_one_checkbox_per_actual_replacement_class():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     controls = re.findall(
         r'<input class="category" data-categories="([^"]+)"[^>]*>\s*([^<]+)',
         html,
@@ -175,7 +177,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert "Ссылка → <code>[ССЫЛКА-N]</code>" in html
     assert "Уязвимость → <code>[уязвимость]</code>" in html
     assert "Дополнительные правила → <code>[МЕТКА-N]</code>" in html
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     assert "function updateCategoryMarkerExamples()" in javascript
     assert "updateCategoryMarkerExamples();markSettingsDirty()" in javascript
 
@@ -204,8 +206,8 @@ def test_disabled_outer_class_is_not_partially_replaced_by_fallback_detectors():
 
 
 def test_interface_contains_complete_collapsed_usage_and_restore_guide():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     required = (
         "Как пользоваться программой",
@@ -235,7 +237,7 @@ def test_interface_contains_complete_collapsed_usage_and_restore_guide():
 
 
 def test_gui_loads_default_profile_rules_on_startup():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert (
         "showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');"
@@ -253,10 +255,10 @@ def test_native_window_handle_is_private_to_avoid_pywebview_bridge_introspection
 
 
 def test_new_design_exposes_primary_four_step_workflow_and_file_state():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     assert 'id="workflowSteps"' in html
-    for label in ("1 Документ", "2 Проверка", "3 Применение", "4 Экспорт"):
+    for label in ("Документ", "Проверка", "Применение", "Экспорт"):
         assert label in html
     assert 'id="fileLifecycleStatus"' in html
     assert 'id="applyNow"' in html
@@ -264,14 +266,14 @@ def test_new_design_exposes_primary_four_step_workflow_and_file_state():
 
 
 def test_header_describes_all_sensitive_data_not_only_personal_data():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     assert "Персональные и другие чувствительные данные заменяются маркерами или удаляются." in html
     assert "Персональные данные заменяются маркерами." not in html
 
 
 def test_new_design_styles_define_contrast_actions_targets_and_focus():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8") if asset_path("new-design-v1.7.css").exists() else ""
 
     assert 'new-design-v1.7.css' in html
@@ -310,7 +312,7 @@ def test_new_design_hides_empty_review_result_status():
 
 
 def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warnings():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     assert '<label for="source"' in html
     assert '<h2 id="reviewTitle">Ручная проверка спорных мест</h2>' in html
@@ -327,8 +329,8 @@ def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warni
 
 
 def test_new_design_uses_plain_language_stats_review_context_and_operation_states():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert 'id="reviewMeta"' in html
     for text in ("Найдено замен:", "Требуют решения:", "Проверено:", "Создаётся предпросмотр", "Обрабатывается файл"):
@@ -338,7 +340,7 @@ def test_new_design_uses_plain_language_stats_review_context_and_operation_state
 
 
 def test_generated_markers_use_native_buttons():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert 'class="maprow"' not in javascript
     assert '<button type="button" class="mark-hint' in javascript
@@ -348,8 +350,8 @@ def test_generated_markers_use_native_buttons():
 
 
 def test_fullscreen_preview_uses_modal_semantics_and_restores_focus():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert 'id="docxPreviewSurface"' in html
     assert 'id="anonymizedPreviewSurface"' in html
@@ -367,15 +369,15 @@ def test_desktop_window_allows_760px_accessibility_layout():
 
 
 def test_double_escape_no_longer_silently_clears_user_work():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "now-lastEscape<800" not in javascript
     assert "confirm('Очистить введённый текст" in javascript
 
 
 def test_ui_offers_persistent_new_and_legacy_design_modes():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert 'id="designMode"' in html
     assert '<option value="new">Новый дизайн</option>' in html
@@ -387,8 +389,125 @@ def test_ui_offers_persistent_new_and_legacy_design_modes():
     assert "document.body.dataset.design" in javascript
 
 
+def test_ui_offers_complete_persistent_english_interface():
+    russian_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    english_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    russian_js = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    english_js = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert '<html lang="ru">' in russian_html
+    assert '<html lang="en">' in english_html
+    assert '<script src="app-v1.8.15.js"></script>' in russian_html
+    assert '<script src="app-en-v1.8.15.js"></script>' in english_html
+    assert 'id="languageMode"' in russian_html and 'id="languageMode"' in english_html
+    assert "Anonymize text or a document" in english_html
+    assert "Manual review of uncertain items" in english_html
+    assert "Local library" in english_html
+    assert 'aria-label="Anonymized text"' in english_html
+    assert "pywebview.api.set_language(value)" in russian_js
+    assert "pywebview.api.set_language(value)" in english_js
+
+    id_pattern = re.compile(r'id="([^"]+)"')
+    assert set(id_pattern.findall(russian_html)) == set(id_pattern.findall(english_html))
+
+
+def test_english_interface_localizes_backend_statuses_profile_and_review_kinds():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "function documentStatusText(status)" in javascript
+    assert "`${d.display_name} — ${documentStatusText(d.status)}`" in javascript
+    assert "`Preview: ${preview.display_name} — ${documentStatusText(preview.status)}`" in javascript
+    assert "function profileDisplayName(name)" in javascript
+    assert "o.textContent=profileDisplayName(n)" in javascript
+    assert "function hintKindText(kind)" in javascript
+    assert "hintKindText(p.kind)" in javascript
+    assert "hintKindText(all[reviewIndex].dataset.kind)" in javascript
+
+
+def test_english_interface_never_falls_back_to_raw_unknown_backend_status():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "||status;" not in javascript
+    assert "'Unknown status'" in javascript
+
+
+def test_english_interface_localizes_profile_names_in_result_messages():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "`Profile “${profileDisplayName(n)}” saved.`" in javascript
+    assert "`Profile “${profileDisplayName(n)}” exported.`" in javascript
+    assert "`Profile “${profileDisplayName(r.name)}” imported and loaded." in javascript
+
+
+def test_english_interface_localizes_backend_warning_messages_without_changing_contract_keys():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    for warning_kind in (
+        "ГОСТАЙНА", "ДСП", "КИИ", "ЗАКУПКИ", "МАССИВ-ПДН",
+        "XLSX_FORMULA_BLOCKED", "XLSX_HYPERLINK", "XLSX_HEADER_FOOTER",
+        "XLSX_DATA_VALIDATION", "XLSX_DEFINED_NAME", "XLSX_EXTERNAL_LINK",
+        "XLSX_UNSUPPORTED_PART", "UNSUPPORTED_OFFICE_CONTENT",
+    ):
+        assert f"'{warning_kind}'" in javascript
+    assert "function warningText(w)" in javascript
+    assert "Manual review required:" in javascript
+
+
+def test_english_interface_does_not_show_russian_profile_api_errors():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "function profileErrorText(operation)" in javascript
+    assert "profileErrorText('export')" in javascript
+    assert "profileErrorText('import')" in javascript
+    assert "textContent=r.error;" not in javascript
+
+
+def test_english_interface_localizes_post_anonymization_status_and_review_profile():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "`${documentStatusText(r.status)}. The file was created" in javascript
+    assert "`${documentStatusText(r.status)}. The anonymized file is ready" in javascript
+    assert "const profileName=profileDisplayName($('#profile').value||'Общий')" in javascript
+    assert 'const profileName=$(\'#profile\').value||\'Общий\'' not in javascript
+
+
+def test_english_interface_never_renders_raw_bridge_errors():
+    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+
+    assert "function bridgeErrorText(operation)" in javascript
+    assert "saved?.error||'Could not save profile'" not in javascript
+    assert "${error}" not in javascript
+    assert "String(error)" not in javascript
+    assert "${formattedPreview.error}" not in javascript
+    assert "${error?.message||error}" not in javascript
+    assert ".map(x=>x.error)" not in javascript
+    for operation in ("profile-save", "formatted-preview", "anonymize", "import", "restore"):
+        assert f"bridgeErrorText('{operation}')" in javascript
+
+
+def test_language_variants_do_not_duplicate_numbers_in_ordered_workflow_steps():
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        workflow = html[html.index('id="workflowSteps"'):html.index("</nav>")]
+        assert not re.search(r"<li>\d+\s", workflow)
+
+
+def test_language_choice_is_persisted_by_backend_and_preserves_other_ui_settings(tmp_path):
+    root = tmp_path / "app"
+    first = AppApi(root=root)
+    assert first.get_language() == "ru"
+    assert first.set_theme("dark") == {"ok": True, "theme": "dark"}
+    assert first.set_language("en") == {"ok": True, "language": "en"}
+
+    second = AppApi(root=root)
+    assert second.get_language() == "en"
+    assert second.get_theme() == "dark"
+    with pytest.raises(ValueError, match="язык"):
+        second.set_language("de")
+
+
 def test_rare_categories_are_forced_closed_on_every_launch():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "$('#detectionCategories').open=false" in javascript
 
@@ -408,9 +527,29 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
 
     assert app_module.main([]) == 0
-    assert captured["url"].endswith("/index-v1.8.17.html")
+    assert captured["url"].endswith("/index-v1.8.18.html")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.14.js"></script>' in html
+    assert '<script src="app-v1.8.15.js"></script>' in html
+
+
+def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
+    captured = {}
+
+    def create_window(title, url, **kwargs):
+        captured.update(title=title, url=url)
+        return object()
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    AppApi().set_language("en")
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        SimpleNamespace(create_window=create_window, start=lambda **kwargs: None),
+    )
+
+    assert app_module.main([]) == 0
+    assert captured["url"].endswith("/index-en-v1.8.18.html")
+    assert captured["title"] == "Local Document Anonymizer"
 
 
 def test_clipboard_read_is_exposed_through_native_api(tmp_path, monkeypatch):
@@ -433,8 +572,8 @@ def test_app_api_exposes_compact_marker_mode(tmp_path):
 
 
 def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert 'id="compactMarkers"' in html
     assert "Сохранять компоновку" in html
@@ -443,7 +582,7 @@ def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
 
 
 def test_paste_button_uses_native_api_instead_of_webview_clipboard_permission():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "pywebview.api.read_clipboard_text()" in javascript
     assert "navigator.clipboard.readText()" not in javascript
@@ -459,7 +598,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
             if tag == "button":
                 self.buttons.append(dict(attrs))
 
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     parser = ButtonParser()
     parser.feed(html)
 
@@ -480,7 +619,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
                if len(button.get("title", "").strip()) < 12]
     assert missing == []
 
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     assert 'class="undo-chip"' in javascript
     assert 'title="Отменить возврат значения' in javascript
 
@@ -492,7 +631,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
 
 
 def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_preview():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     focus_mark = javascript[javascript.index("function focusMark("):javascript.index("function reviewDisabledReason(")]
@@ -506,8 +645,8 @@ def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_pr
 
 
 def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     assert "await anonymizeText()" in hide_hint
@@ -517,7 +656,7 @@ def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
 
 
 def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing_preview():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     save = "await pywebview.api.save_profile($('#profile').value,$('#rules').value,$('#whitelist').value,$('#paranoid').checked)"
@@ -527,8 +666,8 @@ def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing
 
 
 def test_gui_has_persistent_light_and_dark_theme_switch():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     assert 'id="themeToggle"' in html
@@ -571,7 +710,7 @@ def test_design_choice_is_persisted_by_backend_and_preserves_theme(tmp_path):
 
 
 def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     assert "Секреты и ключи защищаются всегда" in html
     assert "checkbox\" checked disabled" not in html
@@ -594,14 +733,14 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
     ):
         assert explanation in html
 
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     assert "$('#redactDocxGraphics').checked" in javascript
     assert "['#rules','#whitelist','#paranoid','#redactDocxGraphics']" in javascript
 
 
 def test_settings_and_primary_action_explain_their_real_effect():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     settings_start = html.index("Настройки обезличивания")
     action_position = html.index('id="anonymize"')
@@ -614,7 +753,7 @@ def test_settings_and_primary_action_explain_their_real_effect():
 
 
 def test_new_design_shows_only_one_apply_and_one_export_action():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
 
     assert 'id="exportNow" title="Сохранить обезличенный документ и переносимый файл восстановления рядом">Сохранить документ и файл восстановления</button>' in html
@@ -622,7 +761,7 @@ def test_new_design_shows_only_one_apply_and_one_export_action():
 
 
 def test_detection_categories_are_a_separate_collapsed_section_at_the_very_bottom():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     section_start = html.index('<details class="card" id="detectionCategories">')
     section_end = html.index("</details>", section_start)
@@ -642,7 +781,7 @@ def test_detection_categories_are_a_separate_collapsed_section_at_the_very_botto
 
 
 def test_category_change_renders_text_result_before_slow_formatted_preview():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     text_await = "const result=await pywebview.api.anonymize_text(text,...settings);"
     formatted_await = "formattedPreview=await formatted"
@@ -655,7 +794,7 @@ def test_category_change_renders_text_result_before_slow_formatted_preview():
 
 
 def test_review_navigation_is_limited_to_actionable_yellow_hints():
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "function hintMarks()" in javascript
     assert "const all=hintMarks()" in javascript
@@ -665,7 +804,7 @@ def test_review_navigation_is_limited_to_actionable_yellow_hints():
 
 
 def test_local_library_is_compact_inside_the_source_editor():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     source_start = html.index('aria-labelledby="sourceHeading"')
     source_end = html.index('</section>', source_start)
@@ -682,8 +821,8 @@ def test_local_library_is_compact_inside_the_source_editor():
 
 
 def test_pasted_text_restoration_reuses_the_main_source_editor():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     source_section = html[html.index('aria-labelledby="sourceHeading"'):html.index('</section>', html.index('aria-labelledby="sourceHeading"'))]
     assert 'id="restore"' in source_section
@@ -700,8 +839,8 @@ def test_pasted_text_restoration_reuses_the_main_source_editor():
 
 
 def test_legacy_mapping_table_and_csv_export_are_not_exposed_in_ui():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "Таблица соответствий" not in html
     assert "Экспорт CSV (чувствительные данные)" not in html
@@ -716,7 +855,7 @@ def test_legacy_mapping_table_and_csv_export_are_not_exposed_in_ui():
 
 
 def test_manual_review_owns_its_search_and_display_controls():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     review_start = html.index('id="manualReview"')
     review_end = html.index("</section>", review_start)
     review = html[review_start:review_end]
@@ -732,8 +871,8 @@ def test_manual_review_owns_its_search_and_display_controls():
 
 
 def test_manual_review_panel_explains_actions_progress_result_and_completion():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     for text in (
         "Ручная проверка спорных мест",
@@ -758,8 +897,8 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
 
 
 def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "Автоматически скрывать спорное без подтверждения" in html
     assert "жёлтой очереди для ручного решения не будет" in html
@@ -771,8 +910,8 @@ def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
 
 
 def test_document_export_has_a_visible_matching_restore_import_action():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
 
     assert "Сохранить два файла…" in html
     assert "информация для восстановления.larecovery" in html
@@ -990,8 +1129,8 @@ def test_restore_document_cancelled_save_does_not_restore_or_leak_paths(tmp_path
 
 
 def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
-    html = asset_path("index-v1.8.17.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.14.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1036,7 +1175,7 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     assert "preview.format==='docx'" in javascript
     assert "preview_anonymized_document" in javascript
     assert "Версия 1.8" in html and "APP_VERSION='1.8'" in javascript
-    assert 'src="app-v1.8.14.js"' in html
+    assert 'src="app-v1.8.15.js"' in html
     assert "Текст документа загружен полностью" in javascript
     assert "Визуальные элементы без текста могут не отображаться" in javascript
     assert "rich.scrollTop=0" in javascript

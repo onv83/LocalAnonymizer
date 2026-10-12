@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .engine import normalize_label
 from .platform_services import (
+    DataProtectionUnavailable,
     DataProtector,
     default_data_dir,
     default_data_protector,
@@ -65,8 +66,8 @@ class Storage:
     def _protect(self, data: bytes, description: str) -> bytes:
         return self.protector.protect(data, description)
 
-    def _unprotect(self, data: bytes) -> bytes:
-        return self.protector.unprotect(data)
+    def _unprotect(self, data: bytes, purpose: str) -> bytes:
+        return self.protector.unprotect(data, purpose)
 
     def import_document(self, source: str | Path, *, copy_source: bool = True) -> str:
         source = Path(source).resolve()
@@ -185,12 +186,13 @@ class Storage:
 
     def decode_restore_envelope(self, envelope: bytes, document_id: str,
                                 operation_id: str) -> tuple[dict[str, str], dict | None]:
+        purpose = f"LocalAnonymizer:{document_id}:{operation_id}"
         try:
-            payload = json.loads(self._unprotect(envelope).decode("utf-8"))
+            payload = json.loads(self._unprotect(envelope, purpose).decode("utf-8"))
+        except DataProtectionUnavailable:
+            raise
         except Exception as exc:
-            raise MappingError(
-                "Файл восстановления повреждён или создан другим профилем Windows"
-            ) from exc
+            raise MappingError("Защищённая карта восстановления повреждена") from exc
         return self.decode_restore_payload(payload, document_id, operation_id)
 
     @staticmethod
@@ -256,7 +258,10 @@ class Storage:
         row = self.connection.execute("select envelope from profiles where name=?", (name,)).fetchone()
         if not row:
             raise KeyError(name)
-        return self._validate_profile(json.loads(self._unprotect(bytes(row[0])).decode("utf-8")))
+        purpose = f"LocalAnonymizer:profile:{name}"
+        return self._validate_profile(
+            json.loads(self._unprotect(bytes(row[0]), purpose).decode("utf-8"))
+        )
 
     def export_profile(self, name: str) -> str:
         return json.dumps(self.load_profile(name), ensure_ascii=False, indent=2)
