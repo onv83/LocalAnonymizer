@@ -15,11 +15,12 @@ def test_acceptance_sample_redacts_required_values_and_preserves_public_values()
         "[уязвимость]", "[ИНН-1]", "[КПП-1]", "[СНИЛС-1]", "[СЧЁТ-1]",
         "[КАРТА-1]", "[КАДАСТР-1]", "[ГОСНОМЕР-1]", "[ТАБЕЛЬНЫЙ-1]",
         "[ДОГОВОР-1]", "[СУММА-1]", "[СУММА-2]", "[СТАВКА-1]",
-        "[ДАТА-РОЖДЕНИЯ-1]", "[ФИО-2]",
+        "[ДАТА-РОЖДЕНИЯ-1]", "[ФИО-2]", "[ФИО-3]",
     ]
     for marker in expected_markers:
         assert marker in output, marker
-    assert output.count("[ФИО-1]") >= 2
+    assert output.count("[ФИО-1]") == 1
+    assert result.mapping["[ФИО-3]"] == "Иванов"
     assert output.count("[ОРГАНИЗАЦИЯ-1]") >= 2
     for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
         assert public in output
@@ -73,6 +74,18 @@ def test_canonical_aliases_reuse_markers_and_unknown_candidates_are_reported():
     result = Anonymizer().anonymize("ООО «Ромашка». Ромашка. Инженер отдела ИБ Кудряшов.")
     assert result.text.count("[ОРГАНИЗАЦИЯ-1]") == 2
     assert "Кудряшов" in result.candidates
+
+
+def test_inflected_surname_is_not_merged_with_full_name_without_strong_identity_evidence():
+    result = Anonymizer().anonymize(
+        "Опарин Алексей Викторович подписал акт. Ответ от Опарина получен."
+    )
+
+    assert result.text == "[ФИО-1] подписал акт. Ответ от [ФИО-2] получен."
+    assert result.mapping == {
+        "[ФИО-1]": "Опарин Алексей Викторович",
+        "[ФИО-2]": "Опарина",
+    }
 
 
 def test_enterprise_infrastructure_values_from_real_report_are_anonymized():

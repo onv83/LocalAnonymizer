@@ -680,7 +680,12 @@ class Anonymizer:
                 if _stem_surname(m.group()) != stem:
                     continue
                 if not any(m.start() < e and m.end() > s for s, e in occupied):
-                    accepted.append(Detection(*m.span(), "ФИО", 49, m.group(), key)); occupied.append(m.span())
+                    # A matching surname stem is enough to detect the value, but
+                    # not enough to prove that it names the same person as the
+                    # full-name anchor. Keep a separate reversible identity key.
+                    surname_key = "фио-фамилия:" + self._canon(m.group())
+                    accepted.append(Detection(*m.span(), "ФИО", 49, m.group(), surname_key))
+                    occupied.append(m.span())
         seen_exact_aliases: set[tuple[str, str, str, bool]] = set()
         for raw, key, category, case_sensitive in exact_aliases:
             alias = (raw, key, category, case_sensitive)

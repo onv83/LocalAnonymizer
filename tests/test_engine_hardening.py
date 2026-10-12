@@ -65,14 +65,18 @@ def test_surname_stem_normalizes_russian_case_forms():
     } == {"петровский"}
 
 
-def test_unique_initials_and_declined_surname_aliases_reuse_anchor_marker():
+def test_initials_reuse_anchor_but_bare_declined_surname_gets_separate_marker():
     source = "Петровский Иван Сергеевич. И. С. Петровскому. Позвать Петровского."
 
     result = Anonymizer().anonymize(source)
 
-    assert result.text.count("[ФИО-1]") == 3
+    assert result.text.count("[ФИО-1]") == 2
+    assert result.text.count("[ФИО-2]") == 1
     assert "Петровск" not in result.text
-    assert result.mapping == {"[ФИО-1]": "Петровский Иван Сергеевич"}
+    assert result.mapping == {
+        "[ФИО-1]": "Петровский Иван Сергеевич",
+        "[ФИО-2]": "Петровского",
+    }
 
 
 def test_full_name_case_and_order_variants_share_one_identity_marker():
