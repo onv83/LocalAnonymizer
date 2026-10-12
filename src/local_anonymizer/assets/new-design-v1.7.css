@@ -1,0 +1,50 @@
+:root{--text-primary:#17283b;--text-secondary:#4d647a;--surface:#ffffff;--surface-raised:#f7fafc;--border:#647c92;--action-primary:#075a9c;--action-primary-hover:#06487d;--danger:#9b1c1c;--warning:#7a5400;--success:#146c43;--focus:#0069c0}
+html[data-theme="dark"]{--text-primary:#f3f7fb;--text-secondary:#c7d5e3;--surface:#18232e;--surface-raised:#202f3d;--border:#688198;--action-primary:#3da9fc;--action-primary-hover:#70c1ff;--danger:#ff7f7f;--warning:#ffd36b;--success:#65d49b;--focus:#ffd166}
+body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:15px;line-height:1.45;max-width:1920px;margin:auto;padding:16px 20px 90px}
+body[data-design="new"] header{order:0;position:sticky;top:0;z-index:80;background:var(--surface-raised);padding:8px 0 10px;border-bottom:1px solid var(--border)}
+body[data-design="new"] .library{order:1}
+body[data-design="new"] #workflowSteps{order:2}
+body[data-design="new"] main{order:3}
+body[data-design="new"] #workflowStatusBar{order:4}
+body[data-design="new"]>details{order:6}
+body[data-design="new"] main+details{order:5}
+body[data-design="new"] main+details+details{order:6}
+body[data-design="new"] .restore-card{order:7}
+body[data-design="new"] .usage-guide{order:8}
+body[data-design="new"] #selftestSection{order:9}
+body[data-design="new"] #detectionCategories{order:10}
+body[data-design="new"] footer{order:20}
+body[data-design="new"] .card{background:var(--surface);color:var(--text-primary);border-color:var(--border);box-shadow:0 2px 8px #07131e18}
+body[data-design="new"] .muted,body[data-design="new"] .bar>b,body[data-design="new"] .review-help,body[data-design="new"] .settings label small{color:var(--text-secondary)}
+body[data-design="new"] button,body[data-design="new"] select{min-height:40px;padding:8px 12px;background:var(--surface);color:var(--text-primary);border-color:var(--border)}
+body[data-design="new"] button.primary,body[data-design="new"] #applyNow,body[data-design="new"] #exportNow{background:var(--action-primary);border-color:var(--action-primary);color:#fff;font-weight:700}
+html[data-theme="dark"] body[data-design="new"] button.primary,html[data-theme="dark"] body[data-design="new"] #applyNow,html[data-theme="dark"] body[data-design="new"] #exportNow{color:#07131e}
+body[data-design="new"] button.primary:hover,body[data-design="new"] #applyNow:hover,body[data-design="new"] #exportNow:hover{background:var(--action-primary-hover)}
+body[data-design="new"] #deleteDoc{border-color:var(--danger);color:var(--danger)}
+body[data-design="new"] :is(button,select,textarea,summary,[tabindex],a):focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+body[data-design="new"] .review{background:var(--surface);color:var(--text-primary);border-color:var(--warning)}
+body[data-design="new"] .review-current,body[data-design="new"] .review-option{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
+body[data-design="new"] .review-value,body[data-design="new"] .review-label{color:var(--text-primary)}
+body[data-design="new"] #reviewCurrent{color:var(--text-primary)}
+body[data-design="new"] #resultStatus:empty{display:none}
+body[data-design="new"] #anonymize,body[data-design="new"] #downloadAnon{display:none!important}
+body[data-design="new"] .warning{color:var(--warning);background:color-mix(in srgb,var(--warning) 12%,var(--surface));border-color:var(--warning)}
+body[data-design="new"] .workflow-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0;margin:0 0 14px;list-style:none}
+body[data-design="new"] .workflow-steps li{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-weight:700}
+body[data-design="new"] .workflow-status{position:sticky;bottom:0;z-index:70;display:flex;align-items:center;gap:12px;border:2px solid var(--action-primary);box-shadow:0 -3px 18px #07131e33}
+body[data-design="new"] .workflow-status [role="status"]{flex:1;font-weight:700}
+body[data-design="new"] .design-switch{display:flex;align-items:center;gap:6px}
+body[data-design="new"] .sensitive-note{display:block;color:var(--warning);margin-top:6px}
+body[data-design="new"] h2{font-size:18px;margin:0 0 6px}
+body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(46vh,520px);min-height:340px}
+body[data-design="new"] textarea{font-size:15px;color:var(--text-primary);background:var(--surface);border-color:var(--border)}
+body[data-design="new"] .sr-label{display:block;font-weight:700;margin:0 0 6px}
+body[data-design="new"] summary{min-height:24px;display:flex;align-items:center}
+body[data-design="new"] .bar h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0;color:var(--text-secondary)}
+body[data-design="new"] .library h2{font-size:15px;margin:0}
+body[data-design="new"] .source-library{border-color:var(--border);background:var(--surface-raised)}body[data-design="new"] .source-library>summary{color:var(--text-secondary);font-size:13px;letter-spacing:.03em}body[data-design="new"] .source-library>.compact-library{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;align-items:center;gap:8px}body[data-design="new"] .source-library #fileStatus{grid-column:1/-1}
+html[data-theme="dark"] body[data-design="new"] .chips span{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
+html[data-theme="dark"] body[data-design="new"] .chips .yellow{background:#fff5c5;color:#725a00;border-color:#e8ca5c}
+body[data-design="legacy"] .new-design-only{display:none!important}
+body[data-design="new"] .legacy-only{display:none!important}
+@media(max-width:800px){body[data-design="new"]{padding:10px 10px 100px}body[data-design="new"] header,body[data-design="new"] .header-actions,body[data-design="new"] .library,body[data-design="new"] .restore-card-heading,body[data-design="new"] .review-heading,body[data-design="new"] .review-actions{align-items:stretch;flex-direction:column}body[data-design="new"] .workflow-steps{grid-template-columns:1fr 1fr}body[data-design="new"] .columns{grid-template-columns:1fr}body[data-design="new"] .workflow-status{flex-wrap:wrap}body[data-design="new"] .workflow-status [role="status"]{flex-basis:100%}body[data-design="new"] .library>*,body[data-design="new"] .workflow-status button{max-width:100%}}

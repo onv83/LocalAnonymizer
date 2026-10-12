@@ -1,0 +1,29 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Build and packaged application artifacts
+build/
+build-*/
+dist/
+release/
+release-*/
+artifacts/
+
+# Local runtime data and exported recovery material
+*.larecovery
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+.env
+.env.*
+
+# Local diagnostics and Windows device-name artifacts
+NUL
+NUL-
+*.log
+
+# Generated reference output
+reference/*.html

@@ -1,0 +1,514 @@
+from pathlib import Path
+
+from local_anonymizer.engine import Anonymizer
+
+
+def test_acceptance_sample_redacts_required_values_and_preserves_public_values():
+    text = Path("acceptance_sample.txt").read_text(encoding="utf-8")
+    result = Anonymizer().anonymize(text)
+    output = result.text
+
+    expected_markers = [
+        "[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[ТЕЛЕФОН-1]",
+        "[ТЕЛЕФОН-2]", "[АККАУНТ-1]", "[ДОМЕН-1]", "[IP-1]", "[IP-2]",
+        "[MAC-1]", "[ССЫЛКА-1]", "[СЗИ-1]", "[СЗИ-2]", "[ЗАДАЧА-1]",
+        "[уязвимость]", "[ИНН-1]", "[КПП-1]", "[СНИЛС-1]", "[СЧЁТ-1]",
+        "[КАРТА-1]", "[КАДАСТР-1]", "[ГОСНОМЕР-1]", "[ТАБЕЛЬНЫЙ-1]",
+        "[ДОГОВОР-1]", "[СУММА-1]", "[СУММА-2]", "[СТАВКА-1]",
+        "[ДАТА-РОЖДЕНИЯ-1]", "[ФИО-2]",
+    ]
+    for marker in expected_markers:
+        assert marker in output, marker
+    assert output.count("[ФИО-1]") >= 2
+    assert output.count("[ОРГАНИЗАЦИЯ-1]") >= 2
+    for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
+        assert public in output
+    for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"):
+        assert secret not in output
+    assert output.count("(удалено") >= 3
+    assert sum(1 for part in result.parts if part.get("secret")) >= 3
+    assert all(secret not in str(result.mapping) for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"))
+
+
+def test_device_and_network_identifiers_use_validated_local_rules():
+    source = (
+        "IMEI: 123456789012347; ошибочный IMEI: 123456789012345; "
+        "MAC Cisco: a1b2.c3d4.e5f6; сеть: 2001:db8::/32"
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert "123456789012347" not in result.text
+    assert result.mapping["[IMEI-1]"] == "123456789012347"
+    assert "123456789012345" in result.text
+    assert "a1b2.c3d4.e5f6" not in result.text
+    assert result.mapping["[MAC-1]"] == "a1b2.c3d4.e5f6"
+    assert "2001:db8::/32" not in result.text
+    assert result.mapping["[IP-1]"] == "2001:db8::/32"
+
+
+def test_unlabelled_fifteen_digit_number_is_not_assumed_to_be_imei():
+    source = "Номер записи 123456789012347"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert not result.mapping
+
+
+def test_compact_markers_reduce_placeholder_width_without_changing_restore_mapping():
+    source = "Иванов Иван Иванович работает в ООО «Ромашка»."
+
+    result = Anonymizer(compact_markers=True).anonymize(source)
+
+    assert "[Ф-1]" in result.text
+    assert "[ОРГ-1]" in result.text
+    assert "[ФИО-1]" not in result.text
+    assert "[ОРГАНИЗАЦИЯ-1]" not in result.text
+    assert result.mapping["[Ф-1]"] == "Иванов Иван Иванович"
+    assert result.mapping["[ОРГ-1]"] == "ООО «Ромашка»"
+
+
+def test_canonical_aliases_reuse_markers_and_unknown_candidates_are_reported():
+    result = Anonymizer().anonymize("ООО «Ромашка». Ромашка. Инженер отдела ИБ Кудряшов.")
+    assert result.text.count("[ОРГАНИЗАЦИЯ-1]") == 2
+    assert "Кудряшов" in result.candidates
+
+
+def test_enterprise_infrastructure_values_from_real_report_are_anonymized():
+    sep = "\ufdd0"
+    source = sep.join([
+        "NetBIOS-имя", "OVBPORT",
+        "Источник времени для леса известен — 172.17.4.100.",
+        "Площадки ЦА", "Волгоград", "Астрахань",
+        "Локальный DNS-сервер", "adc4", "adc8", "ad-dns-06", "ad-dns-10",
+        "Полное имя", "adc8.ovbport.net",
+        "Платформа виртуализации", "zVirt",
+        "Производитель (дистрибутив)", "Orion Soft",
+        "Примечание", "В процессе перехода с ESXi на zVirt",
+        "Имя объекта", "ovbport-ADC8-CA",
+        "DN", "CN=ovbport-ADC8-CA,CN=AIA,CN=Public Key Services,CN=Services,CN=Configuration,DC=ovbport,DC=net",
+        "Имя ЦС", "vog-DC001-CA", "Имя ЦС", "asf-ast-DC1-CA",
+        "Имена серверов / IP-адреса", "oco-srkv/172.17.60.113\nCyberBackUp/172.17.60.120\nCyber2Data/172.17.60.125",
+        "Имя", "SamAccountName", "Burganov", "Burganov", "cherevach", "cherevach",
+        "Администратор", "Администратор",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    leaked = [
+        "OVBPORT", "172.17.4.100", "Волгоград", "Астрахань",
+        "adc4", "adc8", "ad-dns-06", "ad-dns-10", "ovbport.net", "zVirt", "Orion Soft",
+        "ovbport-ADC8-CA", "DC=ovbport", "vog-DC001-CA", "asf-ast-DC1-CA",
+        "oco-srkv", "CyberBackUp", "Cyber2Data", "Burganov", "cherevach",
+        "Администратор",
+    ]
+    assert all(value.casefold() not in result.text.casefold() for value in leaked)
+    assert result.text.count(sep) == source.count(sep)
+    assert result.counts["IP"] == 4
+    assert result.counts["ГОРОД"] == 2
+    assert result.counts["ЛОГИН"] >= 6
+
+
+def test_contextual_value_may_use_office_fragment_boundary_without_replacing_it():
+    source = "NetBIOS-имя\ufdd0OVBPORT"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text.startswith("NetBIOS-имя\ufdd0[УЗЕЛ-")
+    assert result.text.count("\ufdd0") == 1
+
+
+def test_explicit_server_labels_anonymize_single_label_hostnames():
+    cases = [
+        ("Сервер: OVBPORT", "OVBPORT"),
+        ("Имя узла: APPNODE", "APPNODE"),
+        ("Хост\ufdd0DBSERVER", "DBSERVER"),
+    ]
+
+    for source, hostname in cases:
+        result = Anonymizer().anonymize(source)
+
+        assert hostname not in result.text
+        assert result.text.endswith("[УЗЕЛ-1]")
+        assert result.mapping == {"[УЗЕЛ-1]": hostname}
+
+
+def test_explicit_server_labels_accept_hostname_immediately_after_colon():
+    cases = [
+        ("Сервер:XQNODE", "XQNODE"),
+        ("Имя узла:YQNODE", "YQNODE"),
+        ("Хост:ZQNODE", "ZQNODE"),
+    ]
+
+    for source, hostname in cases:
+        result = Anonymizer().anonymize(source)
+
+        assert hostname not in result.text
+        assert result.text.endswith("[УЗЕЛ-1]")
+        assert result.mapping == {"[УЗЕЛ-1]": hostname}
+
+
+def test_explicit_server_labels_accept_unicode_whitespace_after_colon():
+    for separator in ("\u00a0", "\u2009"):
+        source = f"Сервер:{separator}UNICODEHOST"
+
+        result = Anonymizer().anonymize(source)
+
+        assert result.text == f"Сервер:{separator}[УЗЕЛ-1]"
+        assert result.mapping == {"[УЗЕЛ-1]": "UNICODEHOST"}
+
+
+def test_server_label_does_not_partially_replace_unicode_continuation():
+    anonymizer = Anonymizer()
+    for suffix in ("é", "Ж", "\u0301"):
+        source = f"Сервер:NODEABC{suffix};"
+        result = anonymizer.anonymize(source)
+
+        assert result.text == source
+        assert result.mapping == {}
+
+
+def test_server_label_case_variants_receive_distinct_reversible_markers():
+    source = "Сервер:NodeABC; Хост:NODEABC"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Сервер:[УЗЕЛ-1]; Хост:[УЗЕЛ-2]"
+    assert result.mapping == {"[УЗЕЛ-1]": "NodeABC", "[УЗЕЛ-2]": "NODEABC"}
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_explicit_server_label_replaces_entire_valid_long_hostname():
+    hostname = "NODE" + "A" * 35
+    source = f"Сервер:{hostname}"
+
+    result = Anonymizer().anonymize(source)
+
+    assert hostname not in result.text
+    assert result.text == "Сервер:[УЗЕЛ-1]"
+    assert result.mapping == {"[УЗЕЛ-1]": hostname}
+    assert result.text.replace("[УЗЕЛ-1]", result.mapping["[УЗЕЛ-1]"]) == source
+
+
+def test_explicit_server_label_never_partially_replaces_long_identifier():
+    hostname = "NODE" + "B" * 76
+    source = f"Хост: {hostname};"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Хост: [УЗЕЛ-1];"
+    assert result.mapping == {"[УЗЕЛ-1]": hostname}
+
+
+def test_server_label_rule_does_not_treat_prose_as_a_hostname_field():
+    source = "Сервер работает стабильно, а хост указан в приложении."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_server_names_with_site_and_role_segments_are_anonymized():
+    server_names = [
+        "vog-dc-0001",
+        "asf-dns-0001",
+        "ovb-dhcp-0001",
+        "stw-fs-0001",
+        "mrv-web-0001",
+        "ovb-RDP-0001",
+        "tjm-app-0001",
+        "pee-db-0001",
+    ]
+    source = "Справочник серверов: " + ", ".join(server_names)
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(name.casefold() not in result.text.casefold() for name in server_names)
+    assert result.text.count("[УЗЕЛ-") == len(server_names)
+
+
+def test_server_names_from_naming_standard_examples_are_anonymized():
+    server_names = [
+        "vog-dcv-0001",
+        "ovb-hv-0001",
+        "pee-pk-0001",
+        "gdx-nb-0001",
+        "kej-mon-0001",
+        "uud-bak-0001",
+        "vog-print-0001",
+        "tof-scud-0001",
+        "ovb-studio-0001",
+        "vog-dbv-0001",
+        "vog-pk-0001",
+        "vog-nb-0001",
+        "vog-mfu-0001",
+    ]
+    source = "\n".join(server_names)
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(name not in result.text for name in server_names)
+    assert result.text.count("[УЗЕЛ-") == len(server_names)
+    assert set(result.mapping.values()) == set(server_names)
+
+
+def test_organization_with_nested_russian_quotes_is_anonymized():
+    organization = "АО «Международный аэропорт „Саранск“»"
+
+    result = Anonymizer().anonymize(organization)
+
+    assert organization not in result.text
+    assert result.text == "[ОРГАНИЗАЦИЯ-1]"
+    assert result.mapping == {"[ОРГАНИЗАЦИЯ-1]": organization}
+
+
+def test_server_name_rule_does_not_capture_generic_hyphenated_identifiers():
+    source = "Документ abc-report-0001 и задача proj-task-0002 остаются текстом."
+
+    result = Anonymizer().anonymize(source)
+
+    assert "abc-report-0001" in result.text
+    assert "proj-task-0002" in result.text
+
+
+def test_contextual_host_inventory_redacts_short_hostnames_without_digits():
+    sep = "\ufdd0"
+    source = sep.join([
+        "Имя хоста", "IP-адрес", "vCPU", "RAM",
+        "lab-nas", "[IP-74]", "32", "128",
+        "vm-pc", "[IP-75]", "16", "32",
+        "Повторное упоминание узла lab-nas в примечании",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert "lab-nas" not in result.text
+    assert "vm-pc" not in result.text
+    assert result.text.count("[УЗЕЛ-") == 3
+    assert result.text.count("[УЗЕЛ-1]") == 2
+    assert result.text.count(sep) == source.count(sep)
+
+
+def test_netbios_table_row_redacts_every_site_value():
+    sep = "\ufdd0"
+    source = sep.join([
+        "Параметр", "Площадка 1", "Площадка 2", "Площадка 3",
+        "NetBIOS", "ALPHAHQ", "BETA-LAB", "GAMMA_AST",
+        "ОС контроллеров", "Windows Server", "Windows Server", "Windows Server",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(value not in result.text for value in ("ALPHAHQ", "BETA-LAB", "GAMMA_AST"))
+    assert result.text.count("[УЗЕЛ-") == 3
+    assert result.text.count(sep) == source.count(sep)
+
+
+def test_ad_ou_inventory_redacts_complete_client_specific_paths():
+    sep = "\ufdd0"
+    values = [
+        "Computers_ACME/Production/Site-A",
+        "Servers/Legacy-RDP",
+        "Computers/ACME-Finance",
+    ]
+    source = sep.join([
+        "OU или контейнер AD", "Компьютерных УЗ", "Включено", "Отключено",
+        values[0], "21", "21", "0",
+        values[1], "12", "11", "1",
+        values[2], "5", "5", "0",
+        f"Описание структуры {values[1]}",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(value not in result.text for value in values)
+    assert result.text.count("[СТРУКТУРА-AD-") == 4
+    assert "Servers/Legacy-RDP" not in result.text
+    assert result.text.count(sep) == source.count(sep)
+
+
+def test_software_inventory_redacts_each_product_name_but_preserves_metrics():
+    sep = "\ufdd0"
+    products = ["Example Secure Client", "Northwind Banking Plug-in", "Contoso Remote Token"]
+    source = sep.join([
+        "Инвентаризация программного обеспечения", "Наименование ПО", "Установок", "Доля",
+        products[0], "10", "1,6%",
+        products[1], "4", "0,6%",
+        products[2], "3", "0,5%",
+        f"Примечание: модуль {products[0]} требует настройки",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(value not in result.text for value in products)
+    assert result.text.count("[ПРОГРАММА-") == 4
+    assert products[0] not in result.text
+    assert all(metric in result.text for metric in ("10", "1,6%", "4", "0,6%", "3", "0,5%"))
+
+
+def test_contextual_software_alias_respects_disabled_category():
+    sep = "\ufdd0"
+    source = sep.join([
+        "Инвентаризация программного обеспечения", "Установок", "Доля",
+        "Example Secure Client", "10", "1,6%",
+        "Повтор Example Secure Client",
+    ])
+
+    result = Anonymizer(disabled_categories={"ПРОГРАММА"}).anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_disabled_vulnerability_category_leaves_cve_unchanged():
+    source = "Уязвимость CVE-2024-12345."
+
+    result = Anonymizer(disabled_categories={"уязвимость"}).anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+    assert result.candidates == []
+    assert result.hint_count == 0
+
+
+def test_contextual_software_alias_uses_one_compact_reversible_marker():
+    sep = "\ufdd0"
+    source = sep.join([
+        "Инвентаризация программного обеспечения", "Установок", "Доля",
+        "Example Secure Client", "10", "1,6%",
+        "Повтор Example Secure Client",
+    ])
+
+    result = Anonymizer(compact_markers=True).anonymize(source)
+
+    assert result.text.count("[ПО-1]") == 2
+    assert result.mapping == {"[ПО-1]": "Example Secure Client"}
+    assert result.text.replace("[ПО-1]", result.mapping["[ПО-1]"]) == source
+
+
+def test_script_and_deployment_example_cells_are_redacted_as_complete_lists():
+    sep = "\ufdd0"
+    script_list = "CleanupJob; MapDisk; DisableLegacyName; LinkPolicy"
+    deployment_list = "Suite 8.4; New_setup_suite; deploy_office2024"
+    source = sep.join([
+        "Тип", "Примеры", "Оценка",
+        "Скрипты", script_list, "Проверить воспроизводимость",
+        "Развертывание ПО", deployment_list, "Согласовать установку",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert script_list not in result.text
+    assert deployment_list not in result.text
+    assert "[СКРИПТЫ-1]" in result.text
+    assert "[ПРОГРАММА-1]" in result.text
+
+
+def test_disk_labels_and_windows_paths_are_redacted_reversibly():
+    source = r"Сценарий обрабатывает only disk k; резервная папка C:\Clients\Acme\Archive и том DATA01. Метка DATA01 повторяется."
+
+    result = Anonymizer().anonymize(source)
+
+    for leaked in (" k", r"C:\Clients\Acme\Archive", "DATA01"):
+        assert leaked not in result.text
+    assert "[ДИСК-" in result.text
+    assert "[ПУТЬ-" in result.text
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_privileged_group_member_login_with_initial_is_redacted():
+    source = "Состав Enterprise Admins по площадкам: Administrator, Example_A, service_admin. Учетная запись Example_A активна."
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Example_A" not in result.text
+    assert "[ЛОГИН-" in result.text
+
+
+def test_virtual_machine_inventory_names_with_compact_role_and_digits_are_anonymized():
+    vm_names = [
+        "qzx-monitor0101",
+        "qzx-repo0101",
+        "qzx-print0101",
+        "qzx-fs0101",
+        "qzx-journal0101",
+    ]
+    source = "\n".join(vm_names)
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(name not in result.text for name in vm_names)
+    assert result.text.count("[УЗЕЛ-") == len(vm_names)
+    assert set(result.mapping.values()) == set(vm_names)
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_compact_vm_case_variants_receive_distinct_reversible_markers():
+    source = "qzx-monitor0101 QZX-MONITOR0101"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[УЗЕЛ-1] [УЗЕЛ-2]"
+    assert result.mapping == {
+        "[УЗЕЛ-1]": "qzx-monitor0101",
+        "[УЗЕЛ-2]": "QZX-MONITOR0101",
+    }
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_compact_vm_rule_does_not_capture_generic_document_names():
+    source = "Файлы qzx-report0101 и qzx-contract0101 остаются без изменений."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_paranoid_job_title_does_not_leave_a_word_suffix():
+    source = "Начальник отдела безопасности работает."
+
+    result = Anonymizer(paranoid=True).anonymize(source)
+
+    assert result.text == "[ДОЛЖНОСТЬ-1] работает."
+    assert result.mapping == {"[ДОЛЖНОСТЬ-1]": "Начальник отдела безопасности"}
+
+
+def test_user_dictionary_whitelist_and_paranoid_candidates():
+    normal = Anonymizer(user_dictionary={"Вымпел": "СИСТЕМА"}, whitelist={"Казань"})
+    result = normal.anonymize("Вымпел расположен в Казани")
+    assert "[СИСТЕМА-1]" in result.text
+    assert "Казани" in result.text
+    paranoid = Anonymizer(paranoid=True).anonymize("офис в Берлине")
+    assert "[ГОРОД-1]" in paranoid.text
+
+
+def test_validated_identifiers_reject_bad_checksums():
+    result = Anonymizer().anonymize("ИНН 7707083893, ИНН 7707083894; карта 4111 1111 1111 1111, карта 4111 1111 1111 1112")
+    assert "[ИНН-1]" in result.text and "7707083894" in result.text
+    assert "[КАРТА-1]" in result.text and "4111 1111 1111 1112" in result.text
+
+
+def test_literal_markers_do_not_collide_and_reprocessing_is_idempotent():
+    source = "Литерал [ФИО-1], Иванов Сергей Петрович"
+    first = Anonymizer().anonymize(source)
+    assert "[ФИО-1]" in first.text and "[ФИО-2]" in first.text
+    assert first.mapping == {"[ФИО-2]": "Иванов Сергей Петрович"}
+    second = Anonymizer().anonymize(first.text)
+    assert second.text == first.text and second.mapping == {}
+    restored = first.text.replace("[ФИО-2]", first.mapping["[ФИО-2]"])
+    assert restored == source
