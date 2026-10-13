@@ -132,7 +132,9 @@ function updatePrimaryAction(keepStatus=false){
   button.disabled=true;apply.disabled=true;exportButton.disabled=true;button.textContent=$('#source').value.trim()?'Text is checked automatically':'Select a file first';lifecycle.textContent=$('#source').value.trim()?'Text preview updates automatically':'Select a document — processing stays on this computer';status.textContent=$('#source').value.trim()?'Settings apply automatically to pasted text. No separate action is needed.':'Select a file first. Changes apply automatically to pasted text.';
 }
 async function loadDocumentPreview(){
-  if(!selected)return;$('#fileLifecycleStatus').textContent='Creating preview…';const documentId=selected,ticket=++generation;const preview=await pywebview.api.preview_document(documentId);
+  if(!selected)return;$('#fileLifecycleStatus').textContent='Creating preview…';const documentId=selected,ticket=++generation;let preview;
+  try{preview=await pywebview.api.preview_document(documentId);}
+  catch(error){$('#fileLifecycleStatus').textContent=`Preview error: ${String(error?.message||error)}`;return;}
   if(ticket!==generation||documentId!==selected)return;
   loadingPreview=true;$('#source').value=preview.text;loadingPreview=false;filePreview=true;fileDirty=false;updatePrimaryAction();
   currentPreviewFormat=preview.format||'';const rich=$('#docxPreview');rich.innerHTML=preview.rich_html||'';resetDocxPreviewScroll();$('#previewCompleteness').textContent=preview.format==='docx'?`Full document text loaded · Tables: ${rich.querySelectorAll('.docx-table').length}. Visual elements without text may not appear.`:'';setDocxPreviewMode(preview.format==='docx');

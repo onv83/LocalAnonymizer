@@ -54,6 +54,7 @@ class AppApi:
         self._clipboard_reader = clipboard_reader
         self._window = None
         self._restore_pair: tuple[Path, Path] | None = None
+        self._ui_preview: dict | None = None
         if not self.service.storage.connection.execute("select 1 from profiles where name='Общий'").fetchone():
             self.service.storage.save_profile("Общий", {}, [], paranoid=False)
 
@@ -134,6 +135,49 @@ class AppApi:
     def preview_document(self, document_id: str) -> dict:
         return self.service.preview_document(document_id)
 
+    def start_document_preview(self, document_id: str) -> dict:
+        preview = self.service.preview_document(document_id, include_rich=False)
+        text = preview.pop("text", "")
+        rich_html = preview.pop("rich_html", "")
+        if not isinstance(text, str) or not isinstance(rich_html, str):
+            raise TypeError("Некорректный предпросмотр документа")
+        token = os.urandom(16).hex()
+        self._ui_preview = {"token": token, "text": text, "rich_html": rich_html}
+        return {
+            **preview,
+            "token": token,
+            "text_length": len(text),
+            "rich_html_length": len(rich_html),
+        }
+
+    def start_formatted_document_preview(self, document_id: str) -> dict:
+        preview = self.service.preview_document(document_id)
+        preview.pop("text", None)
+        rich_html = preview.pop("rich_html", "")
+        if not isinstance(rich_html, str):
+            raise TypeError("Некорректный форматированный предпросмотр")
+        token = os.urandom(16).hex()
+        self._ui_preview = {"token": token, "text": "", "rich_html": rich_html}
+        return {**preview, "token": token, "rich_html_length": len(rich_html)}
+
+    def read_document_preview_chunk(self, token: str, field: str, offset: int) -> dict:
+        cached = self._ui_preview
+        if cached is None or token != cached["token"]:
+            raise ValueError("Предпросмотр устарел")
+        if field not in {"text", "rich_html"}:
+            raise ValueError("Неизвестная часть предпросмотра")
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise ValueError("Некорректное смещение предпросмотра")
+        value = cached[field]
+        chunk_size = 16_384
+        chunk = value[offset:offset + chunk_size]
+        return {"chunk": chunk, "next_offset": offset + len(chunk)}
+
+    def finish_document_preview(self, token: str) -> dict:
+        if self._ui_preview is not None and token == self._ui_preview["token"]:
+            self._ui_preview = None
+        return {"ok": True}
+
     def preview_anonymized_document(self, document_id: str, paranoid=False, rules="", whitelist="", disabled=None,
                                     compact_markers: bool = False,
                                     redact_graphics: bool = True) -> dict:
@@ -142,6 +186,20 @@ class AppApi:
             self._engine(paranoid, rules, whitelist, disabled, compact_markers),
             redact_graphics=redact_graphics,
         )
+
+    def start_anonymized_document_preview(self, document_id: str, paranoid=False, rules="", whitelist="", disabled=None,
+                                           compact_markers: bool = False,
+                                           redact_graphics: bool = True) -> dict:
+        preview = self.preview_anonymized_document(
+            document_id, paranoid, rules, whitelist, disabled,
+            compact_markers, redact_graphics,
+        )
+        rich_html = preview.pop("rich_html", "")
+        if not isinstance(rich_html, str):
+            raise TypeError("Некорректный форматированный предпросмотр")
+        token = os.urandom(16).hex()
+        self._ui_preview = {"token": token, "text": "", "rich_html": rich_html}
+        return {**preview, "token": token, "rich_html_length": len(rich_html)}
 
     def import_paths(self, paths: list[str]) -> dict:
         ids, errors = [], []

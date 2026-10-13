@@ -31,6 +31,9 @@ META_NS = "urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
 XLINK_NS = "http://www.w3.org/1999/xlink"
 MANIFEST_NS = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"
 _ARTIFACT_FIELD = "LocalAnonymizerArtifact"
+# Keep structural-space expansion bounded: exact diffing is quadratic for long repeated runs.
+_MAX_EXPANDED_SPACES = 4_096
+_MAX_TAB_REFERENCE = 4_096
 _NS = {
     "office": OFFICE_NS,
     "text": TEXT_NS,
@@ -42,6 +45,36 @@ _NS = {
 
 def _parser() -> etree.XMLParser:
     return etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, recover=False)
+
+
+def _structural_space_count(element) -> int:
+    raw_count = element.get(f"{{{TEXT_NS}}}c", "1")
+    if re.fullmatch(r"[0-9]+", raw_count) is None:
+        raise ValueError("ODT содержит некорректное число пробелов")
+    count = int(raw_count)
+    if count < 1 or count > _MAX_EXPANDED_SPACES:
+        raise ValueError("ODT содержит некорректное число пробелов")
+    return count
+
+
+def _validate_structural_whitespace(element) -> None:
+    qname = etree.QName(element)
+    allowed_attributes = {
+        "s": {f"{{{TEXT_NS}}}c"},
+        "tab": {f"{{{TEXT_NS}}}tab-ref"},
+        "line-break": set(),
+    }[qname.localname]
+    unexpected = set(element.attrib) - allowed_attributes
+    if unexpected:
+        raise ValueError("ODT содержит неподдерживаемый атрибут структурного пробела")
+
+    if qname.localname == "tab":
+        raw_reference = element.get(f"{{{TEXT_NS}}}tab-ref")
+        if raw_reference is not None and (
+            re.fullmatch(r"[1-9][0-9]*", raw_reference) is None
+            or int(raw_reference) > _MAX_TAB_REFERENCE
+        ):
+            raise ValueError("ODT содержит некорректную ссылку табуляции")
 
 
 def _preflight_odt_package(path: Path) -> None:
@@ -137,11 +170,22 @@ def _preflight_odt_package(path: Path) -> None:
             if name not in names:
                 continue
             root = etree.fromstring(package.read(name), parser=_parser())
+            expanded_spaces = 0
             for element in root.iter():
-                local = etree.QName(element).localname.casefold()
+                qname = etree.QName(element)
+                local = qname.localname.casefold()
+                if qname.namespace == TEXT_NS and local in {"s", "tab", "line-break"}:
+                    _validate_structural_whitespace(element)
+                    if element.text or len(element):
+                        raise ValueError("ODT содержит непустой структурный пробел")
+                if qname.namespace == TEXT_NS and local == "s":
+                    count = _structural_space_count(element)
+                    expanded_spaces += count
+                    if expanded_spaces > _MAX_EXPANDED_SPACES:
+                        raise ValueError("ODT содержит некорректное число пробелов")
                 if local in {
                     "scripts", "event-listeners", "event-listener", "execute-macro",
-                    "tracked-changes", "annotation", "forms", "form", "binary-data",
+                    "tracked-changes", "forms", "form", "binary-data",
                     "object", "object-ole", "dde-links", "dde-link",
                 }:
                     raise ValueError(f"ODT содержит неподдерживаемую активную структуру: {name}")
@@ -153,20 +197,73 @@ def _preflight_odt_package(path: Path) -> None:
                         parsed.scheme or parsed.netloc or value.startswith(("/", "\\"))
                         or re.match(r"^[A-Za-z]:", value)
                     ):
-                        raise ValueError(f"ODT содержит внешние ссылки: {name}")
+                        if not (qname.namespace == TEXT_NS and qname.localname == "a"):
+                            raise ValueError(f"ODT содержит внешние ссылки: {name}")
+
+
+def _sanitize_external_text_links(root) -> bool:
+    changed = False
+    href_key = f"{{{XLINK_NS}}}href"
+    for element in root.iter(f"{{{TEXT_NS}}}a"):
+        href = element.get(href_key)
+        if not href:
+            continue
+        value = href.strip()
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme or parsed.netloc or value.startswith(("/", "\\"))
+            or re.match(r"^[A-Za-z]:", value)
+        ):
+            element.set(href_key, "#")
+            changed = True
+    return changed
+
+
+def _remove_annotations(root) -> bool:
+    changed = False
+    annotation_tags = {
+        f"{{{OFFICE_NS}}}annotation",
+        f"{{{OFFICE_NS}}}annotation-end",
+    }
+    for element in list(root.iter()):
+        if element.tag not in annotation_tags:
+            continue
+        parent = element.getparent()
+        if parent is None:
+            continue
+        if element.tail:
+            previous = element.getprevious()
+            if previous is None:
+                parent.text = (parent.text or "") + element.tail
+            else:
+                previous.tail = (previous.tail or "") + element.tail
+        parent.remove(element)
+        changed = True
+    return changed
 
 
 @dataclass
 class _TextSlot:
     element: object
     tail: bool = False
+    structural_text: str | None = None
 
     @property
     def text(self) -> str | None:
+        if self.structural_text is not None:
+            return self.structural_text
         return self.element.tail if self.tail else self.element.text
 
     @text.setter
     def text(self, value: str | None) -> None:
+        if self.structural_text is not None:
+            if value == self.structural_text:
+                return
+            self.element.tag = f"{{{TEXT_NS}}}span"
+            self.element.attrib.clear()
+            self.element.text = value or None
+            self.structural_text = None
+            return
         if self.tail:
             self.element.tail = value
         else:
@@ -175,12 +272,29 @@ class _TextSlot:
 
 def _text_slots(block) -> list[_TextSlot]:
     slots: list[_TextSlot] = []
-    for element in block.iter():
-        if element.text:
+
+    def visit(element) -> None:
+        qname = etree.QName(element)
+        if qname.namespace == OFFICE_NS and qname.localname in {"annotation", "annotation-end"}:
+            return
+        structural = None
+        if qname.namespace == TEXT_NS:
+            if qname.localname == "s":
+                structural = " " * _structural_space_count(element)
+            elif qname.localname == "tab":
+                structural = "\t"
+            elif qname.localname == "line-break":
+                structural = "\n"
+        if structural is not None:
+            slots.append(_TextSlot(element, structural_text=structural))
+        elif element.text:
             slots.append(_TextSlot(element))
         for child in element:
+            visit(child)
             if child.tail:
                 slots.append(_TextSlot(child, tail=True))
+
+    visit(block)
     return slots
 
 
@@ -244,7 +358,13 @@ def _rewrite_package(source: Path, target: Path, updates: dict[str, bytes]) -> N
 
 
 def _content_blocks(root) -> list[object]:
-    return list(root.xpath(".//text:p | .//text:h", namespaces=_NS))
+    return list(
+        root.xpath(
+            ".//text:p[not(ancestor::office:annotation)] | "
+            ".//text:h[not(ancestor::office:annotation)]",
+            namespaces=_NS,
+        )
+    )
 
 
 def extract_odt_text(path: str | Path) -> str:
@@ -408,6 +528,11 @@ class OdtProcessor:
             name: etree.fromstring(payloads[name], parser=_parser())
             for name in ("content.xml", "styles.xml")
         }
+        changed_parts = {
+            name
+            for name, root in roots.items()
+            if _sanitize_external_text_links(root) | _remove_annotations(root)
+        }
         records: list[tuple[str, object, list[_TextSlot], str]] = []
         for name, root in roots.items():
             for block in _content_blocks(root):
@@ -421,7 +546,6 @@ class OdtProcessor:
         replacements = result.text.split(separator) if texts else []
         if len(replacements) != len(texts):
             raise RuntimeError("Ошибка разбиения ODT: неверное число фрагментов")
-        changed_parts: set[str] = set()
         for (name, _, group, original), replacement in zip(records, replacements):
             if replacement != original:
                 _replace_slots(group, replacement)

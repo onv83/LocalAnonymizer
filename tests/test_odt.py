@@ -6,7 +6,7 @@ import pytest
 from lxml import etree
 
 from local_anonymizer.app import AppApi
-from local_anonymizer.odt import OdtProcessor, read_odt_artifact_stamp
+from local_anonymizer.odt import OdtProcessor, extract_odt_text, read_odt_artifact_stamp
 from local_anonymizer.service import AnonymizerService
 from local_anonymizer.storage import MappingError
 
@@ -85,6 +85,27 @@ def _visible_text(path: Path) -> str:
     )
 
 
+def _set_structural_whitespace_name(path: Path) -> None:
+    with ZipFile(path) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    for child in list(paragraph):
+        paragraph.remove(child)
+    paragraph.text = "Иванов"
+    spaces = etree.SubElement(paragraph, f"{{{TEXT}}}s")
+    spaces.set(f"{{{TEXT}}}c", "2")
+    spaces.tail = "Сергей"
+    tab = etree.SubElement(paragraph, f"{{{TEXT}}}tab")
+    tab.tail = "Петрович"
+    line_break = etree.SubElement(paragraph, f"{{{TEXT}}}line-break")
+    line_break.tail = "Отдел"
+    _rewrite_package_part(
+        path,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+
 def test_odt_anonymize_restore_preserves_package_formatting_and_exact_source(tmp_path):
     source = tmp_path / "formatted.odt"
     anonymized = tmp_path / "formatted-anonymized.odt"
@@ -148,8 +169,10 @@ def test_odt_anonymizes_styles_headers_and_requires_existing_metadata(tmp_path):
         OdtProcessor().anonymize(missing_meta, tmp_path / "missing-meta-out.odt")
 
 
-def test_odt_rejects_external_links_regardless_of_scheme_case(tmp_path):
+def test_odt_sanitizes_external_text_links_and_exact_restore_recovers_them(tmp_path):
     source = tmp_path / "external.odt"
+    anonymized = tmp_path / "external-anonymized.odt"
+    restored = tmp_path / "external-restored.odt"
     _write_odt(source)
     with ZipFile(source) as package:
         content = etree.fromstring(package.read("content.xml"))
@@ -158,9 +181,243 @@ def test_odt_rejects_external_links_regardless_of_scheme_case(tmp_path):
     link.set(f"{{{XLINK}}}href", "HTTPS://example.invalid/sensitive")
     link.text = "ссылка"
     _rewrite_package_part(source, "content.xml", etree.tostring(content, xml_declaration=True, encoding="UTF-8"))
+    source_bytes = source.read_bytes()
+
+    assert "ссылка" in extract_odt_text(source)
+    result = OdtProcessor().anonymize(source, anonymized)
+    with ZipFile(anonymized) as package:
+        anonymized_content = etree.fromstring(package.read("content.xml"))
+    sanitized_link = anonymized_content.xpath(".//text:a", namespaces={"text": TEXT})[0]
+    assert sanitized_link.get(f"{{{XLINK}}}href") == "#"
+
+    assert OdtProcessor().restore(
+        anonymized, restored, result.mapping, package_archive=result.package_archive
+    ) == []
+    assert restored.read_bytes() == source_bytes
+
+
+def test_odt_still_rejects_external_non_text_relationships(tmp_path):
+    source = tmp_path / "external-image.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    image = etree.SubElement(paragraph, "{urn:oasis:names:tc:opendocument:xmlns:drawing:1.0}image")
+    image.set(f"{{{XLINK}}}href", "HTTPS://example.invalid/sensitive")
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
 
     with pytest.raises(ValueError, match="внешние ссылки"):
-        OdtProcessor().anonymize(source, tmp_path / "external-out.odt")
+        extract_odt_text(source)
+
+
+def test_odt_strips_annotations_but_exact_restore_recovers_them(tmp_path):
+    source = tmp_path / "comments.odt"
+    anonymized = tmp_path / "comments-anonymized.odt"
+    restored = tmp_path / "comments-restored.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    paragraph.clear()
+    paragraph.text = "Before"
+    annotation = etree.SubElement(paragraph, f"{{{OFFICE}}}annotation")
+    creator = etree.SubElement(annotation, "{http://purl.org/dc/elements/1.1/}creator")
+    creator.text = "Alice"
+    note = etree.SubElement(annotation, f"{{{TEXT}}}p")
+    note.text = "secret note"
+    annotation.tail = "After"
+    etree.SubElement(paragraph, f"{{{OFFICE}}}annotation-end")
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+    source_bytes = source.read_bytes()
+
+    extracted = extract_odt_text(source)
+    assert extracted.endswith("BeforeAfter")
+    assert "secret note" not in extracted
+    assert "Alice" not in extracted
+    result = OdtProcessor().anonymize(source, anonymized)
+    with ZipFile(anonymized) as package:
+        output_content = package.read("content.xml")
+    assert b"annotation" not in output_content
+    assert b"secret note" not in output_content
+    assert b"Alice" not in output_content
+
+    assert OdtProcessor().restore(
+        anonymized, restored, result.mapping, package_archive=result.package_archive
+    ) == []
+    assert restored.read_bytes() == source_bytes
+
+
+def test_odt_structural_whitespace_is_visible_and_safe_to_replace(tmp_path):
+    source = tmp_path / "structural-whitespace.odt"
+    anonymized = tmp_path / "structural-whitespace-anonymized.odt"
+    restored = tmp_path / "structural-whitespace-restored.odt"
+    _write_odt(source)
+    _set_structural_whitespace_name(source)
+    source_bytes = source.read_bytes()
+
+    assert "Иванов  Сергей\tПетрович\nОтдел" in extract_odt_text(source)
+
+    result = OdtProcessor().anonymize(source, anonymized)
+
+    assert "Иванов" not in extract_odt_text(anonymized)
+    assert "[ФИО-" in extract_odt_text(anonymized)
+    assert "Иванов  Сергей\tПетрович" in result.mapping.values()
+
+    assert OdtProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    ) == []
+    assert restored.read_bytes() == source_bytes
+
+
+@pytest.mark.parametrize(
+    "count",
+    ["0", "-1", "not-a-number", "1_0", "+1", " 1", "4097"],
+)
+def test_odt_rejects_invalid_or_excessive_structural_space_counts(tmp_path, count):
+    source = tmp_path / f"bad-space-{count}.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    space = etree.SubElement(paragraph, f"{{{TEXT}}}s")
+    space.set(f"{{{TEXT}}}c", count)
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    with pytest.raises(ValueError, match="пробел"):
+        OdtProcessor().anonymize(source, tmp_path / "bad-space-out.odt")
+
+
+@pytest.mark.parametrize(("count", "expected"), [(None, " "), ("4096", " " * 4096)])
+def test_odt_accepts_structural_space_count_boundaries(tmp_path, count, expected):
+    source = tmp_path / "space-boundary.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    paragraph.clear()
+    paragraph.text = "A"
+    space = etree.SubElement(paragraph, f"{{{TEXT}}}s")
+    if count is not None:
+        space.set(f"{{{TEXT}}}c", count)
+    space.tail = "B"
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    assert f"A{expected}B" in extract_odt_text(source)
+
+
+def test_odt_rejects_cumulative_structural_space_overflow(tmp_path):
+    source = tmp_path / "cumulative-space-overflow.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    for count in ("2048", "2049"):
+        space = etree.SubElement(paragraph, f"{{{TEXT}}}s")
+        space.set(f"{{{TEXT}}}c", count)
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    with pytest.raises(ValueError, match="пробел"):
+        OdtProcessor().anonymize(source, tmp_path / "cumulative-space-overflow-out.odt")
+
+
+@pytest.mark.parametrize("tag", ["s", "tab", "line-break"])
+def test_odt_rejects_nonempty_structural_whitespace_nodes(tmp_path, tag):
+    source = tmp_path / f"nonempty-{tag}.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    structural = etree.SubElement(paragraph, f"{{{TEXT}}}{tag}")
+    structural.text = "HIDDEN_SENSITIVE_TEXT"
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    with pytest.raises(ValueError, match="структурный пробел"):
+        OdtProcessor().anonymize(source, tmp_path / "nonempty-out.odt")
+
+
+@pytest.mark.parametrize("tag", ["s", "tab", "line-break"])
+def test_odt_rejects_unknown_structural_whitespace_attributes(tmp_path, tag):
+    source = tmp_path / f"attribute-{tag}.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    structural = etree.SubElement(paragraph, f"{{{TEXT}}}{tag}")
+    structural.set("secret", "HIDDEN_SENSITIVE_TEXT")
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    with pytest.raises(ValueError, match="атрибут"):
+        OdtProcessor().anonymize(source, tmp_path / "attribute-out.odt")
+
+
+@pytest.mark.parametrize("tab_ref", ["0", "-1", "1_0", "+1", " 1", "4097", "secret"])
+def test_odt_rejects_invalid_tab_reference(tmp_path, tab_ref):
+    source = tmp_path / "tab-ref.odt"
+    _write_odt(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    paragraph = content.xpath(".//text:p", namespaces={"text": TEXT})[0]
+    tab = etree.SubElement(paragraph, f"{{{TEXT}}}tab")
+    tab.set(f"{{{TEXT}}}tab-ref", tab_ref)
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    with pytest.raises(ValueError, match="табуляц"):
+        OdtProcessor().anonymize(source, tmp_path / "tab-ref-out.odt")
+
+
+def test_odt_accepts_standard_tab_reference(tmp_path):
+    source = tmp_path / "tab-ref-valid.odt"
+    anonymized = tmp_path / "tab-ref-valid-out.odt"
+    _write_odt(source)
+    _set_structural_whitespace_name(source)
+    with ZipFile(source) as package:
+        content = etree.fromstring(package.read("content.xml"))
+    tab = content.xpath(".//text:tab", namespaces={"text": TEXT})[0]
+    tab.set(f"{{{TEXT}}}tab-ref", "2")
+    _rewrite_package_part(
+        source,
+        "content.xml",
+        etree.tostring(content, xml_declaration=True, encoding="UTF-8"),
+    )
+
+    result = OdtProcessor().anonymize(source, anonymized)
+
+    assert "Иванов  Сергей\tПетрович" in result.mapping.values()
 
 
 def test_service_odt_roundtrip_stamps_artifact_without_changing_windows_doc_path(tmp_path):

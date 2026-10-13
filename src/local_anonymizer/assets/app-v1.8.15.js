@@ -101,7 +101,9 @@ function updatePrimaryAction(keepStatus=false){
   button.disabled=true;apply.disabled=true;exportButton.disabled=true;button.textContent=$('#source').value.trim()?'Текст проверяется автоматически':'Сначала выберите файл';lifecycle.textContent=$('#source').value.trim()?'Предпросмотр текста обновляется автоматически':'Выберите документ — обработка выполняется только на этом компьютере';status.textContent=$('#source').value.trim()?'Для вставленного текста настройки применяются автоматически. Отдельная кнопка не нужна.':'Сначала выберите файл. Для вставленного текста изменения применяются автоматически.';
 }
 async function loadDocumentPreview(){
-  if(!selected)return;$('#fileLifecycleStatus').textContent='Создаётся предпросмотр…';const documentId=selected,ticket=++generation;const preview=await pywebview.api.preview_document(documentId);
+  if(!selected)return;$('#fileLifecycleStatus').textContent='Создаётся предпросмотр…';const documentId=selected,ticket=++generation;let preview;
+  try{preview=await pywebview.api.preview_document(documentId);}
+  catch(error){$('#fileLifecycleStatus').textContent=`Ошибка предпросмотра: ${String(error?.message||error)}`;return;}
   if(ticket!==generation||documentId!==selected)return;
   loadingPreview=true;$('#source').value=preview.text;loadingPreview=false;filePreview=true;fileDirty=false;updatePrimaryAction();
   currentPreviewFormat=preview.format||'';const rich=$('#docxPreview');rich.innerHTML=preview.rich_html||'';resetDocxPreviewScroll();$('#previewCompleteness').textContent=preview.format==='docx'?`Текст документа загружен полностью · таблиц: ${rich.querySelectorAll('.docx-table').length}. Визуальные элементы без текста могут не отображаться.`:'';setDocxPreviewMode(preview.format==='docx');

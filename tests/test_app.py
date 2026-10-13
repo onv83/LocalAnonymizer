@@ -43,7 +43,9 @@ def test_platform_smoke_checks_secure_storage_and_native_clipboard_without_readi
             return b"protected:" + purpose.encode() + b":" + data
 
         def unprotect(self, envelope, purpose):
-            return envelope.rsplit(b":", 1)[1]
+            prefix = b"protected:" + purpose.encode() + b":"
+            assert envelope.startswith(prefix)
+            return envelope[len(prefix):]
 
     class Clipboard:
         available = True
@@ -234,7 +236,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert "Ссылка → <code>[ССЫЛКА-N]</code>" in html
     assert "Уязвимость → <code>[уязвимость]</code>" in html
     assert "Дополнительные правила → <code>[МЕТКА-N]</code>" in html
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     assert "function updateCategoryMarkerExamples()" in javascript
     assert "updateCategoryMarkerExamples();markSettingsDirty()" in javascript
 
@@ -264,7 +266,7 @@ def test_disabled_outer_class_is_not_partially_replaced_by_fallback_detectors():
 
 def test_interface_contains_complete_collapsed_usage_and_restore_guide():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     required = (
         "Как пользоваться программой",
@@ -294,7 +296,7 @@ def test_interface_contains_complete_collapsed_usage_and_restore_guide():
 
 
 def test_gui_loads_default_profile_rules_on_startup():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert (
         "showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');"
@@ -409,7 +411,7 @@ def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warni
 
 def test_new_design_uses_plain_language_stats_review_context_and_operation_states():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert 'id="reviewMeta"' in html
     for text in ("Найдено замен:", "Требуют решения:", "Проверено:", "Создаётся предпросмотр", "Обрабатывается файл"):
@@ -418,8 +420,18 @@ def test_new_design_uses_plain_language_stats_review_context_and_operation_state
     assert "Решение сохранится в наборе правил" in javascript
 
 
+def test_document_preview_errors_are_reported_in_both_interfaces():
+    russian = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    english = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+
+    assert "Ошибка предпросмотра:" in russian
+    assert "Preview error:" in english
+    assert "catch(error)" in russian
+    assert "catch(error)" in english
+
+
 def test_generated_markers_use_native_buttons():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert 'class="maprow"' not in javascript
     assert '<button type="button" class="mark-hint' in javascript
@@ -430,7 +442,7 @@ def test_generated_markers_use_native_buttons():
 
 def test_fullscreen_preview_uses_modal_semantics_and_restores_focus():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert 'id="docxPreviewSurface"' in html
     assert 'id="anonymizedPreviewSurface"' in html
@@ -448,7 +460,7 @@ def test_desktop_window_allows_760px_accessibility_layout():
 
 
 def test_double_escape_no_longer_silently_clears_user_work():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "now-lastEscape<800" not in javascript
     assert "confirm('Очистить введённый текст" in javascript
@@ -456,7 +468,7 @@ def test_double_escape_no_longer_silently_clears_user_work():
 
 def test_ui_offers_persistent_new_and_legacy_design_modes():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert 'id="designMode"' in html
     assert '<option value="new">Новый дизайн</option>' in html
@@ -471,13 +483,13 @@ def test_ui_offers_persistent_new_and_legacy_design_modes():
 def test_ui_offers_complete_persistent_english_interface():
     russian_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     english_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
-    russian_js = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
-    english_js = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    russian_js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    english_js = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert '<html lang="ru">' in russian_html
     assert '<html lang="en">' in english_html
-    assert '<script src="app-v1.8.15.js"></script>' in russian_html
-    assert '<script src="app-en-v1.8.15.js"></script>' in english_html
+    assert '<script src="app-v1.8.18.js"></script>' in russian_html
+    assert '<script src="app-en-v1.8.18.js"></script>' in english_html
     assert 'id="languageMode"' in russian_html and 'id="languageMode"' in english_html
     assert "Anonymize text or a document" in english_html
     assert "Manual review of uncertain items" in english_html
@@ -491,7 +503,7 @@ def test_ui_offers_complete_persistent_english_interface():
 
 
 def test_english_interface_localizes_backend_statuses_profile_and_review_kinds():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "function documentStatusText(status)" in javascript
     assert "`${d.display_name} — ${documentStatusText(d.status)}`" in javascript
@@ -504,14 +516,14 @@ def test_english_interface_localizes_backend_statuses_profile_and_review_kinds()
 
 
 def test_english_interface_never_falls_back_to_raw_unknown_backend_status():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "||status;" not in javascript
     assert "'Unknown status'" in javascript
 
 
 def test_english_interface_localizes_profile_names_in_result_messages():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "`Profile “${profileDisplayName(n)}” saved.`" in javascript
     assert "`Profile “${profileDisplayName(n)}” exported.`" in javascript
@@ -519,7 +531,7 @@ def test_english_interface_localizes_profile_names_in_result_messages():
 
 
 def test_english_interface_localizes_backend_warning_messages_without_changing_contract_keys():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     for warning_kind in (
         "ГОСТАЙНА", "ДСП", "КИИ", "ЗАКУПКИ", "МАССИВ-ПДН",
@@ -533,7 +545,7 @@ def test_english_interface_localizes_backend_warning_messages_without_changing_c
 
 
 def test_english_interface_does_not_show_russian_profile_api_errors():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "function profileErrorText(operation)" in javascript
     assert "profileErrorText('export')" in javascript
@@ -542,7 +554,7 @@ def test_english_interface_does_not_show_russian_profile_api_errors():
 
 
 def test_english_interface_localizes_post_anonymization_status_and_review_profile():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "`${documentStatusText(r.status)}. The file was created" in javascript
     assert "`${documentStatusText(r.status)}. The anonymized file is ready" in javascript
@@ -551,7 +563,7 @@ def test_english_interface_localizes_post_anonymization_status_and_review_profil
 
 
 def test_english_interface_never_renders_raw_bridge_errors():
-    javascript = asset_path("app-en-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "function bridgeErrorText(operation)" in javascript
     assert "saved?.error||'Could not save profile'" not in javascript
@@ -586,7 +598,7 @@ def test_language_choice_is_persisted_by_backend_and_preserves_other_ui_settings
 
 
 def test_rare_categories_are_forced_closed_on_every_launch():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "$('#detectionCategories').open=false" in javascript
 
@@ -608,7 +620,7 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     assert app_module.main([]) == 0
     assert captured["url"].endswith("/index-v1.8.18.html")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.15.js"></script>' in html
+    assert '<script src="app-v1.8.18.js"></script>' in html
 
 
 def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
@@ -652,7 +664,7 @@ def test_app_api_exposes_compact_marker_mode(tmp_path):
 
 def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert 'id="compactMarkers"' in html
     assert "Сохранять компоновку" in html
@@ -661,10 +673,101 @@ def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
 
 
 def test_paste_button_uses_native_api_instead_of_webview_clipboard_permission():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "pywebview.api.read_clipboard_text()" in javascript
     assert "navigator.clipboard.readText()" not in javascript
+
+
+def test_source_and_anonymized_previews_scroll_together_by_logical_blocks():
+    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(name).read_text(encoding="utf-8")
+
+        # Text and formatted previews both synchronize in either direction.
+        assert "function syncPreviewScroll(source,target)" in javascript
+        assert "programmaticPreviewScrollTargets.get(source)" in javascript
+        assert "programmaticPreviewScrollTargets.set(target" in javascript
+        assert "function collectPreviewAnchors(container)" in javascript
+        assert "function mapPreviewScroll(source,target)" in javascript
+        assert "$('#docxPreview').addEventListener('scroll',syncFormattedSourceScroll)" in javascript
+        assert "$('#anonymizedDocxPreview').addEventListener('scroll',syncFormattedAnonymizedScroll)" in javascript
+
+        # Formatted documents use matching structural blocks and interpolation,
+        # with a proportional fallback for incomplete or unusual documents.
+        assert "'.docx-paragraph,li,tr'" in javascript
+        assert "function previewScrollPosition(source)" in javascript
+        assert "function previewScrollForPosition(position,target)" in javascript
+
+        # Programmatic scrolling must not feed back into the opposite listener.
+        assert "let previewScrollSyncDepth=0" in javascript
+        assert "if(previewScrollSyncDepth||!source||!target" in javascript
+        assert "const mapped=mapPreviewScroll(source,target)" in javascript
+        assert "finally{previewScrollSyncDepth--;}" in javascript
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_preview_scroll_runtime_handles_unequal_blocks_cache_and_hidden_panes(tmp_path, asset_name):
+    import json
+    import subprocess
+
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("function setDocxPreviewMode", start)
+    implementation = javascript[start:end]
+    harness = f"""
+const vm=require('vm');
+function node(top){{return{{getBoundingClientRect:()=>({{top}})}};}}
+function pane({{height=100,client=20,top=0,nodes=[],hidden=false}}={{}}){{
+  return{{scrollHeight:height,clientHeight:client,scrollTop:top,hidden,
+    getBoundingClientRect:()=>({{top:0}}),querySelectorAll:()=>nodes}};
+}}
+const elements={{docxPreview:pane(),anonymizedDocxPreview:pane(),source:pane(),richOutput:pane()}};
+const context={{WeakMap,WeakSet,Math,requestAnimationFrame:(fn)=>fn(),$:s=>elements[s.slice(1)]}};
+vm.createContext(context);
+vm.runInContext({json.dumps(implementation + "function setDocxPreviewMode(formatted){$('#docxPreview').hidden=!formatted;$('#source').hidden=formatted;}function setAnonymizedPreviewMode(formatted){$('#anonymizedDocxPreview').hidden=!formatted;$('#richOutput').hidden=formatted;}this.api={mapPreviewScroll,collectPreviewAnchors,invalidatePreviewAnchors,syncFormattedSourceScroll,syncFormattedAnonymizedScroll,switchPreviewMode};")},context);
+const source=pane({{height:120,client:20,top:50,nodes:[node(-30),node(0),node(30)]}});
+const target=pane({{height:220,client:20,nodes:[node(40)]}});
+if(context.api.mapPreviewScroll(source,target)!==100)throw new Error('unequal anchors must use proportional fallback');
+const cached=pane({{height:120,client:20,nodes:[node(20)]}});
+if(context.api.collectPreviewAnchors(cached)[1]!==20)throw new Error('initial anchor');
+cached.nodes=[node(70)];cached.querySelectorAll=()=>cached.nodes;
+context.api.invalidatePreviewAnchors(cached);
+if(context.api.collectPreviewAnchors(cached)[1]!==70)throw new Error('stale anchor cache');
+elements.docxPreview.hidden=true;elements.docxPreview.scrollTop=40;elements.anonymizedDocxPreview.scrollTop=33;
+context.api.syncFormattedSourceScroll();
+if(elements.anonymizedDocxPreview.scrollTop!==33)throw new Error('hidden pane changed active peer');
+elements.source=pane({{height:100,client:20,top:40}});elements.source.hidden=false;
+elements.docxPreview=pane({{height:200,client:20,top:0,hidden:true}});
+context.api.switchPreviewMode(context.setDocxPreviewMode,true);
+if(elements.docxPreview.hidden||!elements.source.hidden||elements.docxPreview.scrollTop!==90)throw new Error('mode switch lost visible position');
+elements.anonymizedDocxPreview=pane({{height:200,client:20,top:0}});
+context.api.syncFormattedSourceScroll();
+if(elements.anonymizedDocxPreview.scrollTop!==0)throw new Error('mode restore feedback was not ignored');
+elements.docxPreview.scrollTop=100;
+context.api.syncFormattedSourceScroll();
+if(elements.anonymizedDocxPreview.scrollTop!==100)throw new Error('forward formatted synchronization failed');
+context.api.syncFormattedAnonymizedScroll();
+if(elements.docxPreview.scrollTop!==100)throw new Error('programmatic feedback changed the source');
+elements.anonymizedDocxPreview.scrollTop=135;
+context.api.syncFormattedAnonymizedScroll();
+if(elements.docxPreview.scrollTop!==135)throw new Error('real reverse scroll was swallowed');
+"""
+    script = tmp_path / "scroll_sync_runtime.js"
+    script.write_text(harness, encoding="utf-8")
+    completed = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_preview_mode_changes_preserve_visible_position_and_invalidate_dom_cache():
+    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(name).read_text(encoding="utf-8")
+        assert "function switchPreviewMode" in javascript
+        assert "switchPreviewMode(setAnonymizedPreviewMode,true)" in javascript
+        assert "rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;" in javascript
+        assert "resetAnonymizedPreviewScroll();$('#anonymizedPreviewCompleteness')" not in javascript
+        assert "invalidatePreviewAnchors(rich);rich.innerHTML=" in javascript
+        assert "if($('#docxPreview').hidden)return;" in javascript
+        assert "if($('#anonymizedDocxPreview').hidden)return;" in javascript
 
 
 def test_every_button_has_a_meaningful_hover_tooltip():
@@ -698,7 +801,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
                if len(button.get("title", "").strip()) < 12]
     assert missing == []
 
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     assert 'class="undo-chip"' in javascript
     assert 'title="Отменить возврат значения' in javascript
 
@@ -710,7 +813,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
 
 
 def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_preview():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     focus_mark = javascript[javascript.index("function focusMark("):javascript.index("function reviewDisabledReason(")]
@@ -725,7 +828,7 @@ def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_pr
 
 def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     assert "await anonymizeText()" in hide_hint
@@ -735,7 +838,7 @@ def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
 
 
 def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing_preview():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     save = "await pywebview.api.save_profile($('#profile').value,$('#rules').value,$('#whitelist').value,$('#paranoid').checked)"
@@ -746,7 +849,7 @@ def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing
 
 def test_gui_has_persistent_light_and_dark_theme_switch():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     assert 'id="themeToggle"' in html
@@ -812,14 +915,14 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
     ):
         assert explanation in html
 
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     assert "$('#redactDocxGraphics').checked" in javascript
     assert "['#rules','#whitelist','#paranoid','#redactDocxGraphics']" in javascript
 
 
 def test_settings_and_primary_action_explain_their_real_effect():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     settings_start = html.index("Настройки обезличивания")
     action_position = html.index('id="anonymize"')
@@ -860,7 +963,7 @@ def test_detection_categories_are_a_separate_collapsed_section_at_the_very_botto
 
 
 def test_category_change_renders_text_result_before_slow_formatted_preview():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     text_await = "const result=await pywebview.api.anonymize_text(text,...settings);"
     formatted_await = "formattedPreview=await formatted"
@@ -873,7 +976,7 @@ def test_category_change_renders_text_result_before_slow_formatted_preview():
 
 
 def test_review_navigation_is_limited_to_actionable_yellow_hints():
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "function hintMarks()" in javascript
     assert "const all=hintMarks()" in javascript
@@ -901,7 +1004,7 @@ def test_local_library_is_compact_inside_the_source_editor():
 
 def test_pasted_text_restoration_reuses_the_main_source_editor():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     source_section = html[html.index('aria-labelledby="sourceHeading"'):html.index('</section>', html.index('aria-labelledby="sourceHeading"'))]
     assert 'id="restore"' in source_section
@@ -919,7 +1022,7 @@ def test_pasted_text_restoration_reuses_the_main_source_editor():
 
 def test_legacy_mapping_table_and_csv_export_are_not_exposed_in_ui():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "Таблица соответствий" not in html
     assert "Экспорт CSV (чувствительные данные)" not in html
@@ -951,7 +1054,7 @@ def test_manual_review_owns_its_search_and_display_controls():
 
 def test_manual_review_panel_explains_actions_progress_result_and_completion():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     for text in (
         "Ручная проверка спорных мест",
@@ -977,7 +1080,7 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
 
 def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "Автоматически скрывать спорное без подтверждения" in html
     assert "жёлтой очереди для ручного решения не будет" in html
@@ -990,7 +1093,7 @@ def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
 
 def test_document_export_has_a_visible_matching_restore_import_action():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
     assert "Сохранить два файла…" in html
     assert "информация для восстановления.larecovery" in html
@@ -1037,6 +1140,81 @@ def test_preview_document_extracts_docx_and_text_without_modifying_sources(tmp_p
     assert "Иванов Сергей Петрович" in previews[1]["text"]
     assert "АС «Паутина»" in previews[1]["text"]
     assert text_source.read_text(encoding="utf-8") == "login admin_db"
+
+
+def test_document_preview_bridge_is_chunked_and_reconstructs_large_text(tmp_path):
+    source = tmp_path / "large.txt"
+    text = "Иванов Сергей Петрович\n" * 8_000
+    source.write_text(text, encoding="utf-8")
+    api = AppApi(root=tmp_path / "app")
+    document_id = api.import_paths([str(source)])["ids"][0]
+    expected = source.read_bytes().decode("utf-8")
+
+    manifest = api.start_document_preview(document_id)
+    assert "text" not in manifest and "rich_html" not in manifest
+    assert manifest["text_length"] == len(expected)
+    chunks = []
+    offset = 0
+    while offset < manifest["text_length"]:
+        result = api.read_document_preview_chunk(manifest["token"], "text", offset)
+        assert len(result["chunk"]) <= 16_384
+        chunks.append(result["chunk"])
+        offset = result["next_offset"]
+    assert "".join(chunks) == expected
+    assert api.finish_document_preview(manifest["token"]) == {"ok": True}
+    with pytest.raises(ValueError, match="устарел"):
+        api.read_document_preview_chunk(manifest["token"], "text", 0)
+
+
+def test_formatted_preview_bridge_uses_bounded_chunks(tmp_path, monkeypatch):
+    api = AppApi(root=tmp_path / "app")
+    rich_html = "<p>форматированный текст</p>" * 10_000
+    monkeypatch.setattr(
+        api.service,
+        "preview_document",
+        lambda _document_id, **_kwargs: {
+            "display_name": "large.odt",
+            "text": "текст",
+            "status": "Импортирован",
+            "kind": "document",
+            "format": "odt",
+            "rich_html": rich_html,
+        },
+    )
+
+    manifest = api.start_formatted_document_preview("document-id")
+    chunks = []
+    offset = 0
+    while offset < manifest["rich_html_length"]:
+        result = api.read_document_preview_chunk(manifest["token"], "rich_html", offset)
+        assert len(result["chunk"]) <= 16_384
+        chunks.append(result["chunk"])
+        offset = result["next_offset"]
+
+    assert len(chunks) > 1
+    assert "".join(chunks) == rich_html
+
+
+def test_anonymized_formatted_preview_bridge_is_chunked(tmp_path, monkeypatch):
+    api = AppApi(root=tmp_path / "app")
+    rich_html = "<p>обезличенный форматированный текст</p>" * 8_000
+    monkeypatch.setattr(
+        api,
+        "preview_anonymized_document",
+        lambda *_args, **_kwargs: {"format": "odt", "rich_html": rich_html},
+    )
+
+    manifest = api.start_anonymized_document_preview("document-id")
+    chunks = []
+    offset = 0
+    while offset < manifest["rich_html_length"]:
+        result = api.read_document_preview_chunk(manifest["token"], "rich_html", offset)
+        assert len(result["chunk"]) <= 16_384
+        chunks.append(result["chunk"])
+        offset = result["next_offset"]
+
+    assert "rich_html" not in manifest
+    assert "".join(chunks) == rich_html
 
 
 def test_docx_preview_is_formatted_ordered_and_escaped_without_links(tmp_path):
@@ -1209,7 +1387,7 @@ def test_restore_document_cancelled_save_does_not_restore_or_leak_paths(tmp_path
 
 def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1251,10 +1429,14 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     assert "Обезличенный файл" in javascript
     assert "Выберите место для восстановленного файла" in javascript
     assert "preview.rich_html" in javascript
-    assert "preview.format==='docx'" in javascript
+    assert "function hasFormattedDocumentPreview(format){return format==='docx'||format==='odt';}" in javascript
+    assert "setDocxPreviewMode(hasFormattedDocumentPreview(preview.format))" in javascript
+    assert "filePreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
+    assert "filePreview&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
+    assert "requestAnonymizedDocumentPreview(selected,...settings" in javascript
     assert "preview_anonymized_document" in javascript
     assert "Версия 1.8" in html and "APP_VERSION='1.8'" in javascript
-    assert 'src="app-v1.8.15.js"' in html
+    assert 'src="app-v1.8.18.js"' in html
     assert "Текст документа загружен полностью" in javascript
     assert "Визуальные элементы без текста могут не отображаться" in javascript
     assert "rich.scrollTop=0" in javascript

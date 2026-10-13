@@ -69,7 +69,7 @@ def test_app_export_forwards_explicit_manual_review_confirmation(tmp_path):
 
 
 def test_ui_binds_async_results_and_restore_to_current_result(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     assert "restore_text($('#source').value,textRestoreMapping)" in javascript
     assert "if(Object.keys(last.mapping||{}).length)textRestoreMapping={...last.mapping}" in javascript
     assert "export_anonymized(selected,confirmation)" in javascript
@@ -78,7 +78,7 @@ def test_ui_binds_async_results_and_restore_to_current_result(tmp_path):
 
 
 def test_hide_hint_runtime_reanonymizes_all_exact_repetitions(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     source_text = "2) Переключение на новую платформу:\n– Переключение доступа"
     backend_result = AppApi(root=tmp_path / "app").anonymize_text(
         source_text, rules="Переключение => СКРЫТО"
@@ -142,7 +142,7 @@ elements.get('#richOutput').querySelectorAll=()=>[hintMark];
 
 
 def test_profile_export_saves_visible_settings_and_import_loads_them(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=false;this.disabled=false;}
@@ -211,7 +211,7 @@ elements.get('#paranoid').checked=true;
 
 
 def test_auto_hide_checkbox_keeps_review_progress_compact(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;}
@@ -248,7 +248,7 @@ console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,curr
 
 
 def test_same_document_anonymization_ignores_out_of_order_response(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -294,7 +294,7 @@ const pywebview={api:{
 
 
 def test_settings_changed_during_document_anonymization_keep_export_dirty(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -344,7 +344,7 @@ const pywebview={api:{
 
 
 def test_manual_restore_changes_during_document_anonymization_keep_export_dirty(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -402,7 +402,7 @@ async function runCase(action){
 
 
 def test_document_anonymize_button_shows_progress_and_reveals_marker_view(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=17;this.scrollHeight=1;this.clientHeight=1;}
@@ -456,7 +456,7 @@ const pywebview={api:{
 
 
 def test_preview_status_ignores_stale_analysis_after_document_switch(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -508,7 +508,7 @@ const pywebview={api:{
 
 
 def test_clear_leaves_formatted_docx_preview_and_returns_to_text_editor(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -556,7 +556,7 @@ console.log(JSON.stringify({
 
 
 def test_recreate_file_refreshes_the_visible_anonymized_preview(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.disabled=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -610,7 +610,7 @@ const pywebview={api:{
 
 
 def test_drop_docx_selects_imported_document_and_loads_formatted_preview(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -672,7 +672,7 @@ const pywebview={api:{
 
 
 def test_picker_selects_newly_imported_document_instead_of_keeping_old_selection(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -733,7 +733,7 @@ const pywebview={api:{
 
 
 def test_latest_import_invocation_wins_across_choose_and_two_drops(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -803,7 +803,7 @@ const pywebview={api:{
 
 
 def test_new_import_invocation_invalidates_preview_started_by_prior_import(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -864,7 +864,7 @@ const pywebview={api:{
 
 
 def test_checkbox_refresh_shows_text_result_before_formatted_preview_finishes(tmp_path):
-    javascript = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.disabled=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}

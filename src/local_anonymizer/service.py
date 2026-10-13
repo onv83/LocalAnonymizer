@@ -27,6 +27,7 @@ from .odt import (
     read_odt_artifact_stamp,
     write_odt_artifact_stamp,
 )
+from .odt_preview import render_odt_preview
 from .storage import MappingError, Storage
 from .word_com import convert_doc_to_docx
 
@@ -233,7 +234,7 @@ class AnonymizerService:
                 raise
         return doc_id
 
-    def preview_document(self, document_id: str) -> dict:
+    def preview_document(self, document_id: str, *, include_rich: bool = True) -> dict:
         row = self.storage.get_document(document_id)
         source = Path(row["owned_source"])
         suffix = source.suffix.lower()
@@ -241,9 +242,12 @@ class AnonymizerService:
         if suffix == ".docx":
             document = Document(source)
             text = "\n".join(_paragraph_text(p) for p in _paragraphs(document) if _paragraph_text(p))
-            rich_html = render_docx_preview(document)
+            if include_rich:
+                rich_html = render_docx_preview(document)
         elif suffix == ".odt":
             text = extract_odt_text(source)
+            if include_rich:
+                rich_html = render_odt_preview(source)
         elif suffix == ".xlsx":
             workbook = load_workbook(source, data_only=False, read_only=True, keep_links=False)
             try:
@@ -261,17 +265,22 @@ class AnonymizerService:
                                     redact_graphics: bool = True) -> dict:
         row = self.storage.get_document(document_id)
         source = Path(row["owned_source"])
-        if source.suffix.lower() != ".docx":
+        suffix = source.suffix.lower()
+        if suffix not in {".docx", ".odt"}:
             return {"format": source.suffix.lower().removeprefix("."), "rich_html": ""}
         with tempfile.TemporaryDirectory(prefix="local-anonymizer-preview-") as folder:
-            output = Path(folder) / "anonymized-preview.docx"
-            result = DocxProcessor(engine).anonymize(
-                source, output, redact_graphics=redact_graphics
-            )
-            document = Document(output)
+            output = Path(folder) / f"anonymized-preview{suffix}"
+            if suffix == ".docx":
+                result = DocxProcessor(engine).anonymize(
+                    source, output, redact_graphics=redact_graphics
+                )
+                rich_html = render_docx_preview(Document(output))
+            else:
+                result = OdtProcessor(engine).anonymize(source, output)
+                rich_html = render_odt_preview(output)
             return {
-                "format": "docx",
-                "rich_html": render_docx_preview(document),
+                "format": suffix.removeprefix("."),
+                "rich_html": rich_html,
                 "replacement_count": result.total,
                 "candidate_count": result.hint_count,
                 "warnings": result.warnings,

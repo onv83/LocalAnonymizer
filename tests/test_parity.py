@@ -144,7 +144,7 @@ def test_batch_zip_contains_independently_restorable_ready_pairs(tmp_path):
 
 def test_ui_contains_rich_review_interactions():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    js = asset_path("app-v1.8.15.js").read_text(encoding="utf-8")
+    js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
     for element in ('id="sourceMirror"', 'id="richOutput"', 'id="downloadAll"', 'id="undoChips"'):
         assert element in html
