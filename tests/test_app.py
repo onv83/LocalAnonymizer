@@ -705,6 +705,74 @@ def test_source_and_anonymized_previews_scroll_together_by_logical_blocks():
         assert "finally{previewScrollSyncDepth--;}" in javascript
 
 
+def test_source_and_anonymized_preview_screens_stay_vertically_aligned():
+    for html_name, javascript_name in (
+        ("index-v1.8.18.html", "app-v1.8.18.js"),
+        ("index-en-v1.8.18.html", "app-en-v1.8.18.js"),
+    ):
+        html = asset_path(html_name).read_text(encoding="utf-8")
+        javascript = asset_path(javascript_name).read_text(encoding="utf-8")
+
+        # Each pane has an independent spacer. Runtime geometry, rather than a
+        # language-specific pixel offset, aligns whichever active previews are visible.
+        assert 'id="sourcePreviewAlignment" class="preview-alignment-spacer"' in html
+        assert 'id="outputPreviewAlignment" class="preview-alignment-spacer"' in html
+        assert "function syncPreviewTopAlignment()" in javascript
+        assert "sourcePreviewAlignment.style.height='0px'" in javascript
+        assert "outputPreviewAlignment.style.height='0px'" in javascript
+        assert "activeSourcePreview()" in javascript
+        assert "activeAnonymizedPreview()" in javascript
+        assert "function isPreviewActive(preview)" in javascript
+        assert "getBoundingClientRect().top" in javascript
+        assert "new ResizeObserver(schedulePreviewTopAlignment)" in javascript
+        assert "new MutationObserver(schedulePreviewTopAlignment)" in javascript
+        assert "window.addEventListener('resize',schedulePreviewTopAlignment)" in javascript
+        assert "setTimeout(run,100)" in javascript
+        assert javascript.count("schedulePreviewTopAlignment();}") >= 2
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_preview_top_alignment_runtime_handles_dynamic_and_stacked_layouts(tmp_path, asset_name):
+    import json
+    import subprocess
+
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("const sourcePreviewAlignment=")
+    end = javascript.index("function syncFormattedSourceScroll", start)
+    implementation = javascript[start:end]
+    harness = f"""
+const vm=require('vm');
+let sourceBase=200,outputBase=100;
+const px=value=>Number.parseFloat(value||'0')||0;
+const sourceSpacer={{style:{{height:'0px'}},classList:{{contains:name=>name==='preview-alignment-spacer'}}}};
+const outputSpacer={{style:{{height:'0px'}},classList:{{contains:name=>name==='preview-alignment-spacer'}}}};
+const sourcePane={{top:0,getBoundingClientRect(){{return{{top:this.top}};}},querySelector:()=>({{}})}};
+const outputPane={{top:0,getBoundingClientRect(){{return{{top:this.top}};}},querySelector:()=>({{}})}};
+const source={{hidden:false,clientWidth:500,clientHeight:405,closest:()=>sourcePane,getBoundingClientRect:()=>({{top:sourceBase+px(sourceSpacer.style.height)}})}};
+const output={{hidden:false,clientWidth:500,clientHeight:405,closest:()=>outputPane,getBoundingClientRect:()=>({{top:outputBase+px(outputSpacer.style.height)}})}};
+const hidden={{hidden:true,clientWidth:500,clientHeight:405,closest:()=>sourcePane,getBoundingClientRect:()=>({{top:0}})}};
+const generic={{classList:{{contains:()=>false}},closest:()=>sourcePane}};
+const elements={{sourcePreviewAlignment:sourceSpacer,outputPreviewAlignment:outputSpacer,source,richOutput:output,docxPreview:hidden,anonymizedDocxPreview:hidden,sourceLibrary:generic,docxPreviewControls:generic,anonymizedPreviewControls:generic,textPreview:generic}};
+const queued=[];let timer=null;
+const context={{Boolean,Math,Number,previewFullscreen:false,anonymizedPreviewFullscreen:false,$:selector=>elements[selector.slice(1)],requestAnimationFrame:fn=>{{queued.push(fn);return queued.length;}},setTimeout:fn=>{{timer=fn;}},ResizeObserver:class{{observe(){{}}}},MutationObserver:class{{observe(){{}}}},window:{{addEventListener(){{}}}},document:{{fonts:null}}}};
+vm.createContext(context);
+vm.runInContext({json.dumps(implementation + "this.api={syncPreviewTopAlignment};")},context);
+if(!timer)throw new Error('missing throttled-animation fallback');
+timer();
+if(outputSpacer.style.height!=='100px')throw new Error('timer fallback did not align collapsed panes');
+sourceBase=320;context.api.syncPreviewTopAlignment();
+if(outputSpacer.style.height!=='220px')throw new Error('expanded library was not realigned');
+sourceBase=90;context.api.syncPreviewTopAlignment();
+if(sourceSpacer.style.height!=='10px'||outputSpacer.style.height!=='0px')throw new Error('shorter source side was not aligned');
+outputPane.top=500;context.api.syncPreviewTopAlignment();
+if(sourceSpacer.style.height!=='0px'||outputSpacer.style.height!=='0px')throw new Error('stacked cards must not be cross-aligned');
+"""
+    script = tmp_path / f"{asset_name}.alignment-runtime.js"
+    script.write_text(harness, encoding="utf-8")
+    completed = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+
+
 @pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
 def test_preview_scroll_runtime_handles_unequal_blocks_cache_and_hidden_panes(tmp_path, asset_name):
     import json
@@ -722,7 +790,7 @@ function pane({{height=100,client=20,top=0,nodes=[],hidden=false}}={{}}){{
     getBoundingClientRect:()=>({{top:0}}),querySelectorAll:()=>nodes}};
 }}
 const elements={{docxPreview:pane(),anonymizedDocxPreview:pane(),source:pane(),richOutput:pane()}};
-const context={{WeakMap,WeakSet,Math,requestAnimationFrame:(fn)=>fn(),$:s=>elements[s.slice(1)]}};
+const context={{WeakMap,WeakSet,Math,requestAnimationFrame:(fn)=>fn(),$:s=>elements[s.slice(1)],window:{{addEventListener:()=>{{}}}},document:{{fonts:null}}}};
 vm.createContext(context);
 vm.runInContext({json.dumps(implementation + "function setDocxPreviewMode(formatted){$('#docxPreview').hidden=!formatted;$('#source').hidden=formatted;}function setAnonymizedPreviewMode(formatted){$('#anonymizedDocxPreview').hidden=!formatted;$('#richOutput').hidden=formatted;}this.api={mapPreviewScroll,collectPreviewAnchors,invalidatePreviewAnchors,syncFormattedSourceScroll,syncFormattedAnonymizedScroll,switchPreviewMode};")},context);
 const source=pane({{height:120,client:20,top:50,nodes:[node(-30),node(0),node(30)]}});

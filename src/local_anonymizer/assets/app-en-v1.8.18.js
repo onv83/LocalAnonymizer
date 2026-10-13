@@ -160,8 +160,44 @@ function syncPreviewScroll(source,target){
     target.scrollTop=mapped;
   }finally{previewScrollSyncDepth--;}
 }
+const sourcePreviewAlignment=$('#sourcePreviewAlignment');
+const outputPreviewAlignment=$('#outputPreviewAlignment');
+const canAlignPreviewTops=sourcePreviewAlignment?.classList?.contains('preview-alignment-spacer')&&outputPreviewAlignment?.classList?.contains('preview-alignment-spacer');
 function activeSourcePreview(){return $('#docxPreview').hidden?$('#source'):$('#docxPreview');}
 function activeAnonymizedPreview(){return $('#anonymizedDocxPreview').hidden?$('#richOutput'):$('#anonymizedDocxPreview');}
+function isPreviewActive(preview){return Boolean(preview&&!preview.hidden&&preview.clientWidth>0&&preview.clientHeight>0);}
+let previewAlignmentFrame=0;
+function syncPreviewTopAlignment(){
+  if(!canAlignPreviewTops)return;
+  sourcePreviewAlignment.style.height='0px';outputPreviewAlignment.style.height='0px';
+  if(previewFullscreen||anonymizedPreviewFullscreen)return;
+  const sourcePreview=activeSourcePreview(),outputPreview=activeAnonymizedPreview();
+  const sourcePane=sourcePreview.closest('.pane'),outputPane=outputPreview.closest('.pane');
+  if(!sourcePane||!outputPane||Math.abs(sourcePane.getBoundingClientRect().top-outputPane.getBoundingClientRect().top)>2)return;
+  if(!isPreviewActive(sourcePreview)||!isPreviewActive(outputPreview))return;
+  const difference=sourcePreview.getBoundingClientRect().top-outputPreview.getBoundingClientRect().top;
+  if(difference>0.5)outputPreviewAlignment.style.height=`${difference}px`;
+  else if(difference<-.5)sourcePreviewAlignment.style.height=`${-difference}px`;
+}
+function schedulePreviewTopAlignment(){
+  if(previewAlignmentFrame)return;
+  const run=()=>{if(!previewAlignmentFrame)return;previewAlignmentFrame=0;syncPreviewTopAlignment();};
+  previewAlignmentFrame=requestAnimationFrame(run);
+  if(typeof setTimeout==='function')setTimeout(run,100);
+}
+const previewAlignmentResizeObserver=!canAlignPreviewTops||typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedulePreviewTopAlignment);
+if(previewAlignmentResizeObserver){
+  [$('#sourceLibrary'),$('#docxPreviewControls'),$('#anonymizedPreviewControls'),$('#source').closest('.pane')?.querySelector('.bar'),$('#richOutput').closest('.pane')?.querySelector('.bar')].filter(Boolean).forEach(element=>previewAlignmentResizeObserver.observe(element));
+}
+const previewAlignmentMutationObserver=!canAlignPreviewTops||typeof MutationObserver==='undefined'?null:new MutationObserver(schedulePreviewTopAlignment);
+if(previewAlignmentMutationObserver){
+  [$('#sourceLibrary'),$('#docxPreviewControls'),$('#docxPreview'),$('#anonymizedPreviewControls'),$('#anonymizedDocxPreview'),$('#textPreview'),$('#richOutput')].filter(Boolean).forEach(element=>previewAlignmentMutationObserver.observe(element,{attributes:true,attributeFilter:['hidden','open','class']}));
+}
+if(canAlignPreviewTops){
+  window.addEventListener('resize',schedulePreviewTopAlignment);
+  if(document.fonts?.ready)document.fonts.ready.then(schedulePreviewTopAlignment);
+  schedulePreviewTopAlignment();
+}
 function syncFormattedSourceScroll(){if($('#docxPreview').hidden)return;syncPreviewScroll($('#docxPreview'),activeAnonymizedPreview());}
 function syncFormattedAnonymizedScroll(){if($('#anonymizedDocxPreview').hidden)return;syncPreviewScroll($('#anonymizedDocxPreview'),activeSourcePreview());}
 function switchPreviewMode(setMode,formatted){
@@ -182,11 +218,11 @@ function setModalIsolation(surface,enabled){if(enabled){previousInert=new Map();
 function modalFocusables(surface){return [...surface.querySelectorAll('button:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')].filter(el=>!el.hidden&&!el.inert);}
 function trapModalFocus(event,surface){if(event.key!=='Tab')return;const items=modalFocusables(surface);if(!items.length){event.preventDefault();surface.focus();return;}const first=items[0],last=items[items.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}
 function setFullscreenSemantics(surface,button,enabled,label){if(enabled){fullscreenReturnFocus=document.activeElement;surface.setAttribute('role','dialog');surface.ariaModal='true';surface.setAttribute('aria-label',label);surface.tabIndex=-1;surface.onkeydown=event=>trapModalFocus(event,surface);setModalIsolation(surface,true);button.setAttribute('aria-pressed','true');button.focus();}else{setModalIsolation(surface,false);surface.removeAttribute('role');surface.removeAttribute('aria-modal');surface.removeAttribute('aria-label');surface.removeAttribute('tabindex');surface.onkeydown=null;button.setAttribute('aria-pressed','false');if(fullscreenReturnFocus){fullscreenReturnFocus.focus();fullscreenReturnFocus=null;}}}
-function setPreviewFullscreen(enabled){if(enabled===previewFullscreen)return;previewFullscreen=enabled;const surface=$('#docxPreviewSurface'),button=$('#previewFullscreen');surface.classList.toggle('preview-surface-fullscreen',enabled);button.textContent=enabled?'Exit full screen':'Full screen';setFullscreenSemantics(surface,button,enabled,'Full-screen source document preview');}
+function setPreviewFullscreen(enabled){if(enabled===previewFullscreen)return;previewFullscreen=enabled;const surface=$('#docxPreviewSurface'),button=$('#previewFullscreen');surface.classList.toggle('preview-surface-fullscreen',enabled);button.textContent=enabled?'Exit full screen':'Full screen';setFullscreenSemantics(surface,button,enabled,'Full-screen source document preview');schedulePreviewTopAlignment();}
 function cancelDocxPreviewScrollReset(){previewScrollResetToken++;}
 function resetDocxPreviewScroll(){const rich=$('#docxPreview'),token=++previewScrollResetToken,apply=()=>{if(token===previewScrollResetToken)rich.scrollTop=0;};apply();if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));setTimeout(apply,150);}
 function setAnonymizedPreviewMode(formatted){const available=filePreview&&hasFormattedDocumentPreview(currentPreviewFormat)&&!!$('#anonymizedDocxPreview').innerHTML;$('#anonymizedPreviewControls').hidden=!available;$('#anonymizedDocxPreview').hidden=!(available&&formatted);$('#richOutput').hidden=available&&formatted;$('#showAnonymizedFormatted').ariaPressed=String(available&&formatted);$('#showAnonymizedText').ariaPressed=String(!available||!formatted);}
-function setAnonymizedPreviewFullscreen(enabled){if(enabled===anonymizedPreviewFullscreen)return;anonymizedPreviewFullscreen=enabled;const surface=$('#anonymizedPreviewSurface'),button=$('#anonymizedPreviewFullscreen');surface.classList.toggle('preview-surface-fullscreen',enabled);button.textContent=enabled?'Exit full screen':'Full screen';setFullscreenSemantics(surface,button,enabled,'Full-screen anonymized document preview');}
+function setAnonymizedPreviewFullscreen(enabled){if(enabled===anonymizedPreviewFullscreen)return;anonymizedPreviewFullscreen=enabled;const surface=$('#anonymizedPreviewSurface'),button=$('#anonymizedPreviewFullscreen');surface.classList.toggle('preview-surface-fullscreen',enabled);button.textContent=enabled?'Exit full screen':'Full screen';setFullscreenSemantics(surface,button,enabled,'Full-screen anonymized document preview');schedulePreviewTopAlignment();}
 function cancelAnonymizedPreviewScrollReset(){anonymizedPreviewScrollResetToken++;}
 function resetAnonymizedPreviewScroll(){const rich=$('#anonymizedDocxPreview'),token=++anonymizedPreviewScrollResetToken,apply=()=>{if(token===anonymizedPreviewScrollResetToken)rich.scrollTop=0;};apply();if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));setTimeout(apply,150);}
 function leaveAnonymizedPreview(){setAnonymizedPreviewFullscreen(false);const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#anonymizedPreviewCompleteness').textContent='';$('#anonymizedPreviewControls').hidden=true;$('#richOutput').hidden=false;}
