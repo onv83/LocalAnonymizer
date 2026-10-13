@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import local_anonymizer.app as app_module
-from local_anonymizer.app import AppApi, asset_path, smoke_check
+from local_anonymizer.app import AppApi, asset_path, platform_smoke_check, smoke_check
 from local_anonymizer.engine import Anonymizer
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -32,6 +32,63 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["vm_node_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
+
+
+def test_platform_smoke_checks_secure_storage_and_native_clipboard_without_reading_it():
+    class Protector:
+        def __bool__(self):
+            return False
+
+        def protect(self, data, purpose):
+            return b"protected:" + purpose.encode() + b":" + data
+
+        def unprotect(self, envelope, purpose):
+            return envelope.rsplit(b":", 1)[1]
+
+    class Clipboard:
+        available = True
+
+        def __bool__(self):
+            return False
+
+        def read_text(self):
+            raise AssertionError("platform smoke must not read user clipboard")
+
+        def write_text(self, text):
+            raise AssertionError("platform smoke must not overwrite user clipboard")
+
+    result = platform_smoke_check(
+        platform_name="linux",
+        protector=Protector(),
+        clipboard=Clipboard(),
+    )
+
+    assert result == {
+        "ok": True,
+        "platform": "linux",
+        "secure_storage": True,
+        "clipboard": True,
+    }
+
+
+def test_platform_smoke_fails_closed_without_secure_storage_or_clipboard():
+    class BrokenProtector:
+        def protect(self, data, purpose):
+            raise RuntimeError("backend unavailable")
+
+        def unprotect(self, envelope, purpose):
+            raise AssertionError("protect must fail first")
+
+    result = platform_smoke_check(
+        platform_name="darwin",
+        protector=BrokenProtector(),
+        clipboard=SimpleNamespace(available=False),
+    )
+
+    assert result["ok"] is False
+    assert result["secure_storage"] is False
+    assert result["clipboard"] is False
+    assert result["error"] == "RuntimeError: backend unavailable"
 
 
 def test_profile_json_export_import_roundtrip_restores_exact_settings(tmp_path):
@@ -286,6 +343,28 @@ def test_new_design_styles_define_contrast_actions_targets_and_focus():
     assert "--border:#647c92" in css
     assert "--focus:#0069c0" in css
     assert "summary{min-height:24px" in css
+
+
+def test_new_design_uses_compact_interface_text_without_scaling_document_preview():
+    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+
+    assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;' in css
+    assert 'body[data-design="new"] textarea{font-size:13px;' in css
+    assert 'body[data-design="new"] h2{font-size:16px;' in css
+    assert 'body[data-design="new"] .docx-preview{' not in css
+
+
+def test_new_design_aligns_language_and_interface_controls_on_one_level():
+    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+
+    assert 'body[data-design="new"] .language-switch,body[data-design="new"] .design-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}' in css
+    assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:42px;box-sizing:border-box}' in css
+    assert 'body[data-design="new"] #themeToggle{white-space:nowrap}' in css
+    for html in (ru_html, en_html):
+        assert 'class="language-switch"' in html
+        assert 'class="design-switch"' in html
 
 
 def test_dark_new_design_stat_chips_have_explicit_readable_colors():

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -14,7 +15,12 @@ from docx.shared import Inches
 
 from .documents import DocxProcessor
 from .engine import Anonymizer, MARKER_PATTERN, normalize_label
-from .platform_services import ClipboardReader, default_clipboard_reader
+from .platform_services import (
+    ClipboardReader,
+    DataProtector,
+    default_clipboard_reader,
+    default_data_protector,
+)
 from .service import AnonymizerService
 
 APP_VERSION = "1.8"
@@ -431,6 +437,49 @@ def smoke_check() -> dict:
     return {"ok": html.is_file() and result["ok"], "asset": str(html), "engine": result}
 
 
+def platform_smoke_check(
+    platform_name: str | None = None,
+    *,
+    protector: DataProtector | None = None,
+    clipboard: ClipboardReader | None = None,
+) -> dict:
+    """Check native adapters without reading or overwriting clipboard data."""
+    platform_name = platform_name or sys.platform
+    secure_storage = False
+    error = None
+    try:
+        if protector is None:
+            protector = default_data_protector(platform_name)
+        sample = os.urandom(32)
+        purpose = "platform-smoke-v1"
+        secure_storage = protector.unprotect(
+            protector.protect(sample, purpose), purpose
+        ) == sample
+        if not secure_storage:
+            error = "Secure storage roundtrip mismatch"
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        if clipboard is None:
+            clipboard = default_clipboard_reader(platform_name)
+        clipboard_available = bool(clipboard.available)
+    except Exception as exc:
+        clipboard_available = False
+        if error is None:
+            error = f"{type(exc).__name__}: {exc}"
+
+    result = {
+        "ok": secure_storage and clipboard_available,
+        "platform": platform_name,
+        "secure_storage": secure_storage,
+        "clipboard": clipboard_available,
+    }
+    if error is not None:
+        result["error"] = error
+    return result
+
+
 def pair_smoke_check() -> dict:
     work = Path(tempfile.mkdtemp(prefix="local-anonymizer-pair-self-test-"))
     original_value = "Иванов Сергей Петрович"
@@ -472,6 +521,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Локальный обезличиватель")
     parser.add_argument("--smoke", action="store_true", help="проверка без запуска GUI")
     parser.add_argument("--pair-smoke", action="store_true", help="проверка пары файлов")
+    parser.add_argument(
+        "--platform-smoke",
+        action="store_true",
+        help="проверка системного keyring и нативного буфера обмена",
+    )
     args = parser.parse_args(argv)
     if args.smoke:
         result = smoke_check()
@@ -479,6 +533,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result["ok"] else 1
     if args.pair_smoke:
         result = pair_smoke_check()
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["ok"] else 1
+    if args.platform_smoke:
+        result = platform_smoke_check()
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result["ok"] else 1
     import webview

@@ -1,3 +1,63 @@
+# Local Document Anonymizer
+
+A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md`, and `.log` files. The interface is available in English and Russian. The application does not use a network server, HTTP requests, CDNs, telemetry, or cloud models.
+
+## Ready-to-use Windows build
+
+1. Download `LocalAnonymizer-0.1.0-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+2. Extract the complete archive.
+3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
+
+The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
+
+> **Version status:** the source code on `main` is newer than the currently published `v0.1.0` binary. Windows remains the verified production platform. Native Linux and macOS packages are not published or declared supported yet.
+
+## Highlights
+
+- Reversible anonymization with encrypted local mappings and portable recovery files.
+- DOCX formatting is preserved by OOXML-aware processing; legacy DOC conversion uses Microsoft Word COM on Windows.
+- Local formatted, read-only DOCX preview and text review workflow.
+- Support for DOCX, legacy DOC on Windows, ODT, XLSX, and text-based formats.
+- English and Russian interfaces with persistent language selection.
+- No cloud processing: document content remains on the local computer.
+
+## Platform status
+
+Windows is the reference environment for `.doc` and `.docx` fidelity. Legacy `.doc` conversion uses Microsoft Word COM and is not presented as equivalent on other operating systems.
+
+Cross-platform foundations are included for Linux and macOS: native data directories, fail-closed AES-GCM storage backed by the system keyring, native clipboard adapters, an ODT processor, a shared PyInstaller specification, and target-OS verification scripts. These paths still require native GUI, keyring, clipboard, packaging, and recovery testing before Linux or macOS releases can be considered supported.
+
+Build and verify native packages on the target operating system:
+
+```sh
+./build.sh
+./verify-native.sh
+```
+
+PyInstaller cross-building is not used. Linux produces `dist/LocalAnonymizer/LocalAnonymizer`; macOS produces `dist/LocalAnonymizer.app`. Successful CLI smoke tests do not replace a manual GTK/WebKit or Cocoa GUI check.
+
+## Security notes
+
+- Processing is local, and source values are not written to application logs.
+- Windows mappings and profiles are protected with DPAPI for the current user.
+- Non-Windows storage fails closed when a suitable system keyring is unavailable; there is no plaintext fallback.
+- Exported `.larecovery` files intentionally contain original values and must be protected like the source document.
+- Anonymized output still requires final manual review.
+
+## Development
+
+Use Python 3.11 and `uv`:
+
+```bat
+uv sync --extra dev --no-install-project
+uv run --no-project python -m pytest -q
+build.bat
+```
+
+For the detailed workflow, limitations, engine coverage, and security model, see the Russian documentation below.
+
+---
+
 # Локальный обезличиватель документов
 
 Приложение для локального обезличивания `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md` и `.log`. Интерфейс переключается между русским и английским языками с сохранением выбора. Текущий проверенный готовый выпуск предназначен для Windows. Сетевой сервер, HTTP-запросы, CDN, телеметрия и облачные модели не используются.
@@ -33,6 +93,15 @@ Python, `uv`, pip и установка зависимостей для гото
 - GUI-зависимости ограничены маркерами платформы: WebView2 на Windows, Cocoa на macOS и GTK/WebKit на Linux.
 
 Linux/macOS-сборки пока не публикуются и не считаются поддерживаемыми: системное защищённое хранилище, GUI, clipboard, упаковка и восстановление должны быть проверены непосредственно на целевых ОС. Подготовлен fail-closed backend AES-GCM с мастер-ключом в системном keyring, но его работа с Secret Service/KWallet и macOS Keychain ещё не подтверждена нативными тестами. Открытого fallback для локальных карт замен нет. Экспортируемый переносимый `.larecovery`, напротив, намеренно не зашифрован и содержит исходные значения; его нужно защищать так же, как оригинал.
+
+Подготовка нативных пакетов выполняется **на соответствующей ОС** (кросс-сборка PyInstaller не используется):
+
+```sh
+./build.sh
+./verify-native.sh
+```
+
+На Linux создаётся `dist/LocalAnonymizer/LocalAnonymizer`, на macOS — нативный bundle `dist/LocalAnonymizer.app`. Проверяющий скрипт запускает core smoke, восстановление пары файлов и новый `--platform-smoke`: реальный round-trip защищённого хранилища и наличие нативного clipboard backend без чтения или перезаписи пользовательского буфера. Успех этих CLI-проверок ещё не заменяет ручной GUI-smoke GTK/WebKit или Cocoa.
 
 ## Работа
 

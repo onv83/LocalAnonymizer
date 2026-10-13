@@ -62,3 +62,24 @@ def test_platform_build_wrappers_share_the_pyinstaller_spec():
     for duplicated_setting in ("--onedir", "--windowed", "--add-data", "--collect-all"):
         assert duplicated_setting not in windows
         assert duplicated_setting not in posix
+
+
+def test_macos_spec_produces_native_app_bundle_without_changing_windows_onedir():
+    spec = (ROOT / "LocalAnonymizer.spec").read_text(encoding="utf-8")
+
+    assert "import sys" in spec
+    assert "if sys.platform == 'darwin':" in spec
+    assert "BUNDLE(" in spec
+    assert "name='LocalAnonymizer.app'" in spec
+    assert "bundle_identifier='io.github.onv83.localanonymizer'" in spec
+    assert "COLLECT(" in spec
+
+
+def test_posix_native_verifier_checks_all_packaged_smoke_modes():
+    verifier = (ROOT / "verify-native.sh").read_text(encoding="utf-8")
+
+    assert "dist/LocalAnonymizer.app/Contents/MacOS/LocalAnonymizer" in verifier
+    assert "dist/LocalAnonymizer/LocalAnonymizer" in verifier
+    assert '"$executable" --smoke' in verifier
+    assert '"$executable" --pair-smoke' in verifier
+    assert '"$executable" --platform-smoke' in verifier
