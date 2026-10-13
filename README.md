@@ -2,6 +2,16 @@
 
 A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md`, and `.log` files. The interface is available in English and Russian. The application does not use a network server, HTTP requests, CDNs, telemetry, or cloud models.
 
+## Screenshots
+
+### English interface
+
+![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
+
+### Russian interface
+
+![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
+
 ## Ready-to-use Windows build
 
 1. Download `LocalAnonymizer-0.1.0-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
@@ -61,6 +71,16 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 # Локальный обезличиватель документов
 
 Приложение для локального обезличивания `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md` и `.log`. Интерфейс переключается между русским и английским языками с сохранением выбора. Текущий проверенный готовый выпуск предназначен для Windows. Сетевой сервер, HTTP-запросы, CDN, телеметрия и облачные модели не используются.
+
+## Скриншоты
+
+### Интерфейс на русском языке
+
+![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
+
+### Интерфейс на английском языке
+
+![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
 
 ## Запуск готовой версии — без Python и установки пакетов
 
