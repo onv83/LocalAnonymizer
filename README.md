@@ -14,13 +14,15 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ## Ready-to-use Windows build
 
-1. Download `LocalAnonymizer-0.1.0-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Download `LocalAnonymizer-0.2.0-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Version status:** the source code on `main` is newer than the currently published `v0.1.0` binary. Windows remains the verified production platform. Native Linux and macOS packages are not published or declared supported yet.
+> **Version status:** `v0.2.0` is the current verified Windows release. Native Linux and macOS packages are not published or declared supported yet.
+
+See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
 
 ## Highlights
 
@@ -84,11 +86,13 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ## Запуск готовой версии — без Python и установки пакетов
 
-1. Скачайте архив `LocalAnonymizer-0.1.0-windows-x64.zip` из раздела [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Скачайте архив `LocalAnonymizer-0.2.0-windows-x64.zip` из раздела [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
 2. Распакуйте архив в обычную папку.
 3. Запустите `LocalAnonymizer\LocalAnonymizer.exe`.
 
 Python, `uv`, pip и установка зависимостей для готовой версии **не нужны**. Папку `_internal` рядом с `.exe` нельзя удалять или переносить отдельно: в ней уже находятся Python и все необходимые библиотеки приложения. На Windows 11 используется системный Microsoft Edge WebView2.
+
+История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
 
 ## Запуск из исходного кода (только для разработки)
 
