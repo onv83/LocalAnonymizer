@@ -164,6 +164,7 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
     sensitive = [
         "lab-nas", "vm-pc", "ALPHAHQ", "BETA-LAB",
         "Computers_ACME/Production/Site-A", "Servers/Legacy-RDP",
+        "Domain Controllers", "NAS_VOG", "Computers_VOG",
         "Example Secure Client", "Northwind Banking Plug-in",
         "1C 8.3.27.1859; New_setup_1C; Setup_1C_*; TessaDesk; Установка LanDocs; deploy_office2016; Kaspersky_AK*",
     ]
@@ -186,7 +187,13 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
     ous = document.add_table(rows=1, cols=4)
     for index, value in enumerate(("OU или контейнер AD", "Компьютерных УЗ", "Включено", "Отключено")):
         ous.rows[0].cells[index].text = value
-    for values in (("Computers_ACME/Production/Site-A", "21", "21", "0"), ("Servers/Legacy-RDP", "12", "11", "1")):
+    for values in (
+        ("Computers_ACME/Production/Site-A", "21", "21", "0"),
+        ("Domain Controllers", "2", "2", "0"),
+        ("NAS_VOG", "2", "2", "0"),
+        ("Computers_VOG", "1", "1", "0"),
+        ("Servers/Legacy-RDP", "12", "11", "1"),
+    ):
         cells = ous.add_row().cells
         for index, value in enumerate(values):
             cells[index].text = value

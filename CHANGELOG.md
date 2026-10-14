@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.3] — 2026-10-14
+
+### English
+
+#### Fixed
+
+- Standalone Active Directory container names in OU inventory tables are now anonymized, including root entries such as `Domain Controllers` and underscore-based internal names.
+- Full OU paths, standalone containers, table metrics, reversible restoration, and DOCX formatting remain preserved.
+
+### Русский
+
+#### Исправлено
+
+- Теперь обезличиваются отдельные названия контейнеров Active Directory в таблицах инвентаризации OU, включая корневые записи вроде `Domain Controllers` и внутренние имена с подчёркиванием.
+- Полные пути OU, отдельные контейнеры, числовые показатели таблиц, обратное восстановление и форматирование DOCX сохранены.
+
 ## [0.2.2] — 2026-10-14
 
 ### English
@@ -108,7 +124,8 @@ No unreleased changes yet.
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/onv83/LocalAnonymizer/compare/v0.1.0...v0.2.0

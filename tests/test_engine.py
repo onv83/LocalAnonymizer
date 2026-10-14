@@ -345,6 +345,27 @@ def test_ad_ou_inventory_redacts_complete_client_specific_paths():
     assert result.text.count(sep) == source.count(sep)
 
 
+def test_ad_ou_inventory_redacts_standalone_root_container_names():
+    sep = "\ufdd0"
+    values = ["Domain Controllers", "NAS_VOG", "Computers_VOG"]
+    source = sep.join([
+        "OU или контейнер AD", "Компьютерных УЗ", "Включено", "Отключено",
+        "Computers_VOG/Production/OMO", "2", "2", "0",
+        values[0], "2", "2", "0",
+        values[1], "2", "2", "0",
+        "Computers_ADM/Igor_Test", "1", "1", "0",
+        values[2], "1", "1", "0",
+        "Computers_VOG/BMO", "1", "1", "0",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(value not in result.text for value in values)
+    assert result.text.count("[СТРУКТУРА-AD-") == 6
+    assert all(metric in result.text for metric in ("2", "1", "0"))
+    assert result.text.count(sep) == source.count(sep)
+
+
 def test_software_inventory_redacts_each_product_name_but_preserves_metrics():
     sep = "\ufdd0"
     products = ["Example Secure Client", "Northwind Banking Plug-in", "Contoso Remote Token"]

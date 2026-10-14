@@ -413,8 +413,13 @@ class Anonymizer:
 
         if re.search(r"\bOU\s+или\s+контейнер\s+AD\b", source, re.I):
             ou_matches = add(
-                r"(?<=\ufdd0)([^\r\n\ufdd0]{1,180}/[^\r\n\ufdd0]{1,180})(?=\ufdd0\d+\ufdd0\d+\ufdd0\d+(?:\ufdd0|$))",
+                r"(?<=\ufdd0)([^\r\n\ufdd0]{1,180})(?=\ufdd0\d+\ufdd0\d+\ufdd0\d+(?:\ufdd0|$))",
                 "СТРУКТУРА-AD", 91, group=1, flags=re.I,
+                validate=lambda m: (
+                    "/" in m.group(1)
+                    or "_" in m.group(1)
+                    or m.group(1).strip().casefold() == "domain controllers"
+                ),
                 canonical=lambda m: m.group(1), allow_boundary_context=True,
                 case_sensitive_canonical=True,
             )
