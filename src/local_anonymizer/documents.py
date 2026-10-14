@@ -155,6 +155,24 @@ def _replace_xml_text_nodes(nodes, new_text: str) -> None:
             node.attrib.pop(xml_space, None)
 
 
+def _xml_text_node_groups(paragraph) -> list[list[object]]:
+    """Split visible text nodes at hard breaks without editing separators."""
+    text_tag = qn("w:t")
+    boundary_tags = {qn("w:br"), qn("w:cr"), qn("w:tab")}
+    groups: list[list[object]] = []
+    current: list[object] = []
+    for element in paragraph.iter():
+        if element.tag == text_tag:
+            current.append(element)
+        elif element.tag in boundary_tags:
+            if current:
+                groups.append(current)
+                current = []
+    if current:
+        groups.append(current)
+    return groups
+
+
 def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> None:
     """Copy OOXML and serialize only Word parts whose visible text changed."""
     parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
@@ -170,9 +188,13 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
                 root = etree.fromstring(payload, parser)
                 payloads[info.filename] = root
                 for paragraph in root.xpath(".//w:p", namespaces={"w": qn("w:t").split("}", 1)[0][1:]}):
-                    nodes = list(paragraph.xpath(".//w:t", namespaces={"w": qn("w:t").split("}", 1)[0][1:]}))
-                    if nodes:
-                        paragraphs.append((info.filename, root, nodes, "".join(node.text or "" for node in nodes)))
+                    for nodes in _xml_text_node_groups(paragraph):
+                        paragraphs.append((
+                            info.filename,
+                            root,
+                            nodes,
+                            "".join(node.text or "" for node in nodes),
+                        ))
     replacements = transform_all([text for _, _, _, text in paragraphs])
     if len(replacements) != len(paragraphs):
         raise RuntimeError("Ошибка разбиения документа")
@@ -560,7 +582,7 @@ _ALLOWED_RELATIONSHIP_TYPES = frozenset({
 })
 _SUPPORTED_WML_ELEMENTS = frozenset("""
 abstractNum abstractNumId allowPNG altName annotationRef autoHyphenation autoRedefine autoSpaceDE
-b bCs basedOn bidi body bodyDiv bookmarkEnd bookmarkStart bottom br caps characterSpacingControl
+b bCs basedOn bidi body bodyDiv bookmarkEnd bookmarkStart bottom br cr caps characterSpacingControl
 charset clrSchemeMapping color cols comment commentRangeEnd commentRangeStart commentReference comments
 compat compatSetting contextualSpacing continuationSeparator decimalSymbol defaultTabStop del delText
 displayBackgroundShape div divBdr divs divsChild doNotAutoCompressPictures doNotBreakWrappedTables
@@ -954,7 +976,7 @@ def _trusted_wml_schema() -> tuple[
         ("p", "fldSimple"), ("fldSimple", "r"),
         ("p", "ins"), ("p", "del"), ("ins", "r"), ("del", "r"),
         ("r", "fldChar"), ("r", "instrText"), ("r", "delText"),
-        ("r", "br"), ("r", "tab"),
+        ("r", "br"), ("r", "cr"), ("r", "tab"),
         ("tc", "tbl"),
         ("settings", "docVars"), ("docVars", "docVar"),
     }

@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.1] — 2026-10-14
+
+### English
+
+#### Fixed
+
+- DOCX cells and paragraphs containing manual line breaks now anonymize every server name and enabled IP address instead of joining adjacent lines during detection.
+- Word hard breaks, tabs, run formatting, and the existing DOC/DOCX formatting-preserving pipeline remain intact.
+
+### Русский
+
+#### Исправлено
+
+- В ячейках и абзацах DOCX с ручными переносами строк теперь обезличиваются все имена серверов и включённые IP-адреса: соседние строки больше не склеиваются при распознавании.
+- Ручные переносы Word, табуляция, форматирование фрагментов и существующий конвейер сохранения оформления DOC/DOCX остаются неизменными.
+
 ## [0.2.0] — 2026-10-14
 
 ### English
@@ -76,6 +92,7 @@ No unreleased changes yet.
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/onv83/LocalAnonymizer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.1.0

@@ -19,6 +19,7 @@ from local_anonymizer.documents import (
     _trusted_docx_strings,
     _trusted_wml_schema,
 )
+from local_anonymizer.engine import Anonymizer
 
 
 def _all_xml(path: Path) -> bytes:
@@ -76,6 +77,84 @@ def test_docx_vm_inventory_names_are_removed_from_package_and_restore_exactly(tm
     DocxProcessor().restore(anonymized, restored, result.mapping)
     restored_values = [row.cells[0].text for row in Document(restored).tables[0].rows]
     assert restored_values == vm_names
+
+
+def test_docx_hard_line_breaks_do_not_join_server_names_to_preceding_ips(tmp_path):
+    source = tmp_path / "line-break-source.docx"
+    anonymized = tmp_path / "line-break-anonymized.docx"
+    restored = tmp_path / "line-break-restored.docx"
+    document = Document()
+    cell = document.add_table(rows=1, cols=1).cell(0, 0)
+    paragraph = cell.paragraphs[0]
+    lines = [
+        "ooo-srkv/172.17.60.113",
+        "CyberBackUp/172.17.60.120",
+        "Cyber2Data/172.17.60.125",
+        "Сервера Вне домена",
+    ]
+    for index, line in enumerate(lines):
+        if index:
+            paragraph.add_run().add_break()
+        paragraph.add_run(line)
+    document.save(source)
+
+    # Reproduces the screenshot even when IP replacement was disabled: every
+    # slash-delimited hostname must still be independently anonymized.
+    processor = DocxProcessor(Anonymizer(disabled_categories={"IP"}))
+    result = processor.anonymize(source, anonymized)
+
+    output = Document(anonymized).tables[0].cell(0, 0).paragraphs[0].text
+    assert "ooo-srkv" not in output
+    assert "CyberBackUp" not in output
+    assert "Cyber2Data" not in output
+    assert output.count("[УЗЕЛ-") == 3
+    assert output.count("\n") == 3
+    assert all(address in output for address in ("172.17.60.113", "172.17.60.120", "172.17.60.125"))
+    assert {"ooo-srkv", "CyberBackUp", "Cyber2Data"}.issubset(set(result.mapping.values()))
+
+    processor.restore(anonymized, restored, result.mapping)
+    restored_text = Document(restored).tables[0].cell(0, 0).paragraphs[0].text
+    assert restored_text == "\n".join(lines)
+
+
+def test_docx_hard_line_breaks_preserve_ip_boundaries(tmp_path):
+    source = tmp_path / "line-break-ip-source.docx"
+    anonymized = tmp_path / "line-break-ip-anonymized.docx"
+    document = Document()
+    paragraph = document.add_paragraph()
+    for index, line in enumerate((
+        "ooo-srkv/172.17.60.113",
+        "CyberBackUp/172.17.60.120",
+        "Cyber2Data/172.17.60.125",
+        "NodeTab/172.17.60.126",
+    )):
+        if index == 1:
+            paragraph.add_run()._r.append(OxmlElement("w:cr"))
+        elif index == 2:
+            paragraph.add_run().add_break()
+        elif index == 3:
+            paragraph.add_run().add_tab()
+        paragraph.add_run(line)
+    document.save(source)
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0].text
+    assert all(value not in output for value in (
+        "ooo-srkv", "CyberBackUp", "Cyber2Data", "NodeTab",
+        "172.17.60.113", "172.17.60.120", "172.17.60.125", "172.17.60.126",
+    ))
+    assert output.count("[УЗЕЛ-") == 4
+    assert output.count("[IP-") == 4
+    assert output.count("\n") == 2
+    assert output.count("\t") == 1
+    assert result.total == 8
+    with ZipFile(anonymized) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    assert len(root.xpath(".//w:cr", namespaces=namespace)) == 1
+    assert len(root.xpath(".//w:br", namespaces=namespace)) == 1
+    assert len(root.xpath(".//w:tab", namespaces=namespace)) == 1
 
 
 def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_path):
