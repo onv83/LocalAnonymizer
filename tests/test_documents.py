@@ -232,6 +232,136 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_windows_to_alse_table_redacts_both_software_columns_and_restores(tmp_path):
+    source = tmp_path / "windows-alse-source.docx"
+    anonymized = tmp_path / "windows-alse-anonymized.docx"
+    restored = tmp_path / "windows-alse-restored.docx"
+    edited = tmp_path / "windows-alse-edited.docx"
+    semantic_restored = tmp_path / "windows-alse-semantic-restored.docx"
+    rows = [
+        ("Microsoft Office", "LibreOffice, пакет libreoffice", "Да — Astra"),
+        (
+            "Яндекс Браузер",
+            "Mozilla Firefox ESR, пакет firefox-esr",
+            "Совместимость подтверждена внутренним тестированием",
+        ),
+        (
+            "Агент администрирования Kaspersky Security Center",
+            "Kaspersky Security Center Network Agent for Linux",
+            "Нет в перечне Astra; дистрибутив производителя",
+        ),
+        ("7-Zip", "7-Zip, пакет 7zip", "Доступен в штатном репозитории"),
+        (
+            "DameWare Mini Remote Control",
+            "Remmina и TigerVNC",
+            "Ручная установка по инструкции поставщика",
+        ),
+    ]
+    document = Document()
+    table = document.add_table(rows=1, cols=3)
+    for index, value in enumerate((
+        "Исходное Windows-ПО",
+        "Вариант для ALSE / Linux",
+        "Статус аналогов и наличие в репозитории Astra",
+    )):
+        table.rows[0].cells[index].text = value
+    for values in rows:
+        cells = table.add_row().cells
+        for index, value in enumerate(values):
+            cells[index].text = value
+
+    long_software = "LegacySuite-" + "X" * 260
+    cells = table.add_row().cells
+    cells[0].text = f"  {long_software}  "
+    cells[1].text = ""
+    cells[1].add_paragraph("Remmina")
+    cells[1].add_paragraph("и TigerVNC")
+    cells[1].add_paragraph("")
+    cells[2].text = "Проверено отдельным стендом"
+
+    cells = table.add_row().cells
+    cells[0].text = ""
+    cells[1].text = "OnlyOffice Desktop Editors"
+    cells[2].text = "Проходит сертификацию"
+
+    cells = table.add_row().cells
+    cells[0].text = "Legacy Browser"
+    paragraph = cells[1].paragraphs[0]
+    paragraph.clear()
+    run = paragraph.add_run("Firefox")
+    run.add_break()
+    run.add_text("ESR package")
+    cells[2].text = "Поддерживается поставщиком"
+
+    cells = table.add_row().cells
+    cells[0].merge(cells[1]).text = "Merged layout note"
+    cells[2].text = "Не строка из трёх ячеек"
+
+    structured_products = [
+        long_software,
+        "Remmina\nи TigerVNC",
+        "OnlyOffice Desktop Editors",
+        "Legacy Browser",
+        "Firefox\nESR package",
+    ]
+    leaked_fragments = [
+        long_software,
+        "Remmina",
+        "TigerVNC",
+        "OnlyOffice Desktop Editors",
+        "Legacy Browser",
+        "Firefox",
+        "ESR package",
+    ]
+    unrelated_values = ("Раздел согласования", "Ответственный отдел", "Да, согласовано")
+    unrelated = document.add_table(rows=1, cols=3)
+    for index, value in enumerate(unrelated_values):
+        unrelated.rows[0].cells[index].text = value
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized)
+    products = [value for row in rows for value in row[:2]]
+    assert all(value.encode("utf-8") not in package_xml for value in products)
+    assert all(value.encode("utf-8") not in package_xml for value in leaked_fragments)
+    assert set(products + structured_products).issubset(set(result.mapping.values()))
+    assert all(not any(marker in value for marker in "\ufdd0\ufdd1\ufdd2\ufdd3") for value in result.mapping.values())
+    assert all(status.encode("utf-8") in package_xml for _, _, status in rows)
+    assert "Merged layout note".encode("utf-8") in package_xml
+    assert all(value.encode("utf-8") in package_xml for value in unrelated_values)
+    assert not set(unrelated_values).intersection(result.mapping.values())
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+    changed = Document(anonymized)
+    changed.add_paragraph("Редакторская правка")
+    changed.save(edited)
+    DocxProcessor().restore(
+        edited,
+        semantic_restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    semantic_document = Document(semantic_restored)
+    semantic_table = semantic_document.tables[0]
+    assert semantic_table.rows[6].cells[0].text == f"  {long_software}  "
+    assert semantic_table.rows[6].cells[1].text == "\nRemmina\nи TigerVNC\n"
+    assert semantic_table.rows[7].cells[0].text == ""
+    assert semantic_table.rows[7].cells[1].text == "OnlyOffice Desktop Editors"
+    assert semantic_table.rows[8].cells[0].text == "Legacy Browser"
+    assert semantic_table.rows[8].cells[1].text == "Firefox\nESR package"
+    assert semantic_table.rows[9].cells[0].text == "Merged layout note"
+    assert semantic_document.paragraphs[-1].text == "Редакторская правка"
+
+
 def test_docx_graphic_is_removed_from_anonymized_package_and_restored_exactly(tmp_path):
     source = tmp_path / "graphic-source.docx"
     image = tmp_path / "synthetic.png"

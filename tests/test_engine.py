@@ -385,6 +385,79 @@ def test_software_inventory_redacts_each_product_name_but_preserves_metrics():
     assert all(metric in result.text for metric in ("10", "1,6%", "4", "0,6%", "3", "0,5%"))
 
 
+def test_windows_to_alse_software_table_redacts_both_product_columns():
+    sep = "\ufdd0"
+    row_boundary = "\ufdd0\ufdd2\ufdd0"
+    windows_products = [
+        "Microsoft Office",
+        "Яндекс Браузер",
+        "Агент администрирования Kaspersky Security Center",
+        "7-Zip",
+        "DameWare Mini Remote Control",
+    ]
+    linux_products = [
+        "LibreOffice, пакет libreoffice",
+        "Mozilla Firefox ESR, пакет firefox-esr",
+        "Kaspersky Security Center Network Agent for Linux",
+        "7-Zip, пакет 7zip",
+        "Remmina и TigerVNC",
+    ]
+    statuses = [
+        "Да — Astra",
+        "Совместимость подтверждена внутренним тестированием",
+        "Нет в перечне Astra; дистрибутив производителя",
+        "Доступен в штатном репозитории",
+        "Ручная установка по инструкции поставщика",
+    ]
+    table = row_boundary.join([
+        sep.join([
+            "Исходное Windows-ПО",
+            "Вариант для ALSE / Linux",
+            "Статус аналогов и наличие в репозитории Astra",
+        ]),
+        *[sep.join(row) for row in zip(windows_products, linux_products, statuses)],
+    ])
+    boundary = "\ufdd0\ufdd1\ufdd0"
+    source = boundary + table + boundary
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(value not in result.text for value in windows_products + linux_products)
+    assert all(status in result.text for status in statuses)
+    assert len([value for value in result.mapping.values() if value in windows_products + linux_products]) == 10
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_windows_to_alse_table_does_not_reclassify_unrelated_status_like_triples():
+    sep = "\ufdd0"
+    row_boundary = "\ufdd0\ufdd2\ufdd0"
+    software_table = row_boundary.join([
+        sep.join([
+            "Исходное Windows-ПО",
+            "Вариант для ALSE / Linux",
+            "Статус аналогов и наличие в репозитории Astra",
+        ]),
+        sep.join(["Microsoft Office", "LibreOffice, пакет libreoffice", "Да — Astra"]),
+    ])
+    unrelated_table = sep.join([
+        "Раздел согласования",
+        "Ответственный отдел",
+        "Да, согласовано",
+    ])
+    boundary = "\ufdd0\ufdd1\ufdd0"
+    source = boundary + software_table + boundary + unrelated_table + boundary
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Microsoft Office" not in result.text
+    assert "LibreOffice, пакет libreoffice" not in result.text
+    assert "Раздел согласования" in result.text
+    assert "Ответственный отдел" in result.text
+
+
 def test_contextual_software_alias_respects_disabled_category():
     sep = "\ufdd0"
     source = sep.join([

@@ -178,7 +178,9 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
     parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
     payloads: dict[str, bytes] = {}
     infos = []
-    paragraphs: list[tuple[str, object, list[object], str]] = []
+    paragraphs: list[
+        tuple[str, object, list[object], str, tuple[str, str | None, str | None, str | None]]
+    ] = []
     with ZipFile(source) as package:
         for info in package.infolist():
             infos.append(info)
@@ -188,18 +190,47 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
                 root = etree.fromstring(payload, parser)
                 payloads[info.filename] = root
                 for paragraph in root.xpath(".//w:p", namespaces={"w": qn("w:t").split("}", 1)[0][1:]}):
-                    for nodes in _xml_text_node_groups(paragraph):
+                    table = next((ancestor for ancestor in paragraph.iterancestors()
+                                  if ancestor.tag == qn("w:tbl")), None)
+                    table_path = root.getroottree().getpath(table) if table is not None else None
+                    row = next((ancestor for ancestor in paragraph.iterancestors()
+                                if ancestor.tag == qn("w:tr")), None)
+                    cell = next((ancestor for ancestor in paragraph.iterancestors()
+                                 if ancestor.tag == qn("w:tc")), None)
+                    tree = root.getroottree()
+                    row_path = tree.getpath(row) if row is not None else None
+                    cell_path = tree.getpath(cell) if cell is not None else None
+                    context = (info.filename, table_path, row_path, cell_path)
+                    groups = _xml_text_node_groups(paragraph) or [[]]
+                    for nodes in groups:
                         paragraphs.append((
                             info.filename,
                             root,
                             nodes,
                             "".join(node.text or "" for node in nodes),
+                            context,
                         ))
-    replacements = transform_all([text for _, _, _, text in paragraphs])
+    table_boundary = "\ufdd0\ufdd1\ufdd0"
+    row_boundary = "\ufdd0\ufdd2\ufdd0"
+
+    def separator(left, right) -> str:
+        left_context, right_context = left[4], right[4]
+        if left_context[0:2] != right_context[0:2]:
+            return table_boundary
+        if left_context[1] is None:
+            return "\ufdd0"
+        if left_context[2] != right_context[2]:
+            return row_boundary
+        if left_context[3] != right_context[3]:
+            return "\ufdd0"
+        return "\ufdd3"
+
+    separators = [separator(left, right) for left, right in zip(paragraphs, paragraphs[1:])]
+    replacements = transform_all([text for _, _, _, text, _ in paragraphs], separators)
     if len(replacements) != len(paragraphs):
         raise RuntimeError("Ошибка разбиения документа")
     changed_parts: set[str] = set()
-    for (name, _, nodes, original), replacement in zip(paragraphs, replacements):
+    for (name, _, nodes, original, _), replacement in zip(paragraphs, replacements):
         if replacement != original:
             _replace_xml_text_nodes(nodes, replacement)
             changed_parts.add(name)
@@ -231,13 +262,21 @@ class DocxProcessor:
         source, output = Path(source), Path(output)
         _preflight_docx_package(source)
         original_hash = source.read_bytes()
-        separator = "\ufdd0"
+        document_boundary = "\ufdd0\ufdd1\ufdd0"
         result_holder = []
 
-        def transform_all(texts: list[str]) -> list[str]:
-            result = self.engine.anonymize(separator.join(texts))
+        def transform_all(texts: list[str], separators: list[str]) -> list[str]:
+            if not texts:
+                result = self.engine.anonymize("")
+                result_holder.append(result)
+                return []
+            combined = texts[0] + "".join(
+                separator + text for separator, text in zip(separators, texts[1:])
+            )
+            result = self.engine.anonymize(document_boundary + combined + document_boundary)
             result_holder.append(result)
-            return result.text.split(separator)
+            transformed = result.text.removeprefix(document_boundary).removesuffix(document_boundary)
+            return re.split(r"\ufdd0(?:[\ufdd1\ufdd2]\ufdd0)?|\ufdd3", transformed)
 
         temp = _temp_path(output)
         try:
@@ -277,9 +316,33 @@ class DocxProcessor:
             return []
         unknown: list[str] = []
 
-        def transform_all(texts: list[str]) -> list[str]:
+        def transform_all(texts: list[str], separators: list[str]) -> list[str]:
             unknown.extend(marker for text in texts for marker in _unknown_markers(text, mapping))
-            return [_restore_text(text, mapping) for text in texts]
+            if not texts:
+                return []
+            separator_tokens = {
+                "\ufdd0": "\x00LA_CELL\x00",
+                "\ufdd3": "\x00LA_INTRA\x00",
+                "\ufdd0\ufdd1\ufdd0": "\x00LA_TABLE\x00",
+                "\ufdd0\ufdd2\ufdd0": "\x00LA_ROW\x00",
+            }
+            wrapper = separator_tokens["\ufdd0\ufdd1\ufdd0"]
+            combined = wrapper + texts[0] + "".join(
+                separator_tokens[separator] + text
+                for separator, text in zip(separators, texts[1:])
+            ) + wrapper
+            intra = separator_tokens["\ufdd3"]
+            for marker, original in sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True):
+                segments = original.split("\n")
+                if len(segments) > 1:
+                    structural_marker = marker + intra * (len(segments) - 1)
+                    combined = combined.replace(structural_marker, intra.join(segments))
+                combined = combined.replace(marker, original)
+            transformed = combined.removeprefix(wrapper).removesuffix(wrapper)
+            split_pattern = "|".join(
+                re.escape(token) for token in sorted(set(separator_tokens.values()), key=len, reverse=True)
+            )
+            return re.split(split_pattern, transformed)
 
         temp = _temp_path(output)
         try:

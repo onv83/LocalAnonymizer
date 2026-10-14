@@ -425,6 +425,77 @@ class Anonymizer:
             )
             remember_exact(ou_matches, "СТРУКТУРА-AD")
 
+        # DOCX supplies protected table, row, cell, and intra-cell boundaries.
+        # Parse the actual three-column table structure instead of guessing from
+        # status wording or from a document-global paragraph stream.
+        table_boundary = "\ufdd0\ufdd1\ufdd0"
+        row_boundary = "\ufdd0\ufdd2\ufdd0"
+        intra_cell_boundary = "\ufdd3"
+
+        def split_spans(value: str, delimiter: str) -> list[tuple[int, int, str]]:
+            spans: list[tuple[int, int, str]] = []
+            start = 0
+            while True:
+                end = value.find(delimiter, start)
+                if end < 0:
+                    spans.append((start, len(value), value[start:]))
+                    return spans
+                spans.append((start, end, value[start:end]))
+                start = end + len(delimiter)
+
+        if "ПРОГРАММА" not in self.disabled_categories and table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                header_row = None
+                for index, (_, _, row_text) in enumerate(rows):
+                    cells = split_spans(row_text, "\ufdd0")
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    if (
+                        len(headings) == 3
+                        and re.fullmatch(r"Исходное\s+Windows[-‐‑–— ]ПО", headings[0], re.I)
+                        and re.fullmatch(r"Вариант\s+для\s+ALSE\s*/\s*Linux", headings[1], re.I)
+                        and re.fullmatch(r"Статус\s+аналогов.*", headings[2], re.I)
+                    ):
+                        header_row = index
+                        break
+                if header_row is None:
+                    continue
+                for row_offset, _, row_text in rows[header_row + 1:]:
+                    cells = split_spans(row_text, "\ufdd0")
+                    # A merged or malformed row is skipped rather than allowing
+                    # column positions to drift into another row.
+                    if len(cells) != 3:
+                        continue
+                    for cell_start, _cell_end, raw in cells[:2]:
+                        meaningful = [
+                            index for index, char in enumerate(raw)
+                            if char != intra_cell_boundary and not char.isspace()
+                        ]
+                        if not meaningful:
+                            continue
+                        local_start, local_end = meaningful[0], meaningful[-1] + 1
+                        value = raw[local_start:local_end].replace(intra_cell_boundary, "\n")
+                        if (
+                            len(value) < 2
+                            or value.startswith("[")
+                            or not re.search(r"[A-Za-zА-Яа-яЁё]", value)
+                        ):
+                            continue
+                        left = current_start + row_offset + cell_start + local_start
+                        right = current_start + row_offset + cell_start + local_end
+                        found.append(Detection(
+                            left, right, "ПРОГРАММА", 93, value, value,
+                            scope_start=left, scope_end=right,
+                            case_sensitive_canonical=True,
+                        ))
+                        exact_aliases.append((value, value, "ПРОГРАММА", True))
+
         if re.search(r"(?:программ\w*\s+обеспечен\w*|(?:^|[^\w])ПО(?:[^\w]|$)|software)", source, re.I):
             software_matches = add(
                 r"(?<=\ufdd0)([^\r\n\ufdd0]{2,160})(?=\ufdd0\d+\ufdd0\d{1,3}(?:[.,]\d+)?\s*%)",
@@ -790,7 +861,12 @@ class Anonymizer:
                         mapping[replacement] = item.value
                         legend.append({"ph": replacement, "orig": item.value, "cat": item.category})
                 counts[item.category] = counts.get(item.category, 0) + 1
-                parts.append({"t": "ph", "s": replacement, "orig": "" if item.irreversible else item.value, "cat": item.category,
+                # U+FDD3 is a protected intra-cell paragraph/run boundary used
+                # by the DOCX transformer. Keep every occurrence so replacing a
+                # complete multi-paragraph cell cannot change the XML group count.
+                protected_boundaries = source[start:end].count("\ufdd3") * "\ufdd3"
+                rendered_replacement = replacement + protected_boundaries
+                parts.append({"t": "ph", "s": rendered_replacement, "orig": "" if item.irreversible else item.value, "cat": item.category,
                               "secret": item.irreversible or item.category == "SECRET", "s0": start, "s1": end})
             cursor = end
         if cursor < len(source):

@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.4] — 2026-10-15
+
+### English
+
+#### Fixed
+
+- Both software columns in Windows-to-ALSE/Linux compatibility tables are now anonymized as complete reversible `ПРОГРАММА` values.
+- Linux alternatives such as package descriptions and multi-product cells no longer remain visible, while compatibility status text and DOCX formatting are preserved.
+
+### Русский
+
+#### Исправлено
+
+- Оба столбца с программами в таблицах соответствия Windows и ALSE/Linux теперь полностью и обратимо обезличиваются как значения `ПРОГРАММА`.
+- Linux-аналоги, включая описания пакетов и ячейки с несколькими продуктами, больше не остаются открытыми; статус совместимости и форматирование DOCX сохраняются.
+
 ## [0.2.3] — 2026-10-14
 
 ### English
@@ -124,7 +140,8 @@ No unreleased changes yet.
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.0...v0.2.1
