@@ -439,7 +439,7 @@ class Anonymizer:
         )
         remember_exact(script_matches, "СКРИПТЫ")
         deployment_matches = add(
-            rf"\bРазвертывание\s+ПО{boundary}([^\r\n\ufdd0]{{2,500}})(?=\ufdd0)",
+            rf"\bРазв[её]ртывание\s+ПО{boundary}([^\r\n\ufdd0]{{2,500}})(?=\ufdd0)",
             "ПРОГРАММА", 91, group=1, flags=re.I,
             canonical=lambda m: m.group(1), allow_boundary_context=True,
             case_sensitive_canonical=True,

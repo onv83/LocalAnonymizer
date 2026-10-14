@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.2] — 2026-10-14
+
+### English
+
+#### Fixed
+
+- Software deployment lists introduced by the correctly spelled Russian heading `Развёртывание ПО` are now anonymized as complete reversible values.
+- Identifiers such as setup package names, internal product names, deployment scripts, and product-specific variants no longer remain visible in that table row.
+
+### Русский
+
+#### Исправлено
+
+- Списки программ в строках с нормативным написанием `Развёртывание ПО` теперь полностью и обратимо обезличиваются.
+- Имена установочных пакетов, внутренних продуктов, сценариев развёртывания и специализированных вариантов ПО больше не остаются открытыми в этой строке таблицы.
+
 ## [0.2.1] — 2026-10-14
 
 ### English
@@ -92,7 +108,8 @@ No unreleased changes yet.
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/onv83/LocalAnonymizer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.1.0

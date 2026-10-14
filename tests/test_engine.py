@@ -422,6 +422,28 @@ def test_script_and_deployment_example_cells_are_redacted_as_complete_lists():
     assert "[ПРОГРАММА-1]" in result.text
 
 
+def test_deployment_cell_with_russian_yo_redacts_real_software_list():
+    sep = "\ufdd0"
+    deployment_list = (
+        "1C 8.3.27.1859; New_setup_1C; Setup_1C_*; TessaDesk; "
+        "Установка LanDocs; deploy_office2016; Kaspersky_AK*"
+    )
+    source = sep.join([
+        "Развёртывание ПО",
+        deployment_list,
+        "Установка возможна при наличии поддерживаемых Linux-пакетов",
+    ])
+
+    result = Anonymizer().anonymize(source)
+
+    assert deployment_list not in result.text
+    assert "TessaDesk" not in result.text
+    assert "LanDocs" not in result.text
+    assert "Kaspersky_AK" not in result.text
+    assert "[ПРОГРАММА-1]" in result.text
+    assert result.mapping["[ПРОГРАММА-1]"] == deployment_list
+
+
 def test_disk_labels_and_windows_paths_are_redacted_reversibly():
     source = r"Сценарий обрабатывает only disk k; резервная папка C:\Clients\Acme\Archive и том DATA01. Метка DATA01 повторяется."
 

@@ -165,6 +165,7 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
         "lab-nas", "vm-pc", "ALPHAHQ", "BETA-LAB",
         "Computers_ACME/Production/Site-A", "Servers/Legacy-RDP",
         "Example Secure Client", "Northwind Banking Plug-in",
+        "1C 8.3.27.1859; New_setup_1C; Setup_1C_*; TessaDesk; Установка LanDocs; deploy_office2016; Kaspersky_AK*",
     ]
     document = Document()
 
@@ -201,6 +202,11 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
     row[0].text = "Northwind Banking Plug-in"
     row[1].text = "4"
     row[2].text = "0,6%"
+
+    deployment = document.add_table(rows=1, cols=3)
+    deployment.cell(0, 0).text = "Развёртывание ПО"
+    deployment.cell(0, 1).text = sensitive[-1]
+    deployment.cell(0, 2).text = "Установка возможна при наличии поддерживаемых Linux-пакетов"
     document.save(source)
     source_bytes = source.read_bytes()
 
