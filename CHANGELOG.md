@@ -14,6 +14,24 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.7] — 2026-10-15
+
+### English
+
+#### Fixed
+
+- Recognized Windows-to-ALSE/Linux compatibility tables no longer classify repeated headers, totals, notes, comments, or explicit section-label rows as software.
+- Added a regression covering structural rows inside a valid compatibility table without weakening arbitrary or empty status support.
+- Removed the obsolete new/legacy design selector; the current interface is now used consistently in Russian and English.
+
+### Русский
+
+#### Исправлено
+
+- В распознанных таблицах совместимости Windows → ALSE/Linux повторные заголовки, итоги, примечания, комментарии и явно обозначенные строки разделов больше не классифицируются как программы.
+- Добавлена регрессионная проверка структурных строк внутри корректной таблицы без ограничения произвольных и пустых статусов.
+- Удалён устаревший переключатель нового и старого дизайна; актуальный интерфейс теперь всегда используется на русском и английском языках.
+
 ## [0.2.6] — 2026-10-15
 
 ### English

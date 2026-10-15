@@ -1,8 +1,7 @@
 const $ = s => document.querySelector(s);
 const APP_VERSION='1.8';
 const THEME_KEY='local-anonymizer-theme';
-const DESIGN_KEY='designMode';
-async function applyDesignMode(mode,persist=false){const value=mode==='legacy'?'legacy':'new';document.body.dataset.design=value;$('#designMode').value=value;$('#detectionCategories').open=false;if(persist){localStorage.setItem('designMode',value);await pywebview.api.set_design_mode(value);}}
+async function applyCurrentDesign(){document.body.dataset.design='new';$('#detectionCategories').open=false;try{localStorage.setItem('designMode','new');}catch(_error){}await pywebview.api.set_design_mode('new');}
 function preferredTheme(){
   try{const saved=localStorage.getItem(THEME_KEY);if(saved==='light'||saved==='dark')return saved;}catch(_error){}
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
@@ -369,7 +368,7 @@ $('#restore').onclick=async()=>{clearTimeout(debounceTimer);const source=$('#sou
 $('#selftest').onclick=async()=>{$('#testResult').textContent=(await pywebview.api.engine_self_test()).ok?' Движок исправен':' Ошибка проверки';};
 $('#help').onclick=()=>alert('Все правила выполняются локально. Синие маркеры обратимы по текущей таблице, серые секреты удалены без исходных значений, жёлтые фрагменты требуют решения. Таблица и исходные значения в справку не включаются.');
 $('#themeToggle').onclick=async()=>{const theme=document.documentElement?.dataset?.theme==='dark'?'light':'dark';applyTheme(theme,true);await pywebview.api.set_theme(theme);};
-$('#designMode').onchange=async e=>await applyDesignMode(e.target.value,true);
+
 $('#applyNow').onclick=()=>$('#anonymize').click();
 $('#exportNow').onclick=()=>$('#downloadAnon').click();
 $('#mono').onchange=e=>document.querySelectorAll('textarea,.mirror,.rich-output').forEach(x=>x.classList.toggle('mono',e.target.checked));
@@ -387,6 +386,6 @@ document.querySelectorAll('.category').forEach(x=>x.addEventListener('change',ma
 $('#source').addEventListener('scroll',()=>{$('#sourceMirror').scrollTop=$('#source').scrollTop;syncPreviewScroll($('#source'),activeAnonymizedPreview());});$('#richOutput').addEventListener('scroll',()=>{syncPreviewScroll($('#richOutput'),activeSourcePreview());$('#sourceMirror').scrollTop=$('#source').scrollTop;});
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();$('#copy').click();}if(e.key==='Escape'){if(previewFullscreen){setPreviewFullscreen(false);return;}if(anonymizedPreviewFullscreen){setAnonymizedPreviewFullscreen(false);}}});
 ['dragenter','dragover'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));document.addEventListener('drop',async e=>{e.preventDefault();const paths=[...e.dataTransfer.files].map(f=>f.path).filter(Boolean);if(paths.length){const ticket=++importGeneration;generation++;const r=await pywebview.api.import_paths(paths);if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent='Ошибка импорта';}});
-window.addEventListener('pywebviewready',async()=>{const savedDesign=await pywebview.api.get_design_mode();await applyDesignMode(savedDesign||localStorage.getItem(DESIGN_KEY)||'new');$('#detectionCategories').open=false;const savedTheme=await pywebview.api.get_theme();if(savedTheme)applyTheme(savedTheme);updateCategoryMarkerExamples();showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');await loadProfileIntoEditor('Общий');if(selected)await loadDocumentPreview();else{renderOutput();updatePrimaryAction();}});
+window.addEventListener('pywebviewready',async()=>{await applyCurrentDesign();const savedTheme=await pywebview.api.get_theme();if(savedTheme)applyTheme(savedTheme);updateCategoryMarkerExamples();showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');await loadProfileIntoEditor('Общий');if(selected)await loadDocumentPreview();else{renderOutput();updatePrimaryAction();}});
 
 $('#languageMode').onchange=async e=>{const value=e.target.value;await pywebview.api.set_language(value);window.location.href=value==='ru'?'index-v1.8.18.html':'index-en-v1.8.18.html';};

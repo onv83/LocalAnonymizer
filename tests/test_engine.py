@@ -480,6 +480,41 @@ def test_windows_to_alse_software_cell_redacts_short_and_numeric_secret_remainde
     assert all("TOPSECRET" not in value for value in result.mapping.values())
 
 
+def test_windows_to_alse_table_skips_structural_rows_inside_recognized_table():
+    sep = "\ufdd0"
+    row_boundary = "\ufdd0\ufdd2\ufdd0"
+    boundary = "\ufdd0\ufdd1\ufdd0"
+    headings = [
+        "Исходное Windows-ПО",
+        "Вариант для ALSE / Linux",
+        "Статус аналогов и наличие в репозитории Astra",
+    ]
+    structural_rows = [
+        headings,
+        ["Итого программ: 12", "", ""],
+        ["  ВСЕГО: 12  ", "", ""],
+        ["Примечание к таблице", "Ответственный отдел", ""],
+        ["Комментарии: варианты согласованы", "", ""],
+        ["Раздел 1. Офисные приложения", "", ""],
+    ]
+    table = row_boundary.join([
+        sep.join(headings),
+        sep.join(["Microsoft Office", "LibreOffice", "Подтверждено"]),
+        *[sep.join(row) for row in structural_rows],
+    ])
+
+    result = Anonymizer().anonymize(boundary + table + boundary)
+
+    assert "Microsoft Office" not in result.text
+    assert "LibreOffice" not in result.text
+    software_values = {
+        original
+        for token, original in result.mapping.items()
+        if token.startswith("[ПРОГРАММА-")
+    }
+    assert software_values == {"Microsoft Office", "LibreOffice"}
+
+
 def test_windows_to_alse_table_does_not_reclassify_unrelated_status_like_triples():
     sep = "\ufdd0"
     row_boundary = "\ufdd0\ufdd2\ufdd0"

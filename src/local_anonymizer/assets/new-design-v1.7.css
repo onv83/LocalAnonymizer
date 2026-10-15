@@ -33,7 +33,7 @@ body[data-design="new"] .workflow-steps{display:grid;grid-template-columns:repea
 body[data-design="new"] .workflow-steps li{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-weight:700}
 body[data-design="new"] .workflow-status{position:sticky;bottom:0;z-index:70;display:flex;align-items:center;gap:12px;border:2px solid var(--action-primary);box-shadow:0 -3px 18px #07131e33}
 body[data-design="new"] .workflow-status [role="status"]{flex:1;font-weight:700}
-body[data-design="new"] .language-switch,body[data-design="new"] .design-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:42px;box-sizing:border-box}body[data-design="new"] #themeToggle{white-space:nowrap}
+body[data-design="new"] .language-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:42px;box-sizing:border-box}body[data-design="new"] #themeToggle{white-space:nowrap}
 body[data-design="new"] .sensitive-note{display:block;color:var(--warning);margin-top:6px}
 body[data-design="new"] h2{font-size:16px;margin:0 0 6px}
 body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(46vh,520px);min-height:340px}

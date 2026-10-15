@@ -356,17 +356,17 @@ def test_new_design_uses_compact_interface_text_without_scaling_document_preview
     assert 'body[data-design="new"] .docx-preview{' not in css
 
 
-def test_new_design_aligns_language_and_interface_controls_on_one_level():
+def test_new_design_aligns_remaining_header_controls_on_one_level():
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
     ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
 
-    assert 'body[data-design="new"] .language-switch,body[data-design="new"] .design-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}' in css
+    assert 'body[data-design="new"] .language-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}' in css
     assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:42px;box-sizing:border-box}' in css
     assert 'body[data-design="new"] #themeToggle{white-space:nowrap}' in css
     for html in (ru_html, en_html):
         assert 'class="language-switch"' in html
-        assert 'class="design-switch"' in html
+        assert 'class="design-switch"' not in html
 
 
 def test_dark_new_design_stat_chips_have_explicit_readable_colors():
@@ -466,18 +466,21 @@ def test_double_escape_no_longer_silently_clears_user_work():
     assert "confirm('Очистить введённый текст" in javascript
 
 
-def test_ui_offers_persistent_new_and_legacy_design_modes():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+def test_ui_uses_current_design_without_legacy_selector():
+    russian_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    english_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    russian_javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    english_javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
-    assert 'id="designMode"' in html
-    assert '<option value="new">Новый дизайн</option>' in html
-    assert '<option value="legacy">Старый дизайн</option>' in html
-    assert "function applyDesignMode" in javascript
-    assert "localStorage.setItem('designMode'" in javascript
-    assert "pywebview.api.get_design_mode()" in javascript
-    assert "pywebview.api.set_design_mode" in javascript
-    assert "document.body.dataset.design" in javascript
+    for html in (russian_html, english_html):
+        assert 'id="designMode"' not in html
+        assert 'class="design-switch"' not in html
+    for javascript in (russian_javascript, english_javascript):
+        assert "function applyCurrentDesign" in javascript
+        assert "document.body.dataset.design='new'" in javascript
+        assert "pywebview.api.set_design_mode('new')" in javascript
+        assert "get_design_mode" not in javascript
+        assert "$('#designMode')" not in javascript
 
 
 def test_ui_offers_complete_persistent_english_interface():

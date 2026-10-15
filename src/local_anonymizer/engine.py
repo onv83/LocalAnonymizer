@@ -472,6 +472,25 @@ class Anonymizer:
                     # column positions to drift into another row.
                     if len(cells) != 3:
                         continue
+                    row_values = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    repeated_header = (
+                        re.fullmatch(r"Исходное\s+Windows[-‐‑–— ]ПО", row_values[0], re.I)
+                        and re.fullmatch(r"Вариант\s+для\s+ALSE\s*/\s*Linux", row_values[1], re.I)
+                        and re.fullmatch(r"Статус\s+аналогов.*", row_values[2], re.I)
+                    )
+                    structural_label = any(
+                        re.match(
+                            r"^(?:итого|всего|примечани[ея]|комментари[йи]|раздел)\b",
+                            value,
+                            re.I,
+                        )
+                        for value in row_values[:2]
+                    )
+                    if repeated_header or structural_label:
+                        continue
                     for cell_start, _cell_end, raw in cells[:2]:
                         meaningful = [
                             index for index, char in enumerate(raw)
