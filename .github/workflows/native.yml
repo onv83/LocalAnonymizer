@@ -52,7 +52,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential dbus-x11 gnome-keyring libgirepository-2.0-dev \
+            build-essential dbus-x11 gnome-keyring gobject-introspection \
+            libgirepository1.0-dev libgirepository-2.0-dev \
             libcairo2-dev pkg-config gir1.2-gtk-3.0 gir1.2-webkit2-4.1 \
             xclip xvfb
 

@@ -8,6 +8,12 @@ from local_anonymizer.word_com import convert_doc_to_docx
 import local_anonymizer.word_com as word_com
 
 
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="Word COM hardening is Windows-only",
+)
+
+
 class FakeDocument:
     def __init__(self, fail=False): self.fail=fail; self.closed=False
     def SaveAs2(self, path, FileFormat):

@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import sys
 import threading
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def test_storage_can_be_used_from_pywebview_bridge_thread(tmp_path):
     assert results == [[]]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="DPAPI envelope is Windows-only")
 def test_dpapi_envelope_is_bound_and_plaintext_never_enters_database(tmp_path):
     store = Storage(tmp_path)
     doc_id = store.import_document(tmp_path / "outside.docx", copy_source=False)
