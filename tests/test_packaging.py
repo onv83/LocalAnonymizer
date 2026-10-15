@@ -197,6 +197,7 @@ def test_posix_native_verifier_checks_all_packaged_smoke_modes():
 def test_native_spec_collects_runtime_loaded_secure_storage_backends():
     spec = (ROOT / "LocalAnonymizer.spec").read_text(encoding="utf-8")
 
+    assert "collect_all('docx')" in spec
     assert "if sys.platform in {'darwin', 'linux'}:" in spec
     assert "for package in ('keyring', 'cryptography'):" in spec
     assert "collect_all(package)" in spec
