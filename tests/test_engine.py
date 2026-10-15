@@ -457,6 +457,29 @@ def test_windows_to_alse_software_cell_redacts_nonsecret_remainder_around_secret
     assert all("TOPSECRET" not in value for value in result.mapping.values())
 
 
+def test_windows_to_alse_software_cell_redacts_short_and_numeric_secret_remainders():
+    sep = "\ufdd0"
+    row_boundary = "\ufdd0\ufdd2\ufdd0"
+    boundary = "\ufdd0\ufdd1\ufdd0"
+    table = row_boundary.join([
+        sep.join([
+            "Исходное Windows-ПО",
+            "Вариант для ALSE / Linux",
+            "Статус аналогов и наличие в репозитории Astra",
+        ]),
+        sep.join(["A TOPSECRET B", "TOPSECRET 2025", "Любой статус"]),
+    ])
+
+    result = Anonymizer(user_dictionary={"TOPSECRET": "SECRET"}).anonymize(
+        boundary + table + boundary
+    )
+
+    assert "TOPSECRET" not in result.text
+    assert "2025" not in result.text
+    assert {"A", "B", "2025"}.issubset(set(result.mapping.values()))
+    assert all("TOPSECRET" not in value for value in result.mapping.values())
+
+
 def test_windows_to_alse_table_does_not_reclassify_unrelated_status_like_triples():
     sep = "\ufdd0"
     row_boundary = "\ufdd0\ufdd2\ufdd0"

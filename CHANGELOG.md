@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.6] — 2026-10-15
+
+### English
+
+#### Fixed
+
+- Structured software cells now anonymize every non-empty remainder around a higher-priority secret, including one-character and numeric-only fragments.
+- Added regressions preventing values such as `A TOPSECRET B` and `TOPSECRET 2025` from being disclosed partially.
+
+### Русский
+
+#### Исправлено
+
+- В структурированных ячейках ПО теперь обезличивается каждый непустой остаток вокруг секрета с более высоким приоритетом, включая однобуквенные и полностью числовые фрагменты.
+- Добавлены регрессионные проверки, исключающие частичное раскрытие значений вида `A TOPSECRET B` и `TOPSECRET 2025`.
+
 ## [0.2.5] — 2026-10-15
 
 ### English

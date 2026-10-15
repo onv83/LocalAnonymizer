@@ -753,7 +753,7 @@ class Anonymizer:
                             end -= 1
                         raw = source[start:end]
                         value = raw.replace("\ufdd3", "\n")
-                        if len(value) < 2 or not re.search(r"[A-Za-zА-Яа-яЁё]", value):
+                        if not value:
                             continue
                         fragment = Detection(
                             start, end, item.category, item.priority, value, value,
