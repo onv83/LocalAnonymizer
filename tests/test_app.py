@@ -395,7 +395,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
 
 
@@ -413,9 +413,12 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
     assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1}' in css
-    assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(36vh,400px);min-height:260px}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;' in css
+    assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
+    assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
+    assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row}' in css
     assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr 1fr;' in css
+    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
 
 
 def test_new_design_hides_empty_review_result_status():
