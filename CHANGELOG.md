@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.8] — 2026-10-15
+
+### English
+
+#### Fixed
+
+- Removed the obsolete design selector before the first frame renders and made preference migration non-blocking.
+- Restyled the manual-review candidate and decision cards for consistent dark-theme contrast and removed the unnecessary inner scrollbar.
+
+### Русский
+
+#### Исправлено
+
+- Устаревший переключатель дизайна удалён до отрисовки первого кадра; перенос настройки больше не может остановить запуск интерфейса.
+- Карточки кандидата и решений ручной проверки приведены к цветам тёмной темы, лишняя внутренняя прокрутка удалена.
+
 ## [0.2.7] — 2026-10-15
 
 ### English

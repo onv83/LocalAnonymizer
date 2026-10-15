@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 const APP_VERSION='1.8';
 const THEME_KEY='local-anonymizer-theme';
-async function applyCurrentDesign(){document.body.dataset.design='new';$('#detectionCategories').open=false;try{localStorage.setItem('designMode','new');}catch(_error){}await pywebview.api.set_design_mode('new');}
+async function applyCurrentDesign(){document.body.dataset.design='new';$('#detectionCategories').open=false;try{localStorage.setItem('designMode','new');}catch(_error){}try{await pywebview.api.set_design_mode('new')}catch(_error){}}
 function preferredTheme(){
   try{const saved=localStorage.getItem(THEME_KEY);if(saved==='light'||saved==='dark')return saved;}catch(_error){}
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';

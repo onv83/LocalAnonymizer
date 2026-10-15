@@ -386,6 +386,14 @@ def test_new_design_current_review_text_has_explicit_readable_color():
     assert 'body[data-design="new"] #reviewCurrent{color:var(--text-primary)}' in css
 
 
+def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll():
+    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+
+    assert 'body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:86px;max-height:none;overflow:visible}' in css
+    assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
+
+
 def test_new_design_hides_empty_review_result_status():
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
 
@@ -475,10 +483,14 @@ def test_ui_uses_current_design_without_legacy_selector():
     for html in (russian_html, english_html):
         assert 'id="designMode"' not in html
         assert 'class="design-switch"' not in html
+        assert '<body data-design="new">' in html
     for javascript in (russian_javascript, english_javascript):
         assert "function applyCurrentDesign" in javascript
         assert "document.body.dataset.design='new'" in javascript
         assert "pywebview.api.set_design_mode('new')" in javascript
+        assert "try{await pywebview.api.set_design_mode('new')}catch(_error){}" in javascript
+        assert "DESIGN_KEY" not in javascript
+        assert "await applyCurrentDesign();" in javascript
         assert "get_design_mode" not in javascript
         assert "$('#designMode')" not in javascript
 

@@ -24,6 +24,9 @@ body[data-design="new"] #deleteDoc{border-color:var(--danger);color:var(--danger
 body[data-design="new"] :is(button,select,textarea,summary,[tabindex],a):focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 body[data-design="new"] .review{background:var(--surface);color:var(--text-primary);border-color:var(--warning)}
 body[data-design="new"] .review-current,body[data-design="new"] .review-option{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
+body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
+body[data-design="new"] .review-candidate{height:auto;min-height:86px;max-height:none;overflow:visible}
+body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}
 body[data-design="new"] .review-value,body[data-design="new"] .review-label{color:var(--text-primary)}
 body[data-design="new"] #reviewCurrent{color:var(--text-primary)}
 body[data-design="new"] #resultStatus:empty{display:none}
