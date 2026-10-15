@@ -95,12 +95,20 @@ jobs:
             ./verify-native.sh
           '
 
+      - name: Create macOS release archive
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/LocalAnonymizer.app LocalAnonymizer-macos-arm64.zip
+
+      - name: Create Linux release archive
+        if: runner.os == 'Linux'
+        run: tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz LocalAnonymizer
+
       - name: Upload macOS application
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: LocalAnonymizer-macos-arm64
-          path: dist/LocalAnonymizer.app
+          path: LocalAnonymizer-macos-arm64.zip
           if-no-files-found: error
 
       - name: Upload Linux application
@@ -108,5 +116,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LocalAnonymizer-linux-x64
-          path: dist/LocalAnonymizer
+          path: LocalAnonymizer-linux-x64.tar.gz
           if-no-files-found: error

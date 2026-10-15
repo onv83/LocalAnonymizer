@@ -8,6 +8,16 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### English
 
+No unreleased changes yet.
+
+### Русский
+
+Новых неопубликованных изменений пока нет.
+
+## [0.2.9] — 2026-10-15
+
+### English
+
 #### Changed
 
 - Moved the manual-review workspace above both previews and compacted it into a two-column desktop panel, keeping both text panes visible while decisions are made.

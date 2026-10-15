@@ -215,6 +215,8 @@ def test_native_ci_builds_and_smokes_linux_and_macos_packages():
     assert "Run macOS tests" in workflow
     assert "Run Linux tests with Secret Service" in workflow
     assert "security delete-generic-password -s LocalAnonymizer" in workflow
+    assert "ditto -c -k --sequesterRsrc --keepParent" in workflow
+    assert "tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz LocalAnonymizer" in workflow
     assert "uv run pytest" in workflow
     assert "./build.sh" in workflow
     assert "./verify-native.sh" in workflow
