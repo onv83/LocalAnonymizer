@@ -175,8 +175,10 @@ def test_profile_json_import_reports_invalid_file_without_overwriting_profile(tm
     assert api.load_profile("Общий") == before
 
 
-def test_text_previews_share_the_top_row_and_manual_review_is_below_them():
+def test_manual_review_precedes_aligned_text_preview_panes():
     class LayoutParser(HTMLParser):
+        VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+
         def __init__(self):
             super().__init__()
             self.stack = []
@@ -192,10 +194,12 @@ def test_text_previews_share_the_top_row_and_manual_review_is_below_them():
             if node:
                 self.parents[node] = parent
                 self.children.setdefault(parent, []).append(node)
-            self.stack.append(node)
+            if tag not in self.VOID_TAGS:
+                self.stack.append(node)
 
         def handle_endtag(self, tag):
-            self.stack.pop()
+            if tag not in self.VOID_TAGS:
+                self.stack.pop()
 
     parser = LayoutParser()
     parser.feed(asset_path("index-v1.8.18.html").read_text(encoding="utf-8"))
@@ -205,7 +209,8 @@ def test_text_previews_share_the_top_row_and_manual_review_is_below_them():
     assert parser.parents["anonymizedPreviewSurface"] == "columns"
     assert parser.parents["manualReview"] == "columns"
     assert parser.parents["warning"] == "manualReview"
-    assert parser.children["columns"].index("manualReview") > parser.children["columns"].index("anonymizedPreviewSurface")
+    assert parser.children["columns"].index("manualReview") < parser.children["columns"].index("sourceHeading")
+    assert parser.children["columns"].index("manualReview") < parser.children["columns"].index("anonymizedPreviewSurface")
 
 
 def test_settings_have_one_checkbox_per_actual_replacement_class():
@@ -390,8 +395,25 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
     css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:86px;max-height:none;overflow:visible}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:64px;max-height:none;overflow:visible;' in css
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
+
+
+def test_manual_review_is_above_the_preview_panes_and_compact_without_losing_controls():
+    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        assert html.index('id="manualReview"') < html.index('id="sourceHeading"')
+        assert '<details class="review-controls-disclosure">' in html
+        assert '<fieldset class="review-controls">' in html
+        for control_id in ("reviewHints", "paranoid", "compactMarkers", "mono"):
+            assert f'id="{control_id}"' in html
+
+    assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
+    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;grid-row:1}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:64px;max-height:none;overflow:visible;' in css
+    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr 1fr;' in css
 
 
 def test_new_design_hides_empty_review_result_status():

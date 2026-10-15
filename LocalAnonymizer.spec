@@ -9,6 +9,15 @@ hiddenimports = []
 tmp_ret = collect_all('webview')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+if sys.platform in {'darwin', 'linux'}:
+    for package in ('keyring', 'cryptography'):
+        tmp_ret = collect_all(package)
+        datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+if sys.platform == 'linux':
+    tmp_ret = collect_all('secretstorage')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 
 a = Analysis(
     ['launcher.py'],

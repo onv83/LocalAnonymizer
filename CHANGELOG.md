@@ -8,11 +8,19 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### English
 
-No unreleased changes yet.
+#### Changed
+
+- Moved the manual-review workspace above both previews and compacted it into a two-column desktop panel, keeping both text panes visible while decisions are made.
+- Moved optional review modes into a collapsed disclosure without removing any controls.
+- Added native Linux/macOS CI builds and packaged smoke gates; PyInstaller now collects the runtime-loaded secure-storage backends on those platforms.
 
 ### Русский
 
-Новых неопубликованных изменений пока нет.
+#### Изменено
+
+- Блок ручной проверки перенесён над обеими панелями и уплотнён в двухколоночный desktop-макет, поэтому исходный и обезличенный текст остаются видимыми во время принятия решений.
+- Дополнительные режимы проверки перенесены в сворачиваемый блок без удаления элементов управления.
+- Добавлены нативные CI-сборки Linux/macOS и проверки упакованных приложений; PyInstaller теперь включает динамически загружаемые модули защищённого хранилища для этих платформ.
 
 ## [0.2.8] — 2026-10-15
 

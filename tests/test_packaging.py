@@ -192,3 +192,28 @@ def test_posix_native_verifier_checks_all_packaged_smoke_modes():
     assert '"$executable" --smoke' in verifier
     assert '"$executable" --pair-smoke' in verifier
     assert '"$executable" --platform-smoke' in verifier
+
+
+def test_native_spec_collects_runtime_loaded_secure_storage_backends():
+    spec = (ROOT / "LocalAnonymizer.spec").read_text(encoding="utf-8")
+
+    assert "if sys.platform in {'darwin', 'linux'}:" in spec
+    assert "for package in ('keyring', 'cryptography'):" in spec
+    assert "collect_all(package)" in spec
+    assert "if sys.platform == 'linux':" in spec
+    assert "collect_all('secretstorage')" in spec
+
+
+def test_native_ci_builds_and_smokes_linux_and_macos_packages():
+    workflow = (ROOT / ".github" / "workflows" / "native.yml").read_text(encoding="utf-8")
+    verifier = (ROOT / "verify-native.sh").read_text(encoding="utf-8")
+
+    assert "ubuntu-24.04" in workflow
+    assert "macos-14" in workflow
+    assert "uv sync --extra dev" in workflow
+    assert "uv run pytest" in workflow
+    assert "./build.sh" in workflow
+    assert "./verify-native.sh" in workflow
+    assert "--smoke" in verifier
+    assert "--pair-smoke" in verifier
+    assert "--platform-smoke" in verifier
