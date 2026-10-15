@@ -76,6 +76,10 @@ jobs:
       - name: Build native package
         run: ./build.sh
 
+      - name: Reset source-test macOS keychain item
+        if: runner.os == 'macOS'
+        run: security delete-generic-password -s LocalAnonymizer -a "$USER" || true
+
       - name: Verify macOS package
         if: runner.os == 'macOS'
         run: ./verify-native.sh
