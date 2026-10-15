@@ -484,6 +484,10 @@ def _graphics_roundtrip_self_test() -> bool:
             ]
         return restored_images == [image_bytes] and bool(Document(restored).inline_shapes)
     except Exception:
+        if os.environ.get("LOCAL_ANONYMIZER_SMOKE_TRACE") == "1":
+            import traceback
+
+            traceback.print_exc()
         return False
     finally:
         shutil.rmtree(work, ignore_errors=True)

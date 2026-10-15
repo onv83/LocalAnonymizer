@@ -60,8 +60,18 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --extra dev --frozen
 
-      - name: Run tests
+      - name: Run macOS tests
+        if: runner.os == 'macOS'
         run: uv run pytest
+
+      - name: Run Linux tests with Secret Service
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a dbus-run-session -- bash -euo pipefail -c '
+            eval "$(printf "\n" | gnome-keyring-daemon --unlock --components=secrets)"
+            uv run pytest
+          '
 
       - name: Build native package
         run: ./build.sh
@@ -69,6 +79,8 @@ jobs:
       - name: Verify macOS package
         if: runner.os == 'macOS'
         run: ./verify-native.sh
+        env:
+          LOCAL_ANONYMIZER_SMOKE_TRACE: "1"
 
       - name: Verify Linux package with Secret Service and X11 clipboard
         if: runner.os == 'Linux'

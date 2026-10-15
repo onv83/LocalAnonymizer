@@ -211,6 +211,8 @@ def test_native_ci_builds_and_smokes_linux_and_macos_packages():
     assert "ubuntu-24.04" in workflow
     assert "macos-14" in workflow
     assert "uv sync --extra dev" in workflow
+    assert "Run macOS tests" in workflow
+    assert "Run Linux tests with Secret Service" in workflow
     assert "uv run pytest" in workflow
     assert "./build.sh" in workflow
     assert "./verify-native.sh" in workflow
