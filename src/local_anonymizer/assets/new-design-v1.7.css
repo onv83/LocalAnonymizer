@@ -23,12 +23,15 @@ body[data-design="new"] button.primary:hover,body[data-design="new"] #applyNow:h
 body[data-design="new"] #deleteDoc{border-color:var(--danger);color:var(--danger)}
 body[data-design="new"] :is(button,select,textarea,summary,[tabindex],a):focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 body[data-design="new"] .review{background:var(--surface);color:var(--text-primary);border-color:var(--warning);display:grid;grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr);gap:6px 10px;padding:8px 10px}
-body[data-design="new"] .manual-review-row{grid-column:1/-1}
+body[data-design="new"] .columns{column-gap:14px;row-gap:6px}
+body[data-design="new"] .columns>.pane{margin-bottom:0}
+body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}
 body[data-design="new"] .review-heading{grid-column:1}body[data-design="new"] .review-controls-disclosure{grid-column:2}body[data-design="new"] .review>.warning,body[data-design="new"] #resultStatus{grid-column:1/-1}body[data-design="new"] .review-decision{grid-column:1}body[data-design="new"] .review-finish{grid-column:2}
 body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center}body[data-design="new"] .review-heading>div{display:flex;align-items:baseline;gap:8px;min-width:0}body[data-design="new"] .review-heading h2{margin:0;white-space:nowrap}body[data-design="new"] .review-heading p{margin:0;font-size:11px;line-height:1.2}body[data-design="new"] .review-progress{white-space:nowrap}
 body[data-design="new"] .review-controls-disclosure{margin:0;align-self:start;border:1px solid var(--border);border-radius:7px;background:var(--surface-raised)}body[data-design="new"] .review-controls-disclosure>summary{padding:2px 8px;min-height:22px;font-size:11px;font-weight:700;cursor:pointer}body[data-design="new"] .review-controls-disclosure>.review-controls{margin:0;padding:6px 8px;border:0}
 body[data-design="new"] .review>.warning{margin:0;padding:4px 8px;font-size:11px;line-height:1.2}
 body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}
+body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}
 body[data-design="new"] .review-current,body[data-design="new"] .review-option{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
 body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}
 body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}body[data-design="new"] .review-candidate .review-help,body[data-design="new"] .review-candidate small{grid-column:1/-1}

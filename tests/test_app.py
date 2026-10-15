@@ -412,7 +412,7 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
             assert f'id="{control_id}"' in html
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
-    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1}' in css
+    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
     assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:15vh;min-height:120px}body[data-design="new"] .workflow-status{position:static}}' in css
@@ -420,6 +420,15 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row}' in css
     assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr 1fr;' in css
     assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
+
+
+def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_panes():
+    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+
+    assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
+    assert 'body[data-design="new"] .columns>.pane{margin-bottom:0}' in css
+    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
 def test_new_design_hides_empty_review_result_status():
