@@ -724,7 +724,44 @@ class Anonymizer:
         occupied = [*protected, *disabled_spans]
         for item in sorted(found, key=lambda x: (-x.priority, -(x.end-x.start), x.start, x.category)):
             blockers = [(x.start, x.end) for x in accepted] if item.irreversible else occupied
-            if any(item.start < end and item.end > start for start, end in blockers):
+            overlaps = sorted(
+                (max(item.start, start), min(item.end, end))
+                for start, end in blockers
+                if item.start < end and item.end > start
+            )
+            if overlaps:
+                # A structured software cell may contain a higher-priority
+                # irreversible secret or another validated entity. Preserve that
+                # detector, but still redact every visible remainder of the cell.
+                if item.category == "ПРОГРАММА" and item.priority == 93:
+                    cursor = item.start
+                    uncovered: list[tuple[int, int]] = []
+                    for start, end in overlaps:
+                        if start > cursor:
+                            uncovered.append((cursor, start))
+                        cursor = max(cursor, end)
+                    if cursor < item.end:
+                        uncovered.append((cursor, item.end))
+                    for start, end in uncovered:
+                        while start < end and (
+                            source[start].isspace() or source[start] == "\ufdd3"
+                        ):
+                            start += 1
+                        while end > start and (
+                            source[end - 1].isspace() or source[end - 1] == "\ufdd3"
+                        ):
+                            end -= 1
+                        raw = source[start:end]
+                        value = raw.replace("\ufdd3", "\n")
+                        if len(value) < 2 or not re.search(r"[A-Za-zА-Яа-яЁё]", value):
+                            continue
+                        fragment = Detection(
+                            start, end, item.category, item.priority, value, value,
+                            scope_start=start, scope_end=end,
+                            case_sensitive_canonical=True,
+                        )
+                        accepted.append(fragment)
+                        occupied.append((start, end))
                 continue
             accepted.append(item)
             occupied.append((item.start, item.end))

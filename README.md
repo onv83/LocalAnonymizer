@@ -14,13 +14,13 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ## Ready-to-use Windows build
 
-1. Download `LocalAnonymizer-0.2.4-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Download `LocalAnonymizer-0.2.5-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Version status:** `v0.2.4` is the current verified Windows release. Native Linux and macOS packages are not published or declared supported yet.
+> **Version status:** `v0.2.5` is the current verified Windows release. Native Linux and macOS packages are not published or declared supported yet.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
 

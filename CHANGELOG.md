@@ -14,6 +14,22 @@ No unreleased changes yet.
 
 Новых неопубликованных изменений пока нет.
 
+## [0.2.5] — 2026-10-15
+
+### English
+
+#### Fixed
+
+- Higher-priority secrets inside structured software cells remain irreversible, while every remaining visible part of the software name is also anonymized as `ПРОГРАММА`.
+- Added a regression preventing overlap resolution from exposing the non-secret remainder of a software value.
+
+### Русский
+
+#### Исправлено
+
+- В структурированных ячейках ПО секреты с более высоким приоритетом остаются необратимыми, а все остальные видимые части наименования также обезличиваются как `ПРОГРАММА`.
+- Добавлен регрессионный тест, исключающий раскрытие незасекречённого остатка значения ПО при пересечении сущностей.
+
 ## [0.2.4] — 2026-10-15
 
 ### English
@@ -140,7 +156,8 @@ No unreleased changes yet.
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.1...v0.2.2
