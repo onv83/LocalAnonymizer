@@ -8,13 +8,13 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX. The embedded test diagram is visible in the source preview and replaced with `[СХЕМА-1]` in the anonymized preview; the verified local restore reproduces the original DOCX byte-for-byte. No real personal or confidential data is shown.*
 
 ### Russian interface
 
 ![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX. Тестовый рисунок виден в исходном предпросмотре и заменён на `[СХЕМА-1]` в обезличенном; проверенное локальное восстановление побайтно воспроизводит исходный DOCX. Реальные персональные и конфиденциальные данные не используются.*
 
 ## Ready-to-use Windows build
 
@@ -97,13 +97,13 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX. Тестовый рисунок виден в исходном предпросмотре и заменён на `[СХЕМА-1]` в обезличенном; проверенное локальное восстановление побайтно воспроизводит исходный DOCX. Реальные персональные и конфиденциальные данные не используются.*
 
 ### Интерфейс на английском языке
 
 ![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX. The embedded test diagram is visible in the source preview and replaced with `[СХЕМА-1]` in the anonymized preview; the verified local restore reproduces the original DOCX byte-for-byte. No real personal or confidential data is shown.*
 
 ## Запуск готовой версии — без Python и установки пакетов
 

@@ -29,6 +29,7 @@ STANDARD_CLASS_CASES = {
     "ПАСПОРТ": "паспорт 0000 000000",
     "ПОЧТА": "user@example.test",
     "ПРОГРАММА": "Развертывание ПО\ufdd0Synthetic App\ufdd0",
+    "СОКРАЩЕНИЯ": "QZXB",
     "ПРОИЗВОДИТЕЛЬ": "производитель\ufdd0Synthetic Vendor",
     "ПУТЬ": r"C:\Synthetic\data.txt",
     "СЗИ": "Secret Net Studio",
@@ -60,9 +61,11 @@ def test_each_standard_replacement_class_has_an_effect_and_its_own_off_switch(ca
     assert enabled.counts.get(category, 0) >= 1, (category, enabled.text, enabled.counts)
 
     disabled = Anonymizer(disabled_categories={category}, compact_markers=False).anonymize(source)
-    assert disabled.text == source
     assert category not in disabled.counts
-    assert not disabled.mapping
+    assert all(item["cat"] != category for item in disabled.legend)
+    for item in enabled.legend:
+        if item["cat"] == category:
+            assert item["orig"] in disabled.text
 
 
 @pytest.mark.parametrize("category,source", PARANOID_CLASS_CASES.items())

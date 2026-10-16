@@ -80,7 +80,7 @@ function bridgeErrorText(operation){return ({
   'restore':'Could not verify or restore this file pair. Check that both matching files are valid.'
 })[operation]||'The operation could not be completed.';}
 function hintKindText(kind){return ({'город':'city','должность':'job title','спецкатегория ПДн':'special category of personal data','возможная фамилия':'possible surname','возможное ФИО':'possible full name','возможное имя заказчика':'possible customer name','возможное имя собственное':'possible proper name'})[kind]||kind;}
-const compactMarkerLabels={ФИО:'Ф',ОРГАНИЗАЦИЯ:'ОРГ',ПОЧТА:'ПЧ',ТЕЛЕФОН:'ТЕЛ',АККАУНТ:'АКК',ЛОГИН:'ЛОГ',ДОМЕН:'ДОМ',УЗЕЛ:'УЗЛ','СТРУКТУРА-AD':'AD',ДИСК:'ДСК',ПУТЬ:'ПУТЬ',ПРОГРАММА:'ПО',СКРИПТЫ:'СКРП',ССЫЛКА:'URL',СИСТЕМА:'СИС',ПРОИЗВОДИТЕЛЬ:'ПРЗ',ДОЛЖНОСТЬ:'ДОЛЖ',ГОРОД:'ГОР',АДРЕС:'АДР',ИНДЕКС:'ИНД',СПЕЦКАТЕГОРИЯ:'СПЕЦ',СКРЫТО:'СКР','ДАТА-РОЖДЕНИЯ':'ДР',ТАБЕЛЬНЫЙ:'ТАБ',ГОСНОМЕР:'ГРЗ',ДОГОВОР:'ДОГ',ДОКУМЕНТ:'ДОК',СУММА:'СУМ',СТАВКА:'СТВ'};
+const compactMarkerLabels={ФИО:'Ф',ОРГАНИЗАЦИЯ:'ОРГ',ПОЧТА:'ПЧ',ТЕЛЕФОН:'ТЕЛ',АККАУНТ:'АКК',ЛОГИН:'ЛОГ',ДОМЕН:'ДОМ',УЗЕЛ:'УЗЛ','СТРУКТУРА-AD':'AD',ДИСК:'ДСК',ПУТЬ:'ПУТЬ',ПРОГРАММА:'ПО',СОКРАЩЕНИЯ:'СОКР',СКРИПТЫ:'СКРП',ССЫЛКА:'URL',СИСТЕМА:'СИС',ПРОИЗВОДИТЕЛЬ:'ПРЗ',ДОЛЖНОСТЬ:'ДОЛЖ',ГОРОД:'ГОР',АДРЕС:'АДР',ИНДЕКС:'ИНД',СПЕЦКАТЕГОРИЯ:'СПЕЦ',СКРЫТО:'СКР','ДАТА-РОЖДЕНИЯ':'ДР',ТАБЕЛЬНЫЙ:'ТАБ',ГОСНОМЕР:'ГРЗ',ДОГОВОР:'ДОГ',ДОКУМЕНТ:'ДОК',СУММА:'СУМ',СТАВКА:'СТВ'};
 function updateCategoryMarkerExamples(){
   const compact=$('#compactMarkers').checked;
   document.querySelectorAll('label:has(> input.category)').forEach(label=>{
@@ -254,7 +254,7 @@ function renderWarnings(){
 function renderStats(){
   const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length;
   const pending=Math.max(0,(last.hintCount||0)-reviewed),all=(last.hintCount||0);$('#stats').textContent=`Replacements found: ${last.total||0} · Need decisions: ${pending} · Reviewed: ${reviewed} of ${all}`;
-  const groups={"People":['ФИО','ЛОГИН','ДАТА-РОЖДЕНИЯ'],"Organizations":['ОРГАНИЗАЦИЯ','СИСТЕМА','ПРОИЗВОДИТЕЛЬ'],"Places":['ГОРОД','АДРЕС','ИНДЕКС'],"Network":['IP','MAC','IMEI','ССЫЛКА','ДОМЕН','УЗЕЛ','DN'],"Contacts":['ПОЧТА','ТЕЛЕФОН','АККАУНТ'],"Identifiers":['ИНН','ОГРН','КПП','СНИЛС','СЧЁТ','КАРТА','БИК','ПАСПОРТ','VIN','ДОГОВОР','ДОКУМЕНТ'],"Finance":['СУММА','СТАВКА'],"Secrets":['SECRET']};
+  const groups={"People":['ФИО','ЛОГИН','ДАТА-РОЖДЕНИЯ'],"Organizations":['ОРГАНИЗАЦИЯ','СИСТЕМА','ПРОИЗВОДИТЕЛЬ'],"Abbreviations":['СОКРАЩЕНИЯ'],"Places":['ГОРОД','АДРЕС','ИНДЕКС'],"Network":['IP','MAC','IMEI','ССЫЛКА','ДОМЕН','УЗЕЛ','DN'],"Contacts":['ПОЧТА','ТЕЛЕФОН','АККАУНТ'],"Identifiers":['ИНН','ОГРН','КПП','СНИЛС','СЧЁТ','КАРТА','БИК','ПАСПОРТ','VIN','ДОГОВОР','ДОКУМЕНТ'],"Finance":['СУММА','СТАВКА'],"Secrets":['SECRET']};
   $('#chips').innerHTML=Object.entries(groups).map(([name,cats])=>`<span>${name}: ${cats.reduce((n,c)=>n+(last.counts?.[c]||0),0)}</span>`).join('')+`<span class="yellow">review: ${Math.max(0,(last.hintCount||0)-reviewed)}</span>`;
 }
 function renderMirror(){

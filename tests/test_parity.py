@@ -75,7 +75,7 @@ def test_people_with_same_surname_do_not_collide_or_claim_ambiguous_alias():
     assert "Иванова" in result.candidates
 
 
-def test_contacts_hosts_requisites_finance_and_public_exclusions():
+def test_contacts_hosts_requisites_finance_and_uppercase_abbreviations():
     text = (
         "ivanov (at) alfa точка ru, +7 999 123-45-67 и 8 (999) 123-45-67, +49 30 901820; "
         "узел srv-db-01, БИК 044525225, паспорт 45 08 123456, VIN XTA210990Y2765432, "
@@ -86,8 +86,12 @@ def test_contacts_hosts_requisites_finance_and_public_exclusions():
     assert result.text.count("[ТЕЛЕФОН-1]") == 2
     for marker in ("[ПОЧТА-1]", "[ТЕЛЕФОН-2]", "[УЗЕЛ-1]", "[БИК-1]", "[ПАСПОРТ-1]", "[VIN-1]", "[ДОГОВОР-1]", "[ДОКУМЕНТ-1]", "[СУММА-1]", "[СУММА-2]", "[СУММА-3]", "[СТАВКА-1]"):
         assert marker in result.text, marker
-    for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
+    for public in ("1.7.5.16", "порт 8080"):
         assert public in result.text
+    abbreviation_values = {
+        item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
+    }
+    assert {"БИК", "VIN", "SLA", "НДС"} <= abbreviation_values
 
 
 def test_structured_parts_offsets_counts_hints_paranoid_and_warnings():
@@ -112,8 +116,12 @@ def test_acceptance_sample_new_parity_requirements():
     assert "[СИСТЕМА-1]" in result.text and "Паутина" not in result.text
     assert "[ЛОГИН-1]" in result.text and "admin_db" not in result.text
     assert "qwerty123" not in result.text.lower()
-    for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
+    for public in ("1.7.5.16", "порт 8080"):
         assert public in result.text
+    abbreviation_values = {
+        item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
+    }
+    assert {"SLA", "НДС"} <= abbreviation_values
 
 
 def test_batch_zip_contains_independently_restorable_ready_pairs(tmp_path):

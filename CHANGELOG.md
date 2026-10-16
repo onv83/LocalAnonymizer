@@ -10,6 +10,8 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Changed
 
+- Release verification now embeds a synthetic test diagram in its DOCX fixture, proves that anonymization removes the media part and inserts `[СХЕМА-1]`, and proves byte-exact document restoration plus exact image-byte restoration after editing. The public README screenshots now use this synthetic document.
+- Added the independent `СОКРАЩЕНИЯ` / Abbreviations category: every standalone token containing at least three consecutive uppercase Latin or Cyrillic letters is replaced with a reversible `[СОКРАЩЕНИЯ-N]` marker. The category has a separate UI switch, counts, compact markers, and DOCX support across runs, tables, and tabs; two-letter terms and existing markers remain unchanged.
 - Added native Linux/macOS CI builds and packaged smoke gates, including Linux desktop-session tests and an isolated macOS Keychain probe; PyInstaller now collects the runtime-loaded secure-storage backends on those platforms. Windows remains the primary supported platform, and the Word COM path is unchanged.
 - Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
 - Moved the compact manual-review workspace below the two preview panes, kept the apply controls visible, and placed optional review modes in a collapsed disclosure.
@@ -26,11 +28,16 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 - Clearing a loaded formatted document now hides both formatted-preview hosts before restoring the empty text panes, preventing the anonymized preview from remaining as a second blank panel.
 - Postal addresses written after an explicit address label now redact the street, building, city, and trailing five- or six-digit postal index without treating unrelated numbers as postal codes.
+- Russian street-first and street-suffix forms such as `ул. Энтузиастов, д.5, к.6` and `Профсоюзная улица, 125А` are now redacted without hiding generic mentions of streets or avenues.
+- Document headings, the phrase `в том числе`, contract defect wording, and payment deadlines in working days no longer seed false organization, disk, person, or money replacements across a document.
+- English `Contact:`, `Address:`, and `Software:` fields now redact labelled names, postal addresses and software values in plain text and DOCX while preserving formatting and exact restoration.
 
 ### Русский
 
 #### Изменено
 
+- В проверочный DOCX для релиза добавлен синтетический тестовый рисунок: проверка доказывает удаление media-части с заменой на `[СХЕМА-1]`, побайтное восстановление неизменённого документа и точное восстановление байтов рисунка после редактирования. Публичные скриншоты README обновлены на этом синтетическом документе.
+- Добавлена самостоятельная категория `СОКРАЩЕНИЯ`: каждый отдельный токен, содержащий не менее трёх подряд заглавных латинских или кириллических букв, заменяется обратимым маркером `[СОКРАЩЕНИЯ-N]`. Для категории предусмотрены отдельный переключатель, счётчик, компактные маркеры и поддержка DOCX с разрывами runs, таблицами и табуляцией; двухбуквенные обозначения и существующие маркеры не изменяются.
 - Добавлены нативные CI-сборки Linux/macOS и проверки упакованных приложений, включая Linux-тесты в графической сессии и изолированную проверку macOS Keychain; PyInstaller теперь включает динамически загружаемые модули защищённого хранилища для этих платформ. Windows остаётся основной поддерживаемой платформой, Word COM-конвейер не изменён.
 - В готовые сборки включены служебные шаблоны `python-docx`, необходимые во время создания и экспорта DOCX.
 - Компактный блок ручной проверки перенесён под две панели предпросмотра, панель применения остаётся видимой, а дополнительные режимы проверки находятся в сворачиваемом блоке.
@@ -47,6 +54,9 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 - После очистки загруженного форматированного документа обе области форматированного предпросмотра теперь скрываются до возврата пустых текстовых панелей; лишняя пустая панель справа больше не остаётся.
 - В адресах после явного указания «адрес» теперь обезличиваются улица, дом, город и завершающий пяти- или шестизначный почтовый индекс; посторонние числа индексами не считаются.
+- Теперь обезличиваются русские адреса с типом улицы до или после названия, например `ул. Энтузиастов, д.5, к.6` и `Профсоюзная улица, 125А`; обычные упоминания улиц и проспектов не затрагиваются.
+- Заголовки документов, оборот `в том числе`, формулировки о недостатках по договору и сроки оплаты в рабочих днях больше не создают ложные замены организаций, дисков, ФИО и денежных сумм по всему документу.
+- В английских полях `Contact:`, `Address:` и `Software:` теперь обезличиваются подписанные имена, почтовые адреса и названия программ в обычном тексте и DOCX с сохранением форматирования и точным восстановлением.
 
 ## [0.2.8] — 2026-10-15
 

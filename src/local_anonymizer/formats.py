@@ -158,7 +158,19 @@ class XlsxProcessor:
         formula_replacements: dict[int, list[tuple[int, int, str]]] = {}
         for (cell, _, kind, span), value in zip(records, pieces):
             if kind == "numeric":
-                marker = re.search(MARKER_PATTERN, value)
+                rendered = (
+                    str(int(cell.value))
+                    if isinstance(cell.value, float) and cell.value.is_integer()
+                    else str(cell.value)
+                )
+                marker = next(
+                    (
+                        candidate
+                        for candidate in re.finditer(MARKER_PATTERN, value)
+                        if result.mapping.get(candidate.group()) == rendered
+                    ),
+                    None,
+                )
                 if marker:
                     cell.value = marker.group()
             elif kind in ("formula", "formula-mailto"):

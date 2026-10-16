@@ -12,7 +12,10 @@ from typing import Callable, Iterable
 LABEL_PATTERN = r"[А-ЯA-ZЁа-яё][А-ЯA-ZЁа-яё0-9_-]{0,63}"
 MARKER_PATTERN = rf"\[{LABEL_PATTERN}-\d{{1,9}}\]"
 MARKER_RE = re.compile(MARKER_PATTERN)
-LITERAL_MARKER_RE = re.compile(MARKER_PATTERN + r"|\[уязвимость\]")
+# Protect marker-shaped literals even when the numeric suffix is deliberately
+# too large to be a valid restorable marker. Valid marker parsing remains
+# bounded by MARKER_PATTERN, so protection never implies integer conversion.
+LITERAL_MARKER_RE = re.compile(rf"\[{LABEL_PATTERN}-\d+\]|\[уязвимость\]")
 
 COMPACT_MARKER_LABELS = {
     "ФИО": "Ф",
@@ -43,6 +46,7 @@ COMPACT_MARKER_LABELS = {
     "ДОГОВОР": "ДОГ",
     "ДОКУМЕНТ": "ДОК",
     "СУММА": "СУМ",
+    "СОКРАЩЕНИЯ": "СОКР",
     "СТАВКА": "СТВ",
 }
 
@@ -135,7 +139,6 @@ CITIES = "Москва Санкт-Петербург Новосибирск Ек
 COMMON_SURNAMES = set("Иванов Смирнов Кузнецов Попов Васильев Петров Соколов Михайлов Новиков Фёдоров Морозов Волков Алексеев Лебедев Семёнов Егоров Павлов Козлов Степанов Николаев Орлов Андреев Макаров Никитин Захаров Зайцев Соловьёв Борисов Романов Кудряшов Медведев Сидоров".lower().replace("ё", "е").split())
 STOP_PROPER = set("договор приложение заказчик исполнитель подрядчик система программа продукт документ данные информация доступ проект отдел управление департамент служба компания организация общество банк начальник директор руководитель специалист инженер менеджер".split())
 
-
 def _stem_surname(value: str) -> str:
     x = value.casefold().replace("ё", "е")
     adjective = re.fullmatch(r"(.+(?:ск|цк))(?:ий|ая|ую|ой|ого|ому|им|ом|ие|их|ими)", x)
@@ -216,6 +219,7 @@ class Anonymizer:
 
     def anonymize(self, source: str) -> AnonymizationResult:
         found: list[Detection] = []
+        abbreviation_candidates: list[Detection] = []
         aliases: list[tuple[str, str, str]] = []
         exact_aliases: list[tuple[str, str, str, bool]] = []
         disabled_spans: list[tuple[int, int]] = []
@@ -312,11 +316,22 @@ class Anonymizer:
 
         # Postal addresses need an explicit address/street anchor.  This keeps
         # ordinary five- and six-digit task/build numbers out of the detector.
-        street_type = r"(?:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
-        street_name = r"[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){0,3}"
+        street_type = r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
+        named_street = r"[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){0,3}"
+        numeric_street = r"\d+(?:-[яйе])?(?:[ \t]+лет)?[ \t]+[А-ЯЁ][А-Яа-яЁё'’.-]*(?:[ \t]+[А-ЯЁа-яё'’.-]+){0,2}"
+        street_name = rf"(?:{numeric_street}|{named_street})"
         house = r"(?:д(?:ом)?\.?[ \t]*)?\d+[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?"
         city = r"(?:г\.?[ \t]*)?[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁа-яё-]+){0,2}"
         address_value = rf"{street_name}[ \t]+{street_type}[ \t]*,[ \t]*{house}(?:[ \t]*,[ \t]*{city})?"
+        street_first_address = (
+            rf"{street_type}[ \t]+{street_name}[ \t]*,[ \t]*{house}"
+            rf"(?:[ \t]*,[ \t]*к(?:орпус)?\.?[ \t]*\d+[А-ЯЁа-яё]?)?"
+        )
+        direct_street_name = rf"(?:{numeric_street}|[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+)?)"
+        direct_suffix_address = (
+            rf"{direct_street_name}[ \t]+{street_type}[ \t]*,[ \t]*{house}"
+            rf"(?:[ \t]*,[ \t]*{city})?"
+        )
         add(
             rf"\b(?:по[ \t]+)?адрес(?:у|а|е)?[ \t]*[:—-]?[ \t]*({address_value})",
             "АДРЕС", 96, group=1,
@@ -329,6 +344,39 @@ class Anonymizer:
         add(
             r"\b(?:почтов(?:ый|ого)[ \t]+)?индекс[ \t]*[:№—-]?[ \t]*(\d{5,6})(?!\d)",
             "ИНДЕКС", 95, group=1,
+        )
+        add(
+            rf"(?<![А-Яа-яЁё])({street_first_address})(?![А-Яа-яЁё0-9])",
+            "АДРЕС", 96, group=1, flags=0,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        )
+        add(
+            rf"(?<![А-Яа-яЁё])({direct_suffix_address})(?![А-Яа-яЁё0-9])",
+            "АДРЕС", 96, group=1, flags=0,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        )
+
+        english_street = (
+            r"\d+[A-Za-z]?(?:[ \t]+[A-Z][A-Za-z'’.-]*){1,5}[ \t]+"
+            r"(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Way)"
+            r"(?:[ \t]+(?:N|S|E|W|NE|NW|SE|SW))?"
+        )
+        english_city = r"[A-Z][A-Za-z'’.-]*(?:[ \t]+[A-Z][A-Za-z'’.-]*){0,3}"
+        english_region = r"[A-Z]{2}"
+        english_postal = r"\d{5,6}(?:-\d{4})?"
+        english_postal_separator = r"(?:[ \t]*,[ \t]*|[ \t]+)"
+        english_address = rf"{english_street}[ \t]*,[ \t]*{english_city}(?:[ \t]*,[ \t]*{english_region})?"
+        english_label_separator = r"[ \t]*:[ \t\ufdd3]*"
+        add(
+            rf"\bAddress{english_label_separator}({english_address})(?=(?:{english_postal_separator}{english_postal})?(?:$|[\r\n\ufdd0\ufdd3]))",
+            "АДРЕС", 96, group=1, flags=re.I,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+            allow_boundary_context=True,
+        )
+        add(
+            rf"\bAddress{english_label_separator}{english_address}{english_postal_separator}({english_postal})(?=$|[\r\n\ufdd0\ufdd3])",
+            "ИНДЕКС", 97, group=1, flags=re.I,
+            allow_boundary_context=True,
         )
 
         # Network and contacts.
@@ -548,6 +596,14 @@ class Anonymizer:
                 case_sensitive_canonical=True,
             )
             remember_exact(software_matches, "ПРОГРАММА")
+        software_label_matches = add(
+            r"(?im)(?:^|(?<=[\ufdd0\ufdd3]))Software[ \t]*:[ \t\ufdd3]*([^\r\n\ufdd0\ufdd3]{2,160}?)(?=[ \t]*(?:$|[\ufdd0\ufdd3]))",
+            "ПРОГРАММА", 91, group=1,
+            validate=lambda m: bool(re.search(r"[A-Za-z]", m.group(1))),
+            canonical=lambda m: m.group(1), case_sensitive_canonical=True,
+            allow_boundary_context=True,
+        )
+        remember_exact(software_label_matches, "ПРОГРАММА")
 
         script_matches = add(
             rf"\bСкрипты{boundary}([^\r\n\ufdd0]{{2,500}})(?=\ufdd0)",
@@ -572,7 +628,7 @@ class Anonymizer:
             case_sensitive_canonical=True,
         )
         disk_matches = add(
-            r"\b(?:disk|диск|том|volume)\s+([A-Za-zА-Яа-яЁё0-9](?:[A-Za-zА-Яа-яЁё0-9_.-]{0,29}[A-Za-zА-Яа-яЁё0-9])?)(?![\w-])",
+            r"\b(?:disk|диск|том(?!\s+числе\b)|volume)\s+([A-Za-zА-Яа-яЁё0-9](?:[A-Za-zА-Яа-яЁё0-9_.-]{0,29}[A-Za-zА-Яа-яЁё0-9])?)(?![\w-])",
             "ДИСК", 86, group=1, flags=re.I,
             canonical=lambda m: m.group(1), case_sensitive_canonical=True,
         )
@@ -591,7 +647,20 @@ class Anonymizer:
         add(rf"(?<![\d.,-]){fnum}\s*т\.\s?р\.?(?![а-яёA-Za-z])", "СУММА", 77, canonical=lambda m: "fin:" + _digits(m.group()))
         fword = r"(?:один|одна|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|сто|двести|триста|четыреста|тысяч[а-яё]*|миллион[а-яё]*|миллиард[а-яё]*|млн|млрд)"
         add(rf"\b{fword}(?:[ \t-]+{fword}){{0,7}}\s+рубл[а-яё]*", "СУММА", 76, canonical=lambda m: "finw:" + re.sub(r"\s+", " ", m.group().casefold()))
-        add(rf"\b(?:стоимост[а-яё]*|цен[а-яё]*|бюджет[а-яё]*|сумм[а-яё]*|НМЦК|смет[а-яё]*|затрат[а-яё]*|аванс[а-яё]*|оплат[а-яё]*|выручк[а-яё]*|марж[а-яё]*|прибыл[а-яё]*|тариф[а-яё]*|итого)\D{{0,30}}({fnum}(?:\s*(?:тыс|млн|млрд)\.?)?)", "СУММА", 75, group=1, canonical=lambda m: "fin:" + _digits(m.group(1)))
+        def is_commercial_amount(match: re.Match) -> bool:
+            trailing = source[match.end(1):match.end(1) + 64]
+            return not re.match(
+                r"[ \t]*(?:\([^()\r\n]{1,50}\)[ \t]*)?"
+                r"(?:(?:рабочих?|календарных?|банковских?)[ \t]+)*"
+                r"(?:дн(?:я|ей)|час(?:а|ов))\b",
+                trailing, re.I,
+            )
+
+        add(
+            rf"\b(?:стоимост[а-яё]*|цен[а-яё]*|бюджет[а-яё]*|сумм[а-яё]*|НМЦК|смет[а-яё]*|затрат[а-яё]*|аванс[а-яё]*|оплат[а-яё]*|выручк[а-яё]*|марж[а-яё]*|прибыл[а-яё]*|тариф[а-яё]*|итого)\D{{0,30}}({fnum}(?:\s*(?:тыс|млн|млрд)\.?)?)",
+            "СУММА", 75, group=1, validate=is_commercial_amount,
+            canonical=lambda m: "fin:" + _digits(m.group(1)),
+        )
         add(r"\b(?:скидк[а-яё]*|марж[а-яё]*|наценк[а-яё]*|рентабельн[а-яё]*|комисси[а-яё]*|ставк[а-яё]*|аванс[а-яё]*)\D{0,20}(\d{1,2}(?:[.,]\d{1,2})?\s*%)", "СТАВКА", 75, group=1,
             validate=lambda m: "ндс" not in m.group().casefold(), canonical=lambda m: re.sub(r"\s", "", m.group(1)))
 
@@ -624,7 +693,7 @@ class Anonymizer:
         role = r"(?:заказчик[а-яё]*|клиент[а-яё]*|партн[её]р[а-яё]*|контор[а-яё]*|фирм[а-яё]*|подрядчик[а-яё]*|поставщик[а-яё]*|компани[а-яё]+|организаци[а-яё]+)"
         harvest(rf"\b{role}\s*[—:–-]?\s*[«\"]([^«»\"\n\ufdd0]{{2,60}})[»\"]", "ОРГАНИЗАЦИЯ", 70, replace_group=True)
         harvest(rf"\b{role}[ \t]*[—:–-][ \t]*([A-Za-zА-Яа-яЁё0-9][^\n\ufdd0,.;:!?«»\"]{{1,48}})", "ОРГАНИЗАЦИЯ", 69, replace_group=True)
-        harvest(r"\b(?:называ[её]тся|именуе[а-яё]*|назван[а-яё]*|зов[её]тся)\s+(?:просто\s+|теперь\s+|официально\s+)?([A-Za-zА-Яа-яЁё0-9][\wА-Яа-яЁё&.-]*(?:\s+(?:и|and)\s+[а-яёa-z]{3,}){0,2})", "ОРГАНИЗАЦИЯ", 69, replace_group=True)
+        harvest(r"\b(?:называ[её]тся|именуе[а-яё]*|назван(?:а|о|ы)?|зов[её]тся)\s+(?:просто\s+|теперь\s+|официально\s+)?([A-Za-zА-Яа-яЁё0-9][\wА-Яа-яЁё&.-]*(?:\s+(?:и|and)\s+[а-яёa-z]{3,}){0,2})", "ОРГАНИЗАЦИЯ", 69, replace_group=True)
         harvest(r"\b(?:АС|ИС|АИС|ГИС|ЕГИС|СЭД|СМЭВ|АСУ|ПК|ПО|систем[а-яё]+|подсистем[а-яё]+|платформ[а-яё]+|модул[а-яё]+|сервис[а-яё]*|комплекс[а-яё]*)\s+[«\"]([^«»\"\n\ufdd0]{2,60})[»\"]", "СИСТЕМА", 73, replace_group=True)
 
         # People anchors and direct forms.
@@ -659,6 +728,31 @@ class Anonymizer:
         person(r"\b([А-ЯЁ][а-яё-]{2,})\s+[А-ЯЁ]\s?\.\s?[А-ЯЁ]\s?\.", 67, 1)
         person(r"\b[А-ЯЁ]\s?\.\s?[А-ЯЁ]\s?\.\s?([А-ЯЁ][а-яё-]{2,})\b", 67, 1)
         latin_pair = r"(?<![\w.-])([A-Z][a-z]{2,})\s+([A-Z][a-z]{2,})(?![\w-])"
+        def valid_labelled_contact(match: re.Match) -> bool:
+            parts = match.group(1).split()
+            if not 2 <= len(parts) <= 4:
+                return False
+            for part in parts:
+                initial = part.endswith(".")
+                core = part[:-1] if initial else part
+                pieces = re.split(r"[-'’]", core)
+                if (
+                    not core
+                    or not core[0].isupper()
+                    or any(not piece or not piece.isalpha() for piece in pieces)
+                    or (initial and len(core) != 1)
+                    or (not initial and len(core) < 2)
+                ):
+                    return False
+            return True
+
+        add(
+            r"(?im)(?:^|(?<=[\ufdd0\ufdd3]))Contact[ \t]*:[ \t\ufdd3]*([^\r\n\ufdd0\ufdd3]{2,80}?)(?=[ \t]*(?:$|[\ufdd0\ufdd3]))",
+            "ФИО", 69, group=1,
+            validate=valid_labelled_contact,
+            canonical=lambda m: "contact:" + self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
         person(latin_pair, 66, 2, validate=lambda m: m.group(1).lower() in LAT_NAMES and m.group(2).lower() not in LAT_NAMES, full_key=True)
         person(latin_pair, 66, 1, validate=lambda m: m.group(2).lower() in LAT_NAMES and m.group(1).lower() not in LAT_NAMES, full_key=True)
         person(r"\b([А-ЯЁ][а-яё]{2,})\s+([А-ЯЁ][а-яё]{2,}(?:ов|ев|ёв|ин|ын|енко|ко|ук|юк|чук|швили|дзе|ян|ский|цкий)(?:а|у|ым|ом|е|ой)?)\b", 65, 2, validate=lambda m: _name_like(m.group(1)), full_key=True)
@@ -687,7 +781,7 @@ class Anonymizer:
         found = resolved_people
         surnames = [(raw, key) for raw, key in surnames if key.startswith("фио-полное:")]
         role_name = r"(?:ответственн[а-яё]+|исполнител[а-яё]+|контакт[а-яё]*|менеджер[а-яё]*|куратор[а-яё]*|представител[а-яё]+|коллег[а-яё]+|сотрудник[а-яё]*|инженер[а-яё]*|администратор[а-яё]*|директор[а-яё]*|руководител[а-яё]+|начальник[а-яё]*|специалист[а-яё]*|звонить|писать)"
-        for m in re.finditer(rf"\b{role_name}\s*[—:-]?\s+([А-ЯЁ][а-яё]{{2,}})\b", source, re.I):
+        for m in re.finditer(rf"\b{role_name}\s*[—:-]?\s+((?-i:[А-ЯЁ][а-яё]{{2,}}))\b", source, re.I):
             name = m.group(1)
             if _name_like(name) or re.search(r"(?:ов|ев|ин|ский|цкий)(?:а|у|ым|ом|е|ой)?$", name.casefold()):
                 if "ФИО" in self.disabled_categories:
@@ -730,6 +824,29 @@ class Anonymizer:
         add(rf"(?<![А-Яа-яЁё-])(?:{city_pattern})(?![А-Яа-яЁё-])", "ГОРОД", 62,
             validate=lambda m: _name_stem(m.group()) not in whitelist_stems,
             canonical=lambda m: _name_stem(m.group()))
+
+        if "СОКРАЩЕНИЯ" not in self.disabled_categories:
+            abbreviation_pattern = re.compile(
+                r"(?<![\w\-\u0300-\u036f])"
+                r"\w(?:[\w\u0300-\u036f]|-(?=[\w\u0300-\u036f]))*"
+                r"(?![\w\-\u0300-\u036f])"
+            )
+            for match in abbreviation_pattern.finditer(source):
+                value = match.group()
+                uppercase_run = 0
+                for char in unicodedata.normalize("NFC", value):
+                    if unicodedata.category(char) == "Lu":
+                        uppercase_run += 1
+                        if uppercase_run >= 3:
+                            break
+                    else:
+                        uppercase_run = 0
+                if uppercase_run < 3:
+                    continue
+                abbreviation_candidates.append(Detection(
+                    *match.span(), "СОКРАЩЕНИЯ", 45, value, value,
+                    case_sensitive_canonical=True,
+                ))
 
         for value, category in sorted(self.user_dictionary.items(), key=lambda x: len(x[0]), reverse=True):
             if not value:
@@ -856,6 +973,15 @@ class Anonymizer:
                     case_sensitive_canonical=case_sensitive,
                 ))
                 occupied.append(match.span())
+
+        # Abbreviations are the broad fail-closed fallback. Apply them only
+        # after validated entities and their exact aliases, so an uppercase run
+        # cannot split a known AD path, host, program or other structured value.
+        for item in abbreviation_candidates:
+            if any(item.start < end and item.end > start for start, end in occupied):
+                continue
+            accepted.append(item)
+            occupied.append((item.start, item.end))
         accepted.sort(key=lambda x: (x.start, x.end))
 
         # Hints fill only unoccupied spans.

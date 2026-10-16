@@ -228,7 +228,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     expected = {
         "уязвимость", "ПОЧТА", "ТЕЛЕФОН", "АККАУНТ", "IP", "MAC", "IMEI", "ССЫЛКА",
         "ДОМЕН", "УЗЕЛ", "DN", "СТРУКТУРА-AD", "ДИСК", "ПУТЬ", "СЗИ",
-        "ПРОГРАММА", "СКРИПТЫ", "ПРОИЗВОДИТЕЛЬ", "ИНН", "ОГРН", "СНИЛС",
+        "ПРОГРАММА", "СОКРАЩЕНИЯ", "СКРИПТЫ", "ПРОИЗВОДИТЕЛЬ", "ИНН", "ОГРН", "СНИЛС",
         "КАРТА", "КПП", "СЧЁТ", "БИК", "ПАСПОРТ", "VIN", "КАДАСТР",
         "ГОСНОМЕР", "ТАБЕЛЬНЫЙ", "ДОГОВОР", "ДОКУМЕНТ", "ДАТА-РОЖДЕНИЯ",
         "СУММА", "СТАВКА", "ФИО", "ЛОГИН", "ОРГАНИЗАЦИЯ", "СИСТЕМА",
@@ -244,8 +244,13 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert "Уязвимость → <code>[уязвимость]</code>" in html
     assert "Дополнительные правила → <code>[МЕТКА-N]</code>" in html
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    english_javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
     assert "function updateCategoryMarkerExamples()" in javascript
     assert "updateCategoryMarkerExamples();markSettingsDirty()" in javascript
+    assert "СОКРАЩЕНИЯ:'СОКР'" in javascript
+    assert "\"Сокращения\":['СОКРАЩЕНИЯ']" in javascript
+    assert "СОКРАЩЕНИЯ:'СОКР'" in english_javascript
+    assert "\"Abbreviations\":['СОКРАЩЕНИЯ']" in english_javascript
 
 
 def test_disabling_one_replacement_class_does_not_disable_or_enable_another():

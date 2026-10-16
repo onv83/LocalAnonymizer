@@ -199,3 +199,144 @@ def test_contextual_capture_is_rejected_when_full_regex_scope_crosses_office_bou
 
     assert result.text == source
     assert result.mapping == {}
+
+
+def test_document_heading_and_in_tom_chisle_do_not_seed_global_false_positives():
+    source = (
+        "Название документа\nФормат\nСтруктура документа\n"
+        "Эксплуатационные документы выполняются на бумажных носителях.\n"
+        "Требование действует в том числе при монтаже."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_contract_roles_and_payment_deadlines_are_not_people_or_money():
+    source = (
+        "После устранения Исполнителем недостатков Акт подписывается Заказчиком.\n"
+        "Оплата производится не позднее 7 (Семи) рабочих дней со дня подписания."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_russian_street_first_postal_addresses_are_redacted_without_generic_street_words():
+    source = (
+        "Сервер 3 штуки — г. Москва, ул. Энтузиастов, д.5, к.6.\n"
+        "Направляется по адресу: г. Москва, ул. Профсоюзная, 125А.\n"
+        "Счет направляется по адресу: г. Москва, Профсоюзная улица, 125А.\n"
+        "Улица была перекрыта, а проспект оказался свободен."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert "ул. Энтузиастов, д.5, к.6" not in result.text
+    assert "ул. Профсоюзная, 125А" not in result.text
+    assert "Профсоюзная улица, 125А" not in result.text
+    assert result.counts["АДРЕС"] == 3
+    assert "Улица была перекрыта, а проспект оказался свободен." in result.text
+
+
+def test_english_labelled_contact_address_and_software_are_redacted():
+    source = (
+        "Organization: Example Systems LLC\n"
+        "Contact: Alex Example\n"
+        "Address: 10 Test Street, Testville, 123456\n"
+        "Email: demo@example.invalid\n"
+        "Software: Example Office Suite\n"
+        "This synthetic document contains no real people or addresses."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Alex Example" not in result.text
+    assert "10 Test Street, Testville" not in result.text
+    assert "123456" not in result.text
+    assert "Example Office Suite" not in result.text
+    assert result.counts["ФИО"] == 1
+    assert result.counts["АДРЕС"] == 1
+    assert result.counts["ИНДЕКС"] == 1
+    assert result.counts["ПРОГРАММА"] == 1
+
+
+def test_new_false_positive_guards_keep_real_entities_detectable():
+    source = (
+        "Компания названа Atlas.\n"
+        "Исполнитель Иванов подписал акт.\n"
+        "Диск DATA подключен.\n"
+        "Оплата составляет 7000 без НДС."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Atlas" not in result.text
+    assert "Иванов" not in result.text
+    assert "DATA" not in result.text
+    assert "7000" not in result.text
+    assert result.counts["ОРГАНИЗАЦИЯ"] == 1
+    assert result.counts["ФИО"] == 1
+    assert result.counts["ДИСК"] == 1
+    assert result.counts["СУММА"] == 1
+
+
+def test_english_labels_are_contextual_and_respect_disabled_categories():
+    unlabeled = "Alex Example visited 10 Test Street and reviewed Example Office Suite."
+    assert Anonymizer().anonymize(unlabeled).text == unlabeled
+
+    source = (
+        "Contact: Alex Example\n"
+        "Address: 10 Test Street, Testville, 123456\n"
+        "Software: Example Office Suite"
+    )
+    disabled = Anonymizer(
+        disabled_categories={"ФИО", "АДРЕС", "ИНДЕКС", "ПРОГРАММА"},
+    ).anonymize(source)
+
+    assert disabled.text == source
+    assert disabled.mapping == {}
+
+
+def test_address_and_deadline_adversarial_regressions():
+    sensitive = (
+        "Улица 50 лет Октября, д. 5\n"
+        "Адрес: 8 Марта ул., 10\n"
+        "Address: 10 Main Street, New York, NY 10001\n"
+        "Address: 1600 Pennsylvania Avenue NW, Washington, DC 20500"
+    )
+    result = Anonymizer().anonymize(sensitive)
+
+    for value in ("50 лет Октября", "8 Марта", "New York", "NY 10001", "Pennsylvania", "DC 20500"):
+        assert value not in result.text
+    assert result.counts["АДРЕС"] == 4
+    assert result.counts["ИНДЕКС"] == 2
+
+    ordinary = (
+        "ул. была перекрыта, 5\n"
+        "Улица была перекрыта, 5\n"
+        "Оплата производится в течение 7 банковских дней.\n"
+        "Оплата производится не позднее 7 (Семи банковских) рабочих дней."
+    )
+    assert Anonymizer().anonymize(ordinary).text == ordinary
+
+
+def test_labelled_contacts_accept_initials_unicode_and_docx_boundaries():
+    source = (
+        "Contact: Alex J. Example\n"
+        "Contact: José García\n"
+        "Contact:\ufdd3Taylor Example\n"
+        "Software:\ufdd3Example Office Suite"
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    for value in ("Alex J. Example", "José García", "Taylor Example", "Example Office Suite"):
+        assert value not in result.text
+    assert result.counts["ФИО"] == 3
+    assert result.counts["ПРОГРАММА"] == 1
+    assert "\ufdd3" in result.text

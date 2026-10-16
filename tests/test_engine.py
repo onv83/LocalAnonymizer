@@ -3,7 +3,7 @@ from pathlib import Path
 from local_anonymizer.engine import Anonymizer
 
 
-def test_acceptance_sample_redacts_required_values_and_preserves_public_values():
+def test_acceptance_sample_redacts_required_values_and_preserves_non_sensitive_numerics():
     text = Path("acceptance_sample.txt").read_text(encoding="utf-8")
     result = Anonymizer().anonymize(text)
     output = result.text
@@ -22,8 +22,12 @@ def test_acceptance_sample_redacts_required_values_and_preserves_public_values()
     assert output.count("[ФИО-1]") == 1
     assert result.mapping["[ФИО-3]"] == "Иванов"
     assert output.count("[ОРГАНИЗАЦИЯ-1]") >= 2
-    for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
+    for public in ("1.7.5.16", "порт 8080"):
         assert public in output
+    abbreviation_values = {
+        item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
+    }
+    assert {"SLA", "НДС"} <= abbreviation_values
     for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"):
         assert secret not in output
     assert output.count("(удалено") >= 3
@@ -171,12 +175,14 @@ def test_enterprise_infrastructure_values_from_real_report_are_anonymized():
     assert result.counts["ЛОГИН"] >= 6
 
 
-def test_contextual_value_may_use_office_fragment_boundary_without_replacing_it():
+def test_contextual_value_and_abbreviation_preserve_office_fragment_boundary():
     source = "NetBIOS-имя\ufdd0OVBPORT"
 
     result = Anonymizer().anonymize(source)
 
-    assert result.text.startswith("NetBIOS-имя\ufdd0[УЗЕЛ-")
+    assert result.text == "[СОКРАЩЕНИЯ-1]\ufdd0[УЗЕЛ-1]"
+    assert result.mapping["[СОКРАЩЕНИЯ-1]"] == "NetBIOS-имя"
+    assert result.mapping["[УЗЕЛ-1]"] == "OVBPORT"
     assert result.text.count("\ufdd0") == 1
 
 
@@ -220,14 +226,19 @@ def test_explicit_server_labels_accept_unicode_whitespace_after_colon():
         assert result.mapping == {"[УЗЕЛ-1]": "UNICODEHOST"}
 
 
-def test_server_label_does_not_partially_replace_unicode_continuation():
+def test_abbreviation_replaces_complete_unicode_token_after_server_label():
     anonymizer = Anonymizer()
-    for suffix in ("é", "Ж", "\u0301"):
+    for suffix in ("é", "\u0301"):
         source = f"Сервер:NODEABC{suffix};"
         result = anonymizer.anonymize(source)
 
-        assert result.text == source
-        assert result.mapping == {}
+        assert result.text == "Сервер:[СОКРАЩЕНИЯ-1];"
+        assert result.mapping == {"[СОКРАЩЕНИЯ-1]": f"NODEABC{suffix}"}
+
+    mixed_script = "Сервер:NODEABCЖ;"
+    result = anonymizer.anonymize(mixed_script)
+    assert result.text == "Сервер:[СОКРАЩЕНИЯ-1];"
+    assert result.mapping == {"[СОКРАЩЕНИЯ-1]": "NODEABCЖ"}
 
 
 def test_server_label_case_variants_receive_distinct_reversible_markers():

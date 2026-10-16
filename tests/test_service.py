@@ -26,8 +26,10 @@ def test_end_to_end_acceptance_docx_anonymize_edit_restore(tmp_path):
     anonymized = "\n".join(p.text for p in Document(anon).paragraphs)
     for expected in ("[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[IP-1]", "[уязвимость]", "(удалено)"):
         assert expected in anonymized
-    for public in ("1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"):
+    for public in ("1.7.5.16", "порт 8080"):
         assert public in anonymized
+    assert "SLA" not in anonymized
+    assert "НДС" not in anonymized
     edited = tmp_path / "edited.docx"
     edit_doc = Document(anon); edit_doc.add_paragraph("Редактура [ФИО-1] и [ФИО-999]"); edit_doc.save(edited)
     restored = service.restore(doc_id, edited)

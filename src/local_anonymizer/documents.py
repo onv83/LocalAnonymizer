@@ -179,7 +179,7 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
     payloads: dict[str, bytes] = {}
     infos = []
     paragraphs: list[
-        tuple[str, object, list[object], str, tuple[str, str | None, str | None, str | None]]
+        tuple[str, object, list[object], str, tuple[str, str | None, str | None, str | None, str]]
     ] = []
     with ZipFile(source) as package:
         for info in package.infolist():
@@ -198,9 +198,10 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
                     cell = next((ancestor for ancestor in paragraph.iterancestors()
                                  if ancestor.tag == qn("w:tc")), None)
                     tree = root.getroottree()
+                    paragraph_path = tree.getpath(paragraph)
                     row_path = tree.getpath(row) if row is not None else None
                     cell_path = tree.getpath(cell) if cell is not None else None
-                    context = (info.filename, table_path, row_path, cell_path)
+                    context = (info.filename, table_path, row_path, cell_path, paragraph_path)
                     groups = _xml_text_node_groups(paragraph) or [[]]
                     for nodes in groups:
                         paragraphs.append((
@@ -218,7 +219,7 @@ def _rewrite_docx_text_package(source: Path, target: Path, transform_all) -> Non
         if left_context[0:2] != right_context[0:2]:
             return table_boundary
         if left_context[1] is None:
-            return "\ufdd0"
+            return "\ufdd3" if left_context[4] == right_context[4] else "\ufdd0"
         if left_context[2] != right_context[2]:
             return row_boundary
         if left_context[3] != right_context[3]:

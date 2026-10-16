@@ -58,6 +58,81 @@ def test_docx_anonymize_and_restore_do_not_reserialize_with_python_docx(tmp_path
     assert Document(restored).paragraphs[0].text == "Иванов Сергей Петрович"
 
 
+def test_docx_new_ru_en_regressions_preserve_formatting_and_restore_exactly(tmp_path):
+    source = tmp_path / "new-regressions.docx"
+    anonymized = tmp_path / "new-regressions.anonymized.docx"
+    restored = tmp_path / "new-regressions.restored.docx"
+    document = Document()
+    english = document.add_paragraph()
+    english.add_run("Contact: Alex Example\n").bold = True
+    english.add_run("Address: 10 Test Street, Testville, 123456\n").italic = True
+    english.add_run("Software: Example Office Suite").underline = True
+    russian = document.add_paragraph()
+    russian.add_run("Сервер 3 штуки — г. Москва, ").bold = True
+    russian.add_run("ул. Энтузиастов, д.5, к.6").italic = True
+    russian.add_run(". После устранения Исполнителем недостатков Акт подписывается.")
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized)
+    english_text = output.paragraphs[0].text
+    russian_text = output.paragraphs[1].text
+    assert "Alex Example" not in english_text
+    assert "10 Test Street, Testville" not in english_text
+    assert "123456" not in english_text
+    assert "Example Office Suite" not in english_text
+    assert "ул. Энтузиастов, д.5, к.6" not in russian_text
+    assert "недостатков" in russian_text
+    assert output.paragraphs[0].runs[0].bold is True
+    assert output.paragraphs[0].runs[1].italic is True
+    assert output.paragraphs[0].runs[-1].underline is True
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_tab_separated_english_labels_are_redacted_and_restore_exactly(tmp_path):
+    source = tmp_path / "tab-labels.docx"
+    anonymized = tmp_path / "tab-labels.anonymized.docx"
+    restored = tmp_path / "tab-labels.restored.docx"
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Contact:").bold = True
+    paragraph.add_run().add_tab()
+    paragraph.add_run("Alex J. Example")
+    paragraph.add_run().add_break()
+    paragraph.add_run("Software:").italic = True
+    paragraph.add_run().add_tab()
+    paragraph.add_run("Example Office Suite")
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0]
+    assert "Alex J. Example" not in output.text
+    assert "Example Office Suite" not in output.text
+    assert "\t" in output.text
+    assert "\n" in output.text
+    assert output.runs[0].bold is True
+    assert any(run.italic for run in output.runs)
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_vm_inventory_names_are_removed_from_package_and_restore_exactly(tmp_path):
     source = tmp_path / "vm-source.docx"
     anonymized = tmp_path / "vm-anonymized.docx"
@@ -222,6 +297,43 @@ def test_docx_contextual_inventory_values_are_removed_and_exactly_restored(tmp_p
     package_xml = _all_xml(anonymized)
     assert all(value.encode("utf-8") not in package_xml for value in sensitive)
     assert set(sensitive).issubset(set(result.mapping.values()))
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_abbreviations_across_runs_tables_and_tabs_restore_byte_exactly(tmp_path):
+    source = tmp_path / "abbreviations-source.docx"
+    anonymized = tmp_path / "abbreviations-anonymized.docx"
+    restored = tmp_path / "abbreviations-restored.docx"
+    document = Document()
+
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Система ")
+    paragraph.add_run("QZ")
+    paragraph.add_run("XB").bold = True
+    paragraph.add_run().add_tab()
+    paragraph.add_run("UCMDB")
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Интеграция"
+    table.cell(0, 1).text = "SSO и NTLM"
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+    output_document = Document(anonymized)
+    output = "\n".join(
+        [p.text for p in output_document.paragraphs]
+        + [cell.text for row in output_document.tables[0].rows for cell in row.cells]
+    )
+
+    assert all(value not in output for value in ("QZXB", "UCMDB", "SSO", "NTLM"))
+    assert set(result.mapping.values()) >= {"QZXB", "UCMDB", "SSO", "NTLM"}
 
     DocxProcessor().restore(
         anonymized,
