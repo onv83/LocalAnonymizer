@@ -247,6 +247,132 @@ console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,curr
     assert len(result["current"]) > len(result["progress"])
 
 
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_clear_after_formatted_document_collapses_both_preview_hosts(tmp_path, asset_name):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    harness = r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
+  addEventListener(){} appendChild(){} setSelectionRange(){} scrollIntoView(){}
+  click(){if(typeof this.onclick==='function')this.onclick();}
+  querySelectorAll(){return [];} closest(){return null;}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map();
+const document={
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];},createElement(){return new FakeElement();},addEventListener(){}
+};
+const window={addEventListener(){}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const pywebview={api:{}};
+"""
+    scenario = r"""
+filePreview=true;
+currentPreviewFormat='docx';
+elements.get('#docxPreview').innerHTML='<p>source</p>';
+elements.get('#anonymizedDocxPreview').innerHTML='<p>output</p>';
+setDocxPreviewMode(true);
+setAnonymizedPreviewMode(true);
+clearResult=()=>{};
+elements.get('#clear').click();
+console.log(JSON.stringify({
+  sourceHidden:elements.get('#source').hidden,
+  outputHidden:elements.get('#richOutput').hidden,
+  sourcePreviewHidden:elements.get('#docxPreview').hidden,
+  outputPreviewHidden:elements.get('#anonymizedDocxPreview').hidden,
+  sourcePreviewHtml:elements.get('#docxPreview').innerHTML,
+  outputPreviewHtml:elements.get('#anonymizedDocxPreview').innerHTML
+}));
+"""
+    script = tmp_path / f"clear-formatted-preview-{asset_name}.js"
+    script.write_text(harness + javascript + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {
+        "sourceHidden": False,
+        "outputHidden": False,
+        "sourcePreviewHidden": True,
+        "outputPreviewHidden": True,
+        "sourcePreviewHtml": "",
+        "outputPreviewHtml": "",
+    }
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "loading_text"),
+    [
+        ("app-v1.8.18.js", "Форматированный вид готовится…"),
+        ("app-en-v1.8.18.js", "Preparing formatted view…"),
+    ],
+)
+def test_anonymized_preview_controls_are_visible_while_formatted_view_loads(
+    tmp_path, asset_name, loading_text
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    harness = r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
+  addEventListener(){} appendChild(){} setSelectionRange(){} scrollIntoView(){} click(){}
+  querySelectorAll(){return [];} closest(){return null;} setAttribute(){} removeAttribute(){} focus(){}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map();
+const document={
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];},createElement(){return new FakeElement();},addEventListener(){}
+};
+const window={addEventListener(){}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const never=new Promise(()=>{});
+const pywebview={api:{
+  anonymize_text(){return never;},
+  preview_anonymized_document(){return never;}
+}};
+"""
+    scenario = r"""
+filePreview=true;
+selected='doc-1';
+currentPreviewFormat='docx';
+elements.get('#source').value='document text';
+anonymizeText();
+console.log(JSON.stringify({
+  controlsHidden:elements.get('#anonymizedPreviewControls').hidden,
+  status:elements.get('#anonymizedPreviewCompleteness').textContent,
+  topDisabled:elements.get('#anonymizedPreviewTop').disabled,
+  bottomDisabled:elements.get('#anonymizedPreviewBottom').disabled,
+  fullscreenDisabled:elements.get('#anonymizedPreviewFullscreen').disabled,
+  formattedDisabled:elements.get('#showAnonymizedFormatted').disabled,
+  textDisabled:elements.get('#showAnonymizedText').disabled,
+  textVisible:!elements.get('#richOutput').hidden,
+  formattedHidden:elements.get('#anonymizedDocxPreview').hidden
+}));
+"""
+    script = tmp_path / f"formatted-preview-loading-{asset_name}.js"
+    script.write_text(harness + javascript + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {
+        "controlsHidden": False,
+        "status": loading_text,
+        "topDisabled": True,
+        "bottomDisabled": True,
+        "fullscreenDisabled": True,
+        "formattedDisabled": True,
+        "textDisabled": False,
+        "textVisible": True,
+        "formattedHidden": True,
+    }
+
+
 def test_same_document_anonymization_ignores_out_of_order_response(tmp_path):
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""

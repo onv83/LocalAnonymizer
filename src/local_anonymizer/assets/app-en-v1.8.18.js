@@ -221,10 +221,11 @@ function setPreviewFullscreen(enabled){if(enabled===previewFullscreen)return;pre
 function cancelDocxPreviewScrollReset(){previewScrollResetToken++;}
 function resetDocxPreviewScroll(){const rich=$('#docxPreview'),token=++previewScrollResetToken,apply=()=>{if(token===previewScrollResetToken)rich.scrollTop=0;};apply();if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));setTimeout(apply,150);}
 function setAnonymizedPreviewMode(formatted){const available=filePreview&&hasFormattedDocumentPreview(currentPreviewFormat)&&!!$('#anonymizedDocxPreview').innerHTML;$('#anonymizedPreviewControls').hidden=!available;$('#anonymizedDocxPreview').hidden=!(available&&formatted);$('#richOutput').hidden=available&&formatted;$('#showAnonymizedFormatted').ariaPressed=String(available&&formatted);$('#showAnonymizedText').ariaPressed=String(!available||!formatted);}
+function setAnonymizedPreviewLoading(loading){['#anonymizedPreviewTop','#anonymizedPreviewBottom','#anonymizedPreviewFullscreen','#showAnonymizedFormatted'].forEach(selector=>{$(selector).disabled=loading;});$('#showAnonymizedText').disabled=false;if(loading)$('#anonymizedPreviewControls').hidden=false;}
 function setAnonymizedPreviewFullscreen(enabled){if(enabled===anonymizedPreviewFullscreen)return;anonymizedPreviewFullscreen=enabled;const surface=$('#anonymizedPreviewSurface'),button=$('#anonymizedPreviewFullscreen');surface.classList.toggle('preview-surface-fullscreen',enabled);button.textContent=enabled?'Exit full screen':'Full screen';setFullscreenSemantics(surface,button,enabled,'Full-screen anonymized document preview');schedulePreviewTopAlignment();}
 function cancelAnonymizedPreviewScrollReset(){anonymizedPreviewScrollResetToken++;}
 function resetAnonymizedPreviewScroll(){const rich=$('#anonymizedDocxPreview'),token=++anonymizedPreviewScrollResetToken,apply=()=>{if(token===anonymizedPreviewScrollResetToken)rich.scrollTop=0;};apply();if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));setTimeout(apply,150);}
-function leaveAnonymizedPreview(){setAnonymizedPreviewFullscreen(false);const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#anonymizedPreviewCompleteness').textContent='';$('#anonymizedPreviewControls').hidden=true;$('#richOutput').hidden=false;}
+function leaveAnonymizedPreview(){setAnonymizedPreviewFullscreen(false);const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';rich.hidden=true;$('#anonymizedPreviewCompleteness').textContent='';$('#anonymizedPreviewControls').hidden=true;$('#richOutput').hidden=false;}
 function leaveDocumentPreview(){setPreviewFullscreen(false);leaveAnonymizedPreview();currentPreviewFormat='';const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#previewCompleteness').textContent='';setDocxPreviewMode(false);}
 function updatePrimaryAction(keepStatus=false){
   const button=$('#anonymize'),status=$('#settingsStatus'),apply=$('#applyNow'),exportButton=$('#exportNow'),lifecycle=$('#fileLifecycleStatus');
@@ -312,10 +313,9 @@ async function anonymizeText(){
   const needsFormattedPreview=filePreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat);
   let formatted=null;
   if(needsFormattedPreview){
-    $('#showAnonymizedFormatted').disabled=true;
-    $('#anonymizedPreviewControls').hidden=false;
-    $('#anonymizedPreviewCompleteness').textContent='Updating the text preview first; the formatted view will follow…';
     switchPreviewMode(setAnonymizedPreviewMode,false);
+    setAnonymizedPreviewLoading(true);
+    $('#anonymizedPreviewCompleteness').textContent='Preparing formatted view…';
     formatted=requestAnonymizedDocumentPreview(selected,...settings,$('#redactDocxGraphics').checked);
   }
   const result=await pywebview.api.anonymize_text(text,...settings);
@@ -328,7 +328,7 @@ async function anonymizeText(){
     let formattedPreview=null;
     try{formattedPreview=await formatted;}catch(error){formattedPreview={error:true}}
     if(ticket!==generation)return;
-    $('#showAnonymizedFormatted').disabled=false;
+    setAnonymizedPreviewLoading(false);
     if(hasFormattedDocumentPreview(formattedPreview?.format)){
       const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Formatted view ready · Tables: ${rich.querySelectorAll('.docx-table').length}. The text preview already reflects the selected options.`;switchPreviewMode(setAnonymizedPreviewMode,true);
     }else{

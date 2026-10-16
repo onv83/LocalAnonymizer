@@ -8,19 +8,36 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
 
+*Current packaged Windows interface with a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+
 ### Russian interface
 
 ![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
 
+*Текущий интерфейс готовой Windows-сборки с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+
 ## Ready-to-use Windows build
 
-1. Download `LocalAnonymizer-0.2.6-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Download `LocalAnonymizer-0.2.8-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Version status:** `v0.2.6` is the current verified Windows release. Native Linux and macOS packages are not published or declared supported yet.
+> **Version status:** `v0.2.8` is the current verified Windows release. The changes listed below are available on `main` and are being prepared for `v0.2.9`; native Linux and macOS packages are not published or declared supported yet.
+
+## Changes on `main` since `v0.2.8`
+
+- Added native Linux/macOS CI and packaged smoke gates, including fail-closed checks for secure storage and clipboard integration. Windows remains the primary supported platform, and the existing Word COM path for high-fidelity DOC/DOCX handling is unchanged.
+- Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
+- Moved the manual-review workspace below the two preview panes, compacted its actions, collapsed optional modes, and kept the apply panel visible while reviewing.
+- Reworked the document workspace: `Open` is in the source header, the mapping chips sit above the anonymized preview, both previews are larger, and the redundant workflow strip, subtitle, source label, storage notice, and visible drop hint were removed. Window-level drag-and-drop remains available.
+- Increased the preferred Windows launch width to 1600 px while clamping it to the available screen, improved low-height layouts, and aligned the Russian and English interfaces in light and dark themes.
+- The formatted-preview toolbar now appears immediately while rendering, reserves its final position, reports that the view is being prepared, and enables formatted-only controls when ready.
+- Clearing a formatted document now removes both formatted-preview hosts before restoring the empty text panes, preventing a stale blank panel.
+- Rewrote the built-in English and Russian usage guide for the current preview, review, apply, export, and portable `.larecovery` workflow.
+- Improved anonymization of explicitly labelled postal addresses and five- or six-digit postal indexes while retaining negative checks for unrelated numbers.
+- Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
 
@@ -80,17 +97,36 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
 
+*Текущий интерфейс готовой Windows-сборки с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+
 ### Интерфейс на английском языке
 
 ![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
 
+*Current packaged Windows interface with a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+
 ## Запуск готовой версии — без Python и установки пакетов
 
-1. Скачайте архив `LocalAnonymizer-0.2.6-windows-x64.zip` из раздела [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Скачайте архив `LocalAnonymizer-0.2.8-windows-x64.zip` из раздела [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
 2. Распакуйте архив в обычную папку.
 3. Запустите `LocalAnonymizer\LocalAnonymizer.exe`.
 
 Python, `uv`, pip и установка зависимостей для готовой версии **не нужны**. Папку `_internal` рядом с `.exe` нельзя удалять или переносить отдельно: в ней уже находятся Python и все необходимые библиотеки приложения. На Windows 11 используется системный Microsoft Edge WebView2.
+
+> **Статус версии:** `v0.2.8` — текущий проверенный выпуск для Windows. Перечисленные ниже изменения уже находятся в `main` и готовятся для `v0.2.9`; нативные пакеты Linux и macOS пока не опубликованы и не объявлены поддерживаемыми.
+
+## Изменения в `main` по сравнению с `v0.2.8`
+
+- Добавлены нативные CI-сборки Linux/macOS и проверки готовых пакетов, включая fail-closed-проверки защищённого хранилища и буфера обмена. Windows остаётся основной поддерживаемой платформой, существующий Word COM-конвейер точной обработки DOC/DOCX не изменён.
+- В готовые сборки включены служебные шаблоны `python-docx`, необходимые для создания и экспорта DOCX.
+- Блок ручной проверки перенесён под две панели предпросмотра, его действия уплотнены, дополнительные режимы свёрнуты, а панель применения остаётся видимой во время проверки.
+- Рабочая область документа перестроена: `Открыть` находится в заголовке исходного документа, маркеры соответствий — над обезличенным предпросмотром, обе области предпросмотра увеличены. Удалены лишняя полоса этапов, подзаголовок, подпись исходного редактора, статическое уведомление о хранении и видимая drop-подсказка; перетаскивание файла в окно продолжает работать.
+- Предпочтительная ширина окна Windows увеличена до 1600 пикселей с ограничением по доступному экрану, улучшена компоновка при небольшой высоте, русская и английская версии согласованы в светлой и тёмной темах.
+- Панель форматированного предпросмотра появляется сразу после начала подготовки, заранее занимает итоговое место, сообщает о загрузке и включает доступные только после готовности команды автоматически.
+- После очистки форматированного документа обе области форматированного предпросмотра удаляются до возврата пустых текстовых панелей, поэтому лишняя пустая панель больше не остаётся.
+- Встроенная инструкция на русском и английском переписана под актуальный процесс предпросмотра, проверки, применения, экспорта и переносимых файлов `.larecovery`.
+- Улучшено обезличивание явно подписанных почтовых адресов и пяти- или шестизначных индексов; посторонние числа по-прежнему не считаются индексами.
+- Расширены регрессионные проверки компоновки, эквивалентности локализаций, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и нативных platform smoke checks.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
 

@@ -10,6 +10,12 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Changed
 
+- Added native Linux/macOS CI builds and packaged smoke gates, including Linux desktop-session tests and an isolated macOS Keychain probe; PyInstaller now collects the runtime-loaded secure-storage backends on those platforms. Windows remains the primary supported platform, and the Word COM path is unchanged.
+- Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
+- Moved the compact manual-review workspace below the two preview panes, kept the apply controls visible, and placed optional review modes in a collapsed disclosure.
+- The anonymized-preview toolbar now appears as soon as formatted rendering starts, shows a clear preparation message, and keeps unavailable formatted-only controls disabled until the view is ready.
+- Rewrote the built-in usage guide to match the current interface: the Open button, automatic preview, side-by-side document panes, manual review below the previews, fixed apply control, and the current export and restoration buttons.
+- Removed the visible drag-and-drop hint while retaining window-level file drop, and used the reclaimed space to enlarge both document previews.
 - Collapsed the empty undo-restoration row below the anonymized preview, reducing the blank gap before the statistics from 36 to 8 pixels while keeping real undo actions visible.
 - Removed the redundant visible source-editor label and the static local-storage notice from both interface languages while retaining an accessible label for the editor.
 - All collapsible section headers now show a right-pointing arrow when closed and a downward arrow when open.
@@ -18,12 +24,19 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Fixed
 
+- Clearing a loaded formatted document now hides both formatted-preview hosts before restoring the empty text panes, preventing the anonymized preview from remaining as a second blank panel.
 - Postal addresses written after an explicit address label now redact the street, building, city, and trailing five- or six-digit postal index without treating unrelated numbers as postal codes.
 
 ### Русский
 
 #### Изменено
 
+- Добавлены нативные CI-сборки Linux/macOS и проверки упакованных приложений, включая Linux-тесты в графической сессии и изолированную проверку macOS Keychain; PyInstaller теперь включает динамически загружаемые модули защищённого хранилища для этих платформ. Windows остаётся основной поддерживаемой платформой, Word COM-конвейер не изменён.
+- В готовые сборки включены служебные шаблоны `python-docx`, необходимые во время создания и экспорта DOCX.
+- Компактный блок ручной проверки перенесён под две панели предпросмотра, панель применения остаётся видимой, а дополнительные режимы проверки находятся в сворачиваемом блоке.
+- Панель обезличенного предпросмотра теперь появляется сразу после начала подготовки форматированного вида, показывает понятный статус и временно блокирует недоступные команды до готовности документа.
+- Встроенная инструкция переписана под текущий интерфейс: кнопка «Открыть», автоматический предпросмотр, две панели документа, ручная проверка под ними, закреплённая кнопка применения и актуальные команды экспорта и восстановления.
+- Видимая подсказка перетаскивания удалена, но загрузка файла перетаскиванием в окно сохранена; освобождённое место отдано обеим областям предпросмотра документа.
 - Пустая строка отмены восстановления под обезличенным текстом теперь схлопывается: зазор перед счётчиками уменьшен с 36 до 8 пикселей, а реальные кнопки отмены по-прежнему отображаются.
 - Из обеих локализаций удалены избыточная видимая подпись исходного редактора и статическое уведомление о локальном хранении; доступная подпись поля сохранена для вспомогательных технологий.
 - Во всех заголовках сворачиваемых разделов теперь показывается стрелка вправо в закрытом состоянии и вниз в открытом.
@@ -32,25 +45,8 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Исправлено
 
+- После очистки загруженного форматированного документа обе области форматированного предпросмотра теперь скрываются до возврата пустых текстовых панелей; лишняя пустая панель справа больше не остаётся.
 - В адресах после явного указания «адрес» теперь обезличиваются улица, дом, город и завершающий пяти- или шестизначный почтовый индекс; посторонние числа индексами не считаются.
-
-## [0.2.9] — 2026-10-15
-
-### English
-
-#### Changed
-
-- Moved the manual-review workspace above both previews and compacted it into a two-column desktop panel, keeping both text panes visible while decisions are made.
-- Moved optional review modes into a collapsed disclosure without removing any controls.
-- Added native Linux/macOS CI builds and packaged smoke gates; PyInstaller now collects the runtime-loaded secure-storage backends on those platforms.
-
-### Русский
-
-#### Изменено
-
-- Блок ручной проверки перенесён над обеими панелями и уплотнён в двухколоночный desktop-макет, поэтому исходный и обезличенный текст остаются видимыми во время принятия решений.
-- Дополнительные режимы проверки перенесены в сворачиваемый блок без удаления элементов управления.
-- Добавлены нативные CI-сборки Linux/macOS и проверки упакованных приложений; PyInstaller теперь включает динамически загружаемые модули защищённого хранилища для этих платформ.
 
 ## [0.2.8] — 2026-10-15
 

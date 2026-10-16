@@ -271,35 +271,64 @@ def test_disabled_outer_class_is_not_partially_replaced_by_fallback_detectors():
     assert result.mapping == {}
 
 
-def test_interface_contains_complete_collapsed_usage_and_restore_guide():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+def test_interface_contains_current_collapsed_usage_and_restore_guide_in_both_languages():
+    localized = {
+        "index-v1.8.18.html": (
+            "Как пользоваться программой",
+            "«Открыть»",
+            "перетащите их в окно программы",
+            "откроется автоматически",
+            "Исходный текст",
+            "Обезличенный текст",
+            "Ручная проверка спорных мест",
+            "Скрыть и запомнить правило",
+            "Оставить и добавить в исключения",
+            "Применить настройки к файлу",
+            "исходный файл не изменяется",
+            "Сохранить документ и файл восстановления",
+            "Как восстановить исходный документ",
+            "1. Выбрать обезличенный файл…",
+            "2. Восстановить файл…",
+            "Windows, Linux и macOS",
+        ),
+        "index-en-v1.8.18.html": (
+            "How to use the app",
+            "“Open”",
+            "drag them into the app window",
+            "opens automatically",
+            "Source text",
+            "Anonymized text",
+            "Manual review of uncertain items",
+            "Hide and remember rule",
+            "Keep and add to exceptions",
+            "Apply settings to file",
+            "source file is not modified",
+            "Save document and recovery file",
+            "How to restore the original document",
+            "1. Select anonymized file…",
+            "2. Restore file…",
+            "Windows, Linux, and macOS",
+        ),
+    }
 
-    required = (
-        "Как пользоваться программой",
-        "Выбрать исходные файлы…",
-        "Применить настройки к файлу",
-        "Сохранить два файла…",
-        "решения вручную",
-        "Как вернуть исходные значения после экспорта",
-        "Восстановить файл…",
-        "Программа автоматически найдёт",
-        "переносимый",
-        "Windows и Linux",
-        "содержит исходные значения",
-        "NETBIOS",
-        "OU",
-        "названия дисков",
-        "списки программ",
-    )
-    assert all(text in html for text in required)
-    assert "зашифрован средствами Windows" not in html
-    assert "профиле Windows" not in html
-    assert '<details class="card usage-guide">' in html
-    assert '<details class="card usage-guide" open>' not in html
+    for asset_name, required in localized.items():
+        html = asset_path(asset_name).read_text(encoding="utf-8")
+        assert all(text in html for text in required)
+        assert '<details class="card usage-guide">' in html
+        assert '<details class="card usage-guide" open>' not in html
+
+    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    assert "Нажмите <b>«Выбрать исходные файлы…»</b>" not in ru_html
+    assert "Выберите документ в <b>«Локальной библиотеке»</b>" not in ru_html
+    assert "Click <b>“Select source files…”</b>" not in en_html
+    assert "Select the document in the <b>“Local library”</b>" not in en_html
+    assert "зашифрован средствами Windows" not in ru_html
+    assert "профиле Windows" not in ru_html
     assert "guide.open" not in javascript
-    assert 'id="stats">Версия 1.8' in html
-    assert 'id="stats">Версия 1.7' not in html
+    assert 'id="stats">Версия 1.8' in ru_html
+    assert 'id="stats">Версия 1.7' not in ru_html
 
 
 def test_gui_loads_default_profile_rules_on_startup():
@@ -345,22 +374,19 @@ def test_open_file_button_is_first_source_action_with_localized_tooltip():
         "index-v1.8.18.html": (
             ">Открыть</button>",
             'title="Открыть документ или несколько файлов и импортировать их в локальную библиотеку"',
-            '<div class="drop">Перетащите файлы сюда</div>',
         ),
         "index-en-v1.8.18.html": (
             ">Open</button>",
             'title="Open one or more documents and import them into the local library"',
-            '<div class="drop">Drag files here</div>',
         ),
     }
 
-    for name, (label, tooltip, drop_zone) in localized.items():
+    for name, (label, tooltip) in localized.items():
         html = asset_path(name).read_text(encoding="utf-8")
         source_bar = html.split('aria-labelledby="sourceHeading">', 1)[1].split("</div>", 1)[0]
         assert source_bar.index('id="dropChoose"') < source_bar.index('id="paste"')
         assert label in source_bar
         assert tooltip in source_bar
-        assert drop_zone in html
         assert html.count('id="dropChoose"') == 1
 
 
@@ -410,7 +436,7 @@ def test_source_pane_omits_redundant_visible_label_and_storage_notice():
         assert 'class="sr-label"' not in html
         assert 'id="events"' not in html
         assert storage_notice not in html
-        assert '<div class="drop">' in html
+        assert '<div class="drop">' not in html
 
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
     assert '.sr-label{' not in css
@@ -541,7 +567,24 @@ def test_compact_header_reclaims_height_for_document_previews():
     assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:34px;min-height:34px;padding:4px 9px;box-sizing:border-box}' in css
     assert 'body[data-design="new"] header h1{white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
     assert 'body[data-design="new"] .header-actions #stats{white-space:normal;overflow-wrap:anywhere;text-align:left}' in css
-    assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
+    assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
+    assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
+
+
+def test_drop_prompt_is_removed_but_window_drop_import_remains_available():
+    for name, prompt in (
+        ("index-v1.8.18.html", "Перетащите файлы сюда"),
+        ("index-en-v1.8.18.html", "Drag files here"),
+    ):
+        html = asset_path(name).read_text(encoding="utf-8")
+        assert '<div class="drop">' not in html
+        assert prompt not in html
+        assert 'id="dropChoose"' in html
+
+    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        script = asset_path(name).read_text(encoding="utf-8")
+        assert "$('#dropChoose').onclick=$('#choose').onclick;" in script
+        assert "document.addEventListener('drop',async e=>" in script
 
 
 def test_compact_header_renders_complete_without_horizontal_overflow(tmp_path):
@@ -660,7 +703,8 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
-    assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
+    assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
+    assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
     assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row}' in css
     assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr;' in css
