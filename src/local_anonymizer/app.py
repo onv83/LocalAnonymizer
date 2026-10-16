@@ -441,11 +441,32 @@ class AppApi:
         sample = f"Иванов Сергей Петрович, test@example.ru, пароль: Secret123!, {vm_sample}"
         result = Anonymizer().anonymize(sample)
         vm_node_ok = vm_sample not in result.text and "[УЗЕЛ-1]" in result.text
+        abbreviation_sample = "Отчет об обследовании СК АО QZXB1"
+        abbreviation_result = Anonymizer().anonymize(abbreviation_sample)
+        abbreviation_ok = (
+            "QZXB1" not in abbreviation_result.text
+            and any(
+                marker.startswith("[СОКРАЩЕНИЯ-") and original == "QZXB1"
+                for marker, original in abbreviation_result.mapping.items()
+            )
+        )
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
-        return {"ok": "[ФИО-1]" in result.text and "[ПОЧТА-1]" in result.text and "Secret123" not in result.text and vm_node_ok and graphics_roundtrip_ok,
-                "vm_node_ok": vm_node_ok, "graphics_roundtrip_ok": graphics_roundtrip_ok,
-                "replacement_count": len(result.mapping),
-                "secret_count": result.text.count("(удалено)"), "warnings": []}
+        return {
+            "ok": (
+                "[ФИО-1]" in result.text
+                and "[ПОЧТА-1]" in result.text
+                and "Secret123" not in result.text
+                and vm_node_ok
+                and abbreviation_ok
+                and graphics_roundtrip_ok
+            ),
+            "vm_node_ok": vm_node_ok,
+            "abbreviation_ok": abbreviation_ok,
+            "graphics_roundtrip_ok": graphics_roundtrip_ok,
+            "replacement_count": len(result.mapping),
+            "secret_count": result.text.count("(удалено)"),
+            "warnings": [],
+        }
 
     def help_summary(self) -> dict:
         return {"replacement_count": 0, "warning": "Требуется финальная ручная проверка. Значения таблицы в справку не включены."}

@@ -32,6 +32,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     summary = AppApi().engine_self_test()
     assert summary["ok"] is True
     assert summary["vm_node_ok"] is True
+    assert summary["abbreviation_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
 

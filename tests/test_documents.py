@@ -319,6 +319,9 @@ def test_docx_abbreviations_across_runs_tables_and_tabs_restore_byte_exactly(tmp
     paragraph.add_run("XB").bold = True
     paragraph.add_run().add_tab()
     paragraph.add_run("UCMDB")
+    adjacent = document.add_paragraph("Отчет об обследовании СК АО ")
+    adjacent.add_run("QZX")
+    adjacent.add_run("B1").bold = True
     table = document.add_table(rows=1, cols=2)
     table.cell(0, 0).text = "Интеграция"
     table.cell(0, 1).text = "SSO и NTLM"
@@ -332,8 +335,8 @@ def test_docx_abbreviations_across_runs_tables_and_tabs_restore_byte_exactly(tmp
         + [cell.text for row in output_document.tables[0].rows for cell in row.cells]
     )
 
-    assert all(value not in output for value in ("QZXB", "UCMDB", "SSO", "NTLM"))
-    assert set(result.mapping.values()) >= {"QZXB", "UCMDB", "SSO", "NTLM"}
+    assert all(value not in output for value in ("QZXB", "QZXB1", "UCMDB", "SSO", "NTLM"))
+    assert set(result.mapping.values()) >= {"QZXB", "QZXB1", "UCMDB", "SSO", "NTLM"}
 
     DocxProcessor().restore(
         anonymized,
