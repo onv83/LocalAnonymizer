@@ -1,8 +1,10 @@
 import base64
+import html as html_module
 import json
 from pathlib import Path
 from html.parser import HTMLParser
 import re
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -230,7 +232,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
         "КАРТА", "КПП", "СЧЁТ", "БИК", "ПАСПОРТ", "VIN", "КАДАСТР",
         "ГОСНОМЕР", "ТАБЕЛЬНЫЙ", "ДОГОВОР", "ДОКУМЕНТ", "ДАТА-РОЖДЕНИЯ",
         "СУММА", "СТАВКА", "ФИО", "ЛОГИН", "ОРГАНИЗАЦИЯ", "СИСТЕМА",
-        "ЗАДАЧА", "ГОРОД", "ДОЛЖНОСТЬ", "СПЕЦКАТЕГОРИЯ", "СКРЫТО",
+        "ЗАДАЧА", "ГОРОД", "АДРЕС", "ИНДЕКС", "ДОЛЖНОСТЬ", "СПЕЦКАТЕГОРИЯ", "СКРЫТО",
         "CUSTOM", "HINTS",
     }
     assert set(categories) == expected
@@ -318,29 +320,55 @@ def test_native_window_handle_is_private_to_avoid_pywebview_bridge_introspection
     assert api._window is sentinel
 
 
-def test_new_design_exposes_primary_four_step_workflow_and_file_state():
+def test_new_design_omits_redundant_workflow_steps_but_keeps_file_state():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
-    assert 'id="workflowSteps"' in html
-    for label in ("Документ", "Проверка", "Применение", "Экспорт"):
-        assert label in html
+    assert 'id="workflowSteps"' not in html
+    assert 'class="workflow-steps"' not in html
     assert 'id="fileLifecycleStatus"' in html
     assert 'id="applyNow"' in html
     assert 'id="exportNow"' in html
 
 
-def test_header_describes_all_sensitive_data_not_only_personal_data():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+def test_header_omits_redundant_sensitive_data_subtitle_in_both_languages():
+    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
 
-    assert "Персональные и другие чувствительные данные заменяются маркерами или удаляются." in html
-    assert "Персональные данные заменяются маркерами." not in html
+    assert "Персональные и другие чувствительные данные заменяются маркерами или удаляются." not in ru_html
+    assert "Всё выполняется локально." not in ru_html
+    assert "Personal and other sensitive data is replaced with markers or removed." not in en_html
+    assert "Everything runs locally." not in en_html
+
+
+def test_open_file_button_is_first_source_action_with_localized_tooltip():
+    localized = {
+        "index-v1.8.18.html": (
+            ">Открыть</button>",
+            'title="Открыть документ или несколько файлов и импортировать их в локальную библиотеку"',
+            '<div class="drop">Перетащите файлы сюда</div>',
+        ),
+        "index-en-v1.8.18.html": (
+            ">Open</button>",
+            'title="Open one or more documents and import them into the local library"',
+            '<div class="drop">Drag files here</div>',
+        ),
+    }
+
+    for name, (label, tooltip, drop_zone) in localized.items():
+        html = asset_path(name).read_text(encoding="utf-8")
+        source_bar = html.split('aria-labelledby="sourceHeading">', 1)[1].split("</div>", 1)[0]
+        assert source_bar.index('id="dropChoose"') < source_bar.index('id="paste"')
+        assert label in source_bar
+        assert tooltip in source_bar
+        assert drop_zone in html
+        assert html.count('id="dropChoose"') == 1
 
 
 def test_new_design_styles_define_contrast_actions_targets_and_focus():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8") if asset_path("new-design-v1.7.css").exists() else ""
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8") if asset_path("new-design-v1.11.css").exists() else ""
 
-    assert 'new-design-v1.7.css' in html
+    assert 'new-design-v1.11.css' in html
     for token in ("--text-primary", "--text-secondary", "--surface", "--border", "--action-primary", "--danger", "--warning", "--success"):
         assert token in css
     assert ":focus-visible" in css
@@ -352,8 +380,132 @@ def test_new_design_styles_define_contrast_actions_targets_and_focus():
     assert "summary{min-height:24px" in css
 
 
+def test_all_collapsible_sections_show_right_or_down_disclosure_arrow():
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        assert 'new-design-v1.11.css' in html
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert 'body[data-design="new"] details>summary{list-style:none' in css
+    assert 'body[data-design="new"] details>summary::-webkit-details-marker{display:none}' in css
+    assert 'body[data-design="new"] details:not([open])>summary::before{content:"▶"}' in css
+    assert 'body[data-design="new"] details[open]>summary::before{content:"▼"}' in css
+
+
+def test_source_pane_omits_redundant_visible_label_and_storage_notice():
+    localized_copy = {
+        "index-v1.8.18.html": (
+            "Исходный текст или текст выбранного документа",
+            "Исходник остаётся на компьютере; перед передачей нужна ручная проверка.",
+        ),
+        "index-en-v1.8.18.html": (
+            "Source text or text from the selected document",
+            "The source stays on this computer. Review it manually before sharing.",
+        ),
+    }
+
+    for name, (accessible_label, storage_notice) in localized_copy.items():
+        html = asset_path(name).read_text(encoding="utf-8")
+        assert f'<label for="source" class="sr-only">{accessible_label}</label>' in html
+        assert 'class="sr-label"' not in html
+        assert 'id="events"' not in html
+        assert storage_notice not in html
+        assert '<div class="drop">' in html
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert '.sr-label{' not in css
+
+
+def test_empty_undo_row_collapses_only_when_empty(tmp_path):
+    edge_candidates = (
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    )
+    edge = next((candidate for candidate in edge_candidates if candidate.exists()), None)
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows layout regression")
+
+    for html_name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(html_name).read_text(encoding="utf-8")
+        assert 'new-design-v1.11.css' in html
+        assert 'id="undoChips" class="undo-chips"' in html
+
+    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(script_name).read_text(encoding="utf-8")
+        assert "$('#undoChips').innerHTML=" in javascript
+        assert "$('#undoChips').onclick=" in javascript
+
+    links = "".join(
+        f'<link rel="stylesheet" href="{asset_path(name).as_uri()}">'
+        for name in ("style-v1.1.css", "new-design-v1.11.css")
+    )
+    for width in (320, 1430):
+        probe = tmp_path / f"empty-undo-row-{width}.html"
+        probe.write_text(
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            + links
+            + "</head><body data-design=\"new\"><section class=\"card pane\">"
+            + "<div id=\"richOutput\" class=\"rich-output\"></div>"
+            + "<div id=\"undoChips\" class=\"undo-chips\"></div>"
+            + "<div id=\"chips\" class=\"chips\"><span>People: 0</span></div>"
+            + "</section><pre id=\"probe\"></pre><script>"
+            + "const rich=document.querySelector('#richOutput'),undo=document.querySelector('#undoChips'),chips=document.querySelector('#chips');"
+            + "const metrics=()=>({undoDisplay:getComputedStyle(undo).display,undoHeight:undo.getBoundingClientRect().height,gap:chips.getBoundingClientRect().top-rich.getBoundingClientRect().bottom});"
+            + "const empty=metrics();undo.innerHTML='<button class=\"undo-chip\">Undo</button>';const populated=metrics();"
+            + "document.querySelector('#probe').textContent=JSON.stringify({empty,populated,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth});"
+            + "</script></body></html>",
+            encoding="utf-8",
+        )
+        profile = tmp_path / f"edge-profile-empty-undo-{width}"
+        result = subprocess.run(
+            [
+                str(edge),
+                "--headless=new",
+                "--disable-gpu",
+                "--allow-file-access-from-files",
+                f"--user-data-dir={profile}",
+                f"--window-size={width},923",
+                "--dump-dom",
+                probe.as_uri(),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.DOTALL)
+        assert match is not None
+        metrics = json.loads(html_module.unescape(match.group(1)))
+        assert metrics["empty"]["undoDisplay"] == "none", (width, metrics)
+        assert metrics["empty"]["undoHeight"] == 0, (width, metrics)
+        assert metrics["empty"]["gap"] <= 8.5, (width, metrics)
+        assert metrics["populated"]["undoDisplay"] != "none", (width, metrics)
+        assert metrics["populated"]["undoHeight"] >= 28, (width, metrics)
+        assert metrics["overflow"] is False, (width, metrics)
+
+
+def test_entity_summary_uses_the_free_space_above_output_preview_in_both_languages():
+    for html_name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(html_name).read_text(encoding="utf-8")
+        output = html[html.index('aria-labelledby="outputHeading"'):html.index('id="manualReview"')]
+
+        chips = output.index('id="chips"')
+        alignment = output.index('id="outputPreviewAlignment"')
+        preview = output.index('id="anonymizedPreviewSurface"')
+        undo = output.index('id="undoChips"')
+
+        assert chips < alignment < preview < undo
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert 'body[data-design="new"] .pane>.chips{' in css
+    assert "flex-wrap:nowrap" in css
+    assert 'body[data-design="new"] .pane>.chips span{' in css
+
+
 def test_new_design_uses_compact_interface_text_without_scaling_document_preview():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;' in css
     assert 'body[data-design="new"] textarea{font-size:13px;' in css
@@ -362,20 +514,113 @@ def test_new_design_uses_compact_interface_text_without_scaling_document_preview
 
 
 def test_new_design_aligns_remaining_header_controls_on_one_level():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
     ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .language-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}' in css
-    assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:42px;box-sizing:border-box}' in css
+    assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:34px;min-height:34px;padding:4px 9px;box-sizing:border-box}' in css
     assert 'body[data-design="new"] #themeToggle{white-space:nowrap}' in css
     for html in (ru_html, en_html):
         assert 'class="language-switch"' in html
         assert 'class="design-switch"' not in html
 
 
+def test_compact_header_reclaims_height_for_document_previews():
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        assert 'new-design-v1.11.css' in html
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;line-height:1.45;max-width:1920px;margin:auto;padding:8px 20px 90px}' in css
+    assert 'body[data-design="new"] header{order:0;position:sticky;top:0;z-index:80;background:var(--surface-raised);padding:3px 0 5px;margin-bottom:6px;' in css
+    assert 'grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title actions" "explanation explanation";align-items:center;gap:2px 12px' in css
+    assert 'body[data-design="new"] header>div:first-child{display:contents}' in css
+    assert 'body[data-design="new"] header p{grid-area:explanation;margin:0;min-width:0;font-size:11px;line-height:1.2;white-space:normal;overflow:visible}' in css
+    assert 'body[data-design="new"] .header-actions #stats{font-size:12px;line-height:1.2;white-space:nowrap}' in css
+    assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:34px;min-height:34px;padding:4px 9px;box-sizing:border-box}' in css
+    assert 'body[data-design="new"] header h1{white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
+    assert 'body[data-design="new"] .header-actions #stats{white-space:normal;overflow-wrap:anywhere;text-align:left}' in css
+    assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
+
+
+def test_compact_header_renders_complete_without_horizontal_overflow(tmp_path):
+    edge_candidates = (
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    )
+    edge = next((candidate for candidate in edge_candidates if candidate.exists()), None)
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows layout regression")
+
+    statuses = {
+        "index-v1.8.18.html": "Найдено замен: 374 · Требуют решения: 83 · Проверено: 0 из 83",
+        "index-en-v1.8.18.html": "Replacements found: 374 · Need review: 83 · Reviewed: 0 of 83",
+    }
+    for html_name, status in statuses.items():
+        page = asset_path(html_name).read_text(encoding="utf-8")
+        header = page[page.index("<header>"):page.index("</header>") + len("</header>")]
+        stylesheets = re.findall(r'<link rel="stylesheet" href="([^"]+)">', page)
+        links = "".join(
+            f'<link rel="stylesheet" href="{asset_path(name).as_uri()}">'
+            for name in stylesheets
+        )
+        for width in (320, 1430):
+            probe = tmp_path / f"header-{html_name}-{width}.html"
+            body_style = ' style="width:305px;max-width:305px;margin:0"' if width == 320 else ""
+            probe.write_text(
+                "<!doctype html><html><head><meta charset=\"utf-8\">"
+                + links
+                + f"</head><body data-design=\"new\"{body_style}>"
+                + header
+                + "<pre id=\"probe\"></pre><script>"
+                + f"document.querySelector('#stats').textContent={json.dumps(status, ensure_ascii=False)};"
+                + "const root=document.documentElement,title=document.querySelector('header h1'),"
+                + "explanation=document.querySelector('header p'),stats=document.querySelector('#stats'),"
+                + "headerBox=document.querySelector('header');"
+                + "document.querySelector('#probe').textContent=JSON.stringify({"
+                + "docOverflow:root.scrollWidth>root.clientWidth,"
+                + "bodyOverflow:document.body.scrollWidth>document.body.clientWidth,"
+                + "titleClipped:title.scrollWidth>title.clientWidth+1||title.scrollHeight>title.clientHeight+1,"
+                + "explanationClipped:explanation?(explanation.scrollWidth>explanation.clientWidth+1||explanation.scrollHeight>explanation.clientHeight+1):false,"
+                + "statsClipped:stats.scrollWidth>stats.clientWidth+1||stats.scrollHeight>stats.clientHeight+1,"
+                + "headerHeight:headerBox.getBoundingClientRect().height});"
+                + "</script></body></html>",
+                encoding="utf-8",
+            )
+            profile = tmp_path / f"edge-profile-{html_name}-{width}"
+            result = subprocess.run(
+                [
+                    str(edge),
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--allow-file-access-from-files",
+                    f"--user-data-dir={profile}",
+                    f"--window-size={width},923",
+                    "--dump-dom",
+                    probe.as_uri(),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.DOTALL)
+            assert match is not None
+            metrics = json.loads(html_module.unescape(match.group(1)))
+            assert metrics["docOverflow"] is False, (html_name, width, metrics)
+            assert metrics["bodyOverflow"] is False, (html_name, width, metrics)
+            assert metrics["titleClipped"] is False, (html_name, width, metrics)
+            assert metrics["explanationClipped"] is False, (html_name, width, metrics)
+            assert metrics["statsClipped"] is False, (html_name, width, metrics)
+            if width == 1430:
+                assert metrics["headerHeight"] <= 64, (html_name, width, metrics)
+
+
 def test_dark_new_design_stat_chips_have_explicit_readable_colors():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'html[data-theme="dark"] body[data-design="new"] .chips span{' in css
     assert "background:var(--surface-raised)" in css
@@ -386,13 +631,13 @@ def test_dark_new_design_stat_chips_have_explicit_readable_colors():
 
 
 def test_new_design_current_review_text_has_explicit_readable_color():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] #reviewCurrent{color:var(--text-primary)}' in css
 
 
 def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
@@ -400,7 +645,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
 
 
 def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_controls():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
@@ -415,15 +660,15 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
-    assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:15vh;min-height:120px}body[data-design="new"] .workflow-status{position:static}}' in css
+    assert '@media(min-width:801px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
     assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row}' in css
-    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr 1fr;' in css
+    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr;' in css
     assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
 
 
 def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_panes():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
     assert 'body[data-design="new"] .columns>.pane{margin-bottom:0}' in css
@@ -431,8 +676,36 @@ def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_pan
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
+def test_populated_review_keeps_heading_and_action_help_readable():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+
+    base_css = css.split("@media", 1)[0]
+    assert 'body[data-design="new"] .workflow-status{position:fixed;left:20px;right:20px;bottom:0;z-index:70;' in base_css
+    assert '.workflow-status{position:static' not in css
+    assert 'body[data-design="new"]{padding:10px 10px 210px}' in css
+    assert 'body[data-design="new"] .workflow-status{left:10px;right:10px;flex-wrap:wrap}' in css
+    assert 'body[data-design="new"] .review-heading,body[data-design="new"] .review-controls-disclosure{grid-column:1/-1}' in css
+    assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
+    assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
+    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr;' in css
+    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
+    assert 'body[data-design="new"] .review-actions button{justify-self:start;' in css
+    assert '@media(max-width:800px){body[data-design="new"] .review{grid-template-columns:1fr}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:1fr}' in css
+
+
+def test_restore_steps_stack_on_narrow_screens_in_both_languages():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    ru = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    en = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+
+    assert '@media(max-width:620px){body[data-design="new"] .restore-steps{grid-template-columns:minmax(0,1fr)}}' in css
+    assert 'class="restore-steps"' in ru
+    assert 'class="restore-steps"' in en
+
+
 def test_new_design_hides_empty_review_result_status():
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] #resultStatus:empty{display:none}' in css
 
@@ -461,8 +734,27 @@ def test_new_design_uses_plain_language_stats_review_context_and_operation_state
     assert 'id="reviewMeta"' in html
     for text in ("Найдено замен:", "Требуют решения:", "Проверено:", "Создаётся предпросмотр", "Обрабатывается файл"):
         assert text in javascript
-    assert "одинаковых вхождений" in javascript
-    assert "Решение сохранится в наборе правил" in javascript
+    assert "вхожд." in javascript
+    assert "Правила: «" in javascript
+
+
+def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
+    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    ru_js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    en_js = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+
+    assert "Автопоиск не уверен — выберите действие." in ru_html
+    assert "Detection is uncertain — choose an action." in en_html
+    assert "`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind" in ru_js
+    assert "`${occurrences} вхожд. · Правила: «${$('#profile').value||'Общий'}»`" in ru_js
+    assert "`“${all[reviewIndex].textContent.trim()}” · ${hintKindText(all[reviewIndex].dataset.kind)" in en_js
+    assert "`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`" in en_js
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert 'body[data-design="new"] .review-candidate .review-help{grid-column:1;grid-row:2}' in css
+    assert 'body[data-design="new"] .review-candidate small{grid-column:2;grid-row:2}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{min-width:0;min-height:108px}' in css
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
@@ -502,6 +794,61 @@ def test_fullscreen_preview_uses_modal_semantics_and_restores_focus():
 def test_desktop_window_allows_760px_accessibility_layout():
     source = Path(app_module.__file__).read_text(encoding="utf-8")
     assert "min_size=(720, 700)" in source
+
+
+def test_desktop_window_opens_at_1600px_for_two_preview_panes(tmp_path, monkeypatch):
+    captured = {}
+
+    def create_window(title, url, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        SimpleNamespace(create_window=create_window, start=lambda **kwargs: None),
+    )
+
+    assert app_module.main([]) == 0
+    assert captured["width"] == 1600
+    assert captured["height"] == 920
+    assert captured["min_size"] == (720, 700)
+
+
+def test_desktop_window_clamps_preferred_size_to_primary_work_area(tmp_path, monkeypatch):
+    captured = {}
+    work_area = SimpleNamespace(X=0, Y=0, Width=1366, Height=728)
+    primary_screen = SimpleNamespace(
+        x=0,
+        y=0,
+        width=1366,
+        height=768,
+        frame=work_area,
+    )
+
+    def create_window(title, url, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        SimpleNamespace(
+            screens=[primary_screen],
+            create_window=create_window,
+            start=lambda **kwargs: None,
+        ),
+    )
+
+    assert app_module.main([]) == 0
+    assert captured["width"] == 1366
+    assert captured["height"] == 728
+    assert captured["min_size"] == (720, 700)
+    assert captured["x"] == 0
+    assert captured["y"] == 0
+    assert captured["screen"] is primary_screen
 
 
 def test_double_escape_no_longer_silently_clears_user_work():
@@ -628,11 +975,11 @@ def test_english_interface_never_renders_raw_bridge_errors():
         assert f"bridgeErrorText('{operation}')" in javascript
 
 
-def test_language_variants_do_not_duplicate_numbers_in_ordered_workflow_steps():
+def test_language_variants_omit_redundant_workflow_steps():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
-        workflow = html[html.index('id="workflowSteps"'):html.index("</nav>")]
-        assert not re.search(r"<li>\d+\s", workflow)
+        assert 'id="workflowSteps"' not in html
+        assert 'class="workflow-steps"' not in html
 
 
 def test_language_choice_is_persisted_by_backend_and_preserves_other_ui_settings(tmp_path):
@@ -1056,7 +1403,7 @@ def test_settings_and_primary_action_explain_their_real_effect():
 
 def test_new_design_shows_only_one_apply_and_one_export_action():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    css = asset_path("new-design-v1.7.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'id="exportNow" title="Сохранить обезличенный документ и переносимый файл восстановления рядом">Сохранить документ и файл восстановления</button>' in html
     assert 'body[data-design="new"] #anonymize,body[data-design="new"] #downloadAnon{display:none!important}' in css
@@ -1178,7 +1525,7 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
 
     for text in (
         "Ручная проверка спорных мест",
-        "Почему оно здесь",
+        "Автопоиск не уверен — выберите действие.",
         "Скрыть и запомнить правило",
         "Оставить и добавить в исключения",
         "заменён маркером",
@@ -1208,7 +1555,7 @@ def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
     assert "Ручная проверка отключена" in javascript
     assert "снимите «Автоматически скрывать спорное без подтверждения»" in javascript
     assert "setAnonymizedPreviewMode(false)" in javascript
-    assert "Текущее спорное место:" in javascript
+    assert "`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind" in javascript
 
 
 def test_document_export_has_a_visible_matching_restore_import_action():

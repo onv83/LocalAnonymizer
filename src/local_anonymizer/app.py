@@ -579,6 +579,53 @@ def pair_smoke_check() -> dict:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _screen_work_area(screen) -> tuple[int, int, int, int]:
+    frame = getattr(screen, "frame", None)
+
+    def value(obj, *names):
+        for name in names:
+            candidate = getattr(obj, name, None)
+            if candidate is not None:
+                return candidate() if callable(candidate) else candidate
+        return None
+
+    x = value(frame, "X", "x") if frame is not None else None
+    y = value(frame, "Y", "y") if frame is not None else None
+    width = value(frame, "Width", "width") if frame is not None else None
+    height = value(frame, "Height", "height") if frame is not None else None
+    if None in (x, y, width, height):
+        x = getattr(screen, "x", 0)
+        y = getattr(screen, "y", 0)
+        width = getattr(screen, "width", 1600)
+        height = getattr(screen, "height", 920)
+    return int(x), int(y), int(width), int(height)
+
+
+def _preferred_window_geometry(screens) -> dict:
+    screens = list(screens or ())
+    if not screens:
+        return {"width": 1600, "height": 920}
+    screen = next(
+        (
+            item
+            for item in screens
+            if item.x <= 0 < item.x + item.width
+            and item.y <= 0 < item.y + item.height
+        ),
+        screens[0],
+    )
+    work_x, work_y, work_width, work_height = _screen_work_area(screen)
+    width = max(720, min(1600, work_width))
+    height = max(700, min(920, work_height))
+    return {
+        "width": width,
+        "height": height,
+        "x": work_x + max(0, (work_width - width) // 2),
+        "y": work_y + max(0, (work_height - height) // 2),
+        "screen": screen,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Локальный обезличиватель")
     parser.add_argument("--smoke", action="store_true", help="проверка без запуска GUI")
@@ -607,8 +654,14 @@ def main(argv: list[str] | None = None) -> int:
     entry_asset = ENGLISH_INDEX_ASSET if language == "en" else INDEX_ASSET
     entry_url = asset_path(entry_asset).as_uri()
     title = "Local Document Anonymizer" if language == "en" else "Локальный обезличиватель документов"
-    window = webview.create_window(title, entry_url, js_api=api,
-                          width=1440, height=920, min_size=(720, 700))
+    geometry = _preferred_window_geometry(getattr(webview, "screens", ()))
+    window = webview.create_window(
+        title,
+        entry_url,
+        js_api=api,
+        min_size=(720, 700),
+        **geometry,
+    )
     api.set_window(window)
     webview.start(debug=False, private_mode=True)
     return 0

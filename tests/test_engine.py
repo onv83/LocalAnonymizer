@@ -57,6 +57,54 @@ def test_unlabelled_fifteen_digit_number_is_not_assumed_to_be_imei():
     assert not result.mapping
 
 
+def test_labelled_russian_street_address_redacts_street_house_city_and_index():
+    source = (
+        "Работы должны быть выполнены по адресу "
+        "Профсоюзная ул., 125А, Москва, 17630."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Работы должны быть выполнены по адресу [АДРЕС-1], [ИНДЕКС-1]."
+    assert result.mapping == {
+        "[АДРЕС-1]": "Профсоюзная ул., 125А, Москва",
+        "[ИНДЕКС-1]": "17630",
+    }
+    assert result.counts["АДРЕС"] == 1
+    assert result.counts["ИНДЕКС"] == 1
+    for leaked in ("Профсоюзная", "125А", "Москва", "17630"):
+        assert leaked not in result.text
+
+
+def test_explicit_postal_index_is_redacted_but_unlabelled_numbers_are_not():
+    source = "Почтовый индекс: 630099. Номер заявки 17630. Сборка 123456."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == (
+        "Почтовый индекс: [ИНДЕКС-1]. Номер заявки 17630. Сборка 123456."
+    )
+    assert result.mapping == {"[ИНДЕКС-1]": "630099"}
+
+
+def test_postal_index_category_can_be_disabled_inside_a_labelled_address():
+    source = "Работы по адресу Профсоюзная ул., 125А, Москва, 17630."
+
+    result = Anonymizer(disabled_categories={"ИНДЕКС"}).anonymize(source)
+
+    assert result.text == "Работы по адресу [АДРЕС-1], 17630."
+    assert "[ИНДЕКС-" not in result.text
+
+
+def test_email_address_wording_is_not_mistaken_for_a_postal_address():
+    source = "Ответ направить по адресу электронной почты user@example.test."
+
+    result = Anonymizer().anonymize(source)
+
+    assert "по адресу электронной почты" in result.text
+    assert "[АДРЕС-" not in result.text
+
+
 def test_compact_markers_reduce_placeholder_width_without_changing_restore_mapping():
     source = "Иванов Иван Иванович работает в ООО «Ромашка»."
 

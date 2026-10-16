@@ -8,11 +8,31 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### English
 
-No unreleased changes yet.
+#### Changed
+
+- Collapsed the empty undo-restoration row below the anonymized preview, reducing the blank gap before the statistics from 36 to 8 pixels while keeping real undo actions visible.
+- Removed the redundant visible source-editor label and the static local-storage notice from both interface languages while retaining an accessible label for the editor.
+- All collapsible section headers now show a right-pointing arrow when closed and a downward arrow when open.
+- Compacted the desktop header controls into one row, kept the complete explanation on a slim second line, and enlarged the document preview panes in low-height windows.
+- Increased the preferred desktop window width from 1440 to 1600 pixels so long preview-status text and the two document panes have more horizontal space, while clamping the launch size and position to the primary monitor's working area on constrained displays.
+
+#### Fixed
+
+- Postal addresses written after an explicit address label now redact the street, building, city, and trailing five- or six-digit postal index without treating unrelated numbers as postal codes.
 
 ### Русский
 
-Новых неопубликованных изменений пока нет.
+#### Изменено
+
+- Пустая строка отмены восстановления под обезличенным текстом теперь схлопывается: зазор перед счётчиками уменьшен с 36 до 8 пикселей, а реальные кнопки отмены по-прежнему отображаются.
+- Из обеих локализаций удалены избыточная видимая подпись исходного редактора и статическое уведомление о локальном хранении; доступная подпись поля сохранена для вспомогательных технологий.
+- Во всех заголовках сворачиваемых разделов теперь показывается стрелка вправо в закрытом состоянии и вниз в открытом.
+- Элементы управления верхней панели собраны в одну строку, полное пояснение сохранено отдельной компактной строкой, а области предпросмотра документов в невысоких окнах увеличены.
+- Предпочтительная начальная ширина окна увеличена с 1440 до 1600 пикселей, чтобы длинный статус предпросмотра и две панели документов получали больше места по горизонтали; на ограниченных дисплеях размер и положение запуска ограничиваются рабочей областью основного монитора.
+
+#### Исправлено
+
+- В адресах после явного указания «адрес» теперь обезличиваются улица, дом, город и завершающий пяти- или шестизначный почтовый индекс; посторонние числа индексами не считаются.
 
 ## [0.2.9] — 2026-10-15
 
