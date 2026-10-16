@@ -186,12 +186,14 @@ def test_macos_spec_produces_native_app_bundle_without_changing_windows_onedir()
 
 def test_posix_native_verifier_checks_all_packaged_smoke_modes():
     verifier = (ROOT / "verify-native.sh").read_text(encoding="utf-8")
+    packaged_verifier = (ROOT / "scripts" / "verify_packaged.py").read_text(encoding="utf-8")
 
     assert "dist/LocalAnonymizer.app/Contents/MacOS/LocalAnonymizer" in verifier
     assert "dist/LocalAnonymizer/LocalAnonymizer" in verifier
-    assert '"$executable" --smoke' in verifier
-    assert '"$executable" --pair-smoke' in verifier
-    assert '"$executable" --platform-smoke' in verifier
+    assert 'uv run python scripts/verify_packaged.py "$executable"' in verifier
+    assert '"--smoke"' in packaged_verifier
+    assert '"--pair-smoke"' in packaged_verifier
+    assert '"--platform-smoke"' in packaged_verifier
 
 
 def test_native_spec_collects_runtime_loaded_secure_storage_backends():
@@ -208,6 +210,7 @@ def test_native_spec_collects_runtime_loaded_secure_storage_backends():
 def test_native_ci_builds_and_smokes_linux_and_macos_packages():
     workflow = (ROOT / ".github" / "workflows" / "native.yml").read_text(encoding="utf-8")
     verifier = (ROOT / "verify-native.sh").read_text(encoding="utf-8")
+    packaged_verifier = (ROOT / "scripts" / "verify_packaged.py").read_text(encoding="utf-8")
 
     assert "ubuntu-24.04" in workflow
     assert "macos-14" in workflow
@@ -220,6 +223,5 @@ def test_native_ci_builds_and_smokes_linux_and_macos_packages():
     assert "uv run pytest" in workflow
     assert "./build.sh" in workflow
     assert "./verify-native.sh" in workflow
-    assert "--smoke" in verifier
-    assert "--pair-smoke" in verifier
-    assert "--platform-smoke" in verifier
+    assert "scripts/verify_packaged.py" in verifier
+    assert all(flag in packaged_verifier for flag in ("--smoke", "--pair-smoke", "--platform-smoke"))

@@ -26,7 +26,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Fixed
 
-- Packaged smoke verification now checks an organization-adjacent, trailing-digit abbreviation such as `QZXB1`, so an outdated or incomplete Windows build fails the release gate instead of silently accepting the leak.
+- Packaged build verification now runs an external fail-closed check for an organization-adjacent, trailing-digit abbreviation such as `QZXB1`; an outdated executable that self-reports success but omits this proof is rejected by the Windows and native release gates.
 - Clearing a loaded formatted document now hides both formatted-preview hosts before restoring the empty text panes, preventing the anonymized preview from remaining as a second blank panel.
 - Postal addresses written after an explicit address label now redact the street, building, city, and trailing five- or six-digit postal index without treating unrelated numbers as postal codes.
 - Russian street-first and street-suffix forms such as `ул. Энтузиастов, д.5, к.6` and `Профсоюзная улица, 125А` are now redacted without hiding generic mentions of streets or avenues.
@@ -53,7 +53,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Исправлено
 
-- Проверка упакованного приложения теперь отдельно контролирует сокращение с завершающей цифрой рядом с организацией, например `QZXB1`; устаревшая или неполная Windows-сборка не пройдёт выпускной барьер при такой утечке.
+- Проверка готовой сборки теперь выполняет внешний fail-closed контроль сокращения с завершающей цифрой рядом с организацией, например `QZXB1`; устаревший EXE, который сообщает об успехе, но не выдаёт это доказательство, отклоняется Windows- и нативными выпускными барьерами.
 - После очистки загруженного форматированного документа обе области форматированного предпросмотра теперь скрываются до возврата пустых текстовых панелей; лишняя пустая панель справа больше не остаётся.
 - В адресах после явного указания «адрес» теперь обезличиваются улица, дом, город и завершающий пяти- или шестизначный почтовый индекс; посторонние числа индексами не считаются.
 - Теперь обезличиваются русские адреса с типом улицы до или после названия, например `ул. Энтузиастов, д.5, к.6` и `Профсоюзная улица, 125А`; обычные упоминания улиц и проспектов не затрагиваются.

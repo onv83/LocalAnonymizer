@@ -7,4 +7,6 @@ if not exist ".venv\Scripts\pyinstaller.exe" (
 )
 ".venv\Scripts\pyinstaller.exe" --noconfirm --clean LocalAnonymizer.spec
 if errorlevel 1 exit /b %errorlevel%
+".venv\Scripts\python.exe" scripts\verify_packaged.py "dist\LocalAnonymizer\LocalAnonymizer.exe"
+if errorlevel 1 exit /b %errorlevel%
 echo Сборка: %CD%\dist\LocalAnonymizer\LocalAnonymizer.exe

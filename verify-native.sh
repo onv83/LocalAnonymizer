@@ -22,8 +22,6 @@ if [ ! -x "$executable" ]; then
   exit 2
 fi
 
-"$executable" --smoke
-"$executable" --pair-smoke
-"$executable" --platform-smoke
+uv run python scripts/verify_packaged.py "$executable"
 
 echo "Native package verification passed: $executable"
