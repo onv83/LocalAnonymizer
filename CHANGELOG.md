@@ -240,7 +240,10 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.2...v0.2.3

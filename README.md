@@ -8,13 +8,13 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows interface with a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX; no real personal or confidential data is shown.*
 
 ### Russian interface
 
 ![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс готовой Windows-сборки с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
 
 ## Ready-to-use Windows build
 
@@ -97,13 +97,13 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс готовой Windows-сборки с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX; реальные персональные и конфиденциальные данные не используются.*
 
 ### Интерфейс на английском языке
 
 ![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows interface with a synthetic demonstration DOCX; no real personal or confidential data is shown.*
+*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX; no real personal or confidential data is shown.*
 
 ## Запуск готовой версии — без Python и установки пакетов
 
@@ -152,7 +152,7 @@ Python, `uv`, pip и установка зависимостей для гото
 - PyInstaller использует единый `LocalAnonymizer.spec`; `build.bat` и `build.sh` являются только платформенными оболочками над ним;
 - GUI-зависимости ограничены маркерами платформы: WebView2 на Windows, Cocoa на macOS и GTK/WebKit на Linux.
 
-Linux/macOS-сборки пока не публикуются и не считаются поддерживаемыми: системное защищённое хранилище, GUI, clipboard, упаковка и восстановление должны быть проверены непосредственно на целевых ОС. Подготовлен fail-closed backend AES-GCM с мастер-ключом в системном keyring, но его работа с Secret Service/KWallet и macOS Keychain ещё не подтверждена нативными тестами. Открытого fallback для локальных карт замен нет. Экспортируемый переносимый `.larecovery`, напротив, намеренно не зашифрован и содержит исходные значения; его нужно защищать так же, как оригинал.
+Linux/macOS-сборки пока не публикуются и не считаются поддерживаемыми. Нативные GitHub Actions уже проверяют сборку, запуск, системное защищённое хранилище и clipboard backend на Ubuntu и macOS, однако интерактивная работа GUI, интеграция с реальными desktop keyring и полный пользовательский цикл восстановления ещё требуют ручной проверки на целевых ОС. Открытого fallback для локальных карт замен нет. Экспортируемый переносимый `.larecovery`, напротив, намеренно не зашифрован, содержит исходные значения и предупреждение о чувствительных данных; его нужно защищать так же, как оригинал.
 
 Подготовка нативных пакетов выполняется **на соответствующей ОС** (кросс-сборка PyInstaller не используется):
 
