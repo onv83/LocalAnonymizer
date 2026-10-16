@@ -96,6 +96,10 @@ def test_abbreviations_redact_the_entire_token_around_any_three_uppercase_run():
         "ÅÄÖ",
         "ЄЇІ",
         "A\u0301BC",
+        "A\u0483BC",
+        "AB\u200cC",
+        "ABC\u0483def",
+        "ABC\u200cdef",
         long_token,
     }
     source = " ".join(sorted(abbreviations) + ["preABpost"])

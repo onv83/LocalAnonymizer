@@ -15,15 +15,16 @@ def test_acceptance_sample_redacts_required_values_and_preserves_non_sensitive_n
         "[уязвимость]", "[ИНН-1]", "[КПП-1]", "[СНИЛС-1]", "[СЧЁТ-1]",
         "[КАРТА-1]", "[КАДАСТР-1]", "[ГОСНОМЕР-1]", "[ТАБЕЛЬНЫЙ-1]",
         "[ДОГОВОР-1]", "[СУММА-1]", "[СУММА-2]", "[СТАВКА-1]",
-        "[ДАТА-РОЖДЕНИЯ-1]", "[ФИО-2]", "[ФИО-3]",
+        "[ДАТА-РОЖДЕНИЯ-1]", "[ФИО-2]", "[ФИО-3]", "[ПОРТ-1]",
     ]
     for marker in expected_markers:
         assert marker in output, marker
     assert output.count("[ФИО-1]") == 1
     assert result.mapping["[ФИО-3]"] == "Иванов"
     assert output.count("[ОРГАНИЗАЦИЯ-1]") >= 2
-    for public in ("1.7.5.16", "порт 8080"):
-        assert public in output
+    assert "1.7.5.16" in output
+    assert "порт [ПОРТ-1]" in output
+    assert result.mapping["[ПОРТ-1]"] == "8080"
     abbreviation_values = {
         item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
     }
@@ -50,6 +51,82 @@ def test_device_and_network_identifiers_use_validated_local_rules():
     assert result.mapping["[MAC-1]"] == "a1b2.c3d4.e5f6"
     assert "2001:db8::/32" not in result.text
     assert result.mapping["[IP-1]"] == "2001:db8::/32"
+
+
+def test_domains_glued_to_toc_page_numbers_are_redacted_as_complete_domains():
+    source = "\n".join((
+        "2.2 Общие данные по домену qzxsafe.test11",
+        "2.3 Общие данные по домену go.qzxsafe.test14",
+        "2.4 Общие данные по домену rf.qzxsafe.test19",
+    ))
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text.splitlines() == [
+        "2.2 Общие данные по домену [ДОМЕН-1]11",
+        "2.3 Общие данные по домену [ДОМЕН-2]14",
+        "2.4 Общие данные по домену [ДОМЕН-3]19",
+    ]
+    assert result.mapping == {
+        "[ДОМЕН-1]": "qzxsafe.test",
+        "[ДОМЕН-2]": "go.qzxsafe.test",
+        "[ДОМЕН-3]": "rf.qzxsafe.test",
+    }
+
+
+def test_contextual_network_ports_are_reversible_and_bounded():
+    source = (
+        "порт 8080; Port: 8443; TCP-порт 5432; диапазон портов 8000-8002; сервис 53/udp; "
+        "192.0.2.10:22; node.qzxsafe.test:636; srv-db-01:3306; "
+        "[2001:db8::1]:9443. "
+        "Без контекста: 8081, 12:30, версия 1.8.18, порт 0, port 65536."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert set(value for marker, value in result.mapping.items() if marker.startswith("[ПОРТ-")) == {
+        "8080", "8443", "5432", "8000", "8002", "53", "22", "636", "3306", "9443",
+    }
+    assert result.counts["ПОРТ"] == 10
+    for leaked in (
+        "порт 8080", "Port: 8443", "порт 5432", "портов 8000-8002", "53/udp",
+        "192.0.2.10:22", "node.qzxsafe.test:636", "srv-db-01:3306", "]:9443",
+    ):
+        assert leaked not in result.text
+    for public in ("8081", "12:30", "1.8.18", "порт 0", "port 65536"):
+        assert public in result.text
+
+
+def test_port_priority_disabled_category_and_compact_marker_are_explicit():
+    source = "https://qzxsafe.test:9443/path порт 8080, 198.51.100.4:8080"
+
+    result = Anonymizer().anonymize(source)
+    assert result.mapping["[ССЫЛКА-1]"] == "https://qzxsafe.test:9443/path"
+    assert "9443" not in result.text
+    assert result.text.count("[ПОРТ-1]") == 2
+    assert result.mapping["[ПОРТ-1]"] == "8080"
+
+    disabled = Anonymizer(disabled_categories={"ПОРТ"}).anonymize(source)
+    assert "порт 8080" in disabled.text
+    assert ":8080" in disabled.text
+    assert "[ПОРТ-" not in disabled.text
+    assert "[ССЫЛКА-1]" in disabled.text
+    assert "[IP-1]:8080" in disabled.text
+
+    compact = Anonymizer(compact_markers=True).anonymize("порт 8080")
+    assert compact.text == "порт [ПРТ-1]"
+    assert compact.mapping == {"[ПРТ-1]": "8080"}
+
+
+def test_numeric_credentials_are_not_downgraded_to_network_ports():
+    source = "login user1:1234; endpoint srv-db-01:3306"
+
+    result = Anonymizer().anonymize(source)
+
+    assert "user1:1234" not in result.text
+    assert "user1:1234" not in repr(result.mapping)
+    assert "(удалено: учётные данные)" in result.text
+    assert result.mapping["[ПОРТ-1]"] == "3306"
 
 
 def test_unlabelled_fifteen_digit_number_is_not_assumed_to_be_imei():

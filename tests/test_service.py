@@ -24,10 +24,11 @@ def test_end_to_end_acceptance_docx_anonymize_edit_restore(tmp_path):
     assert report["ready"] is True
     anon = Path(report["output_path"])
     anonymized = "\n".join(p.text for p in Document(anon).paragraphs)
-    for expected in ("[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[IP-1]", "[уязвимость]", "(удалено)"):
+    for expected in ("[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[IP-1]", "[ПОРТ-1]", "[уязвимость]", "(удалено)"):
         assert expected in anonymized
-    for public in ("1.7.5.16", "порт 8080"):
-        assert public in anonymized
+    assert "1.7.5.16" in anonymized
+    assert "порт [ПОРТ-1]" in anonymized
+    assert "порт 8080" not in anonymized
     assert "SLA" not in anonymized
     assert "НДС" not in anonymized
     edited = tmp_path / "edited.docx"

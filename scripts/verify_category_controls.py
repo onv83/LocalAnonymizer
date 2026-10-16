@@ -20,6 +20,15 @@ PARANOID_CLASS_CASES = _CASES["PARANOID_CLASS_CASES"]
 STANDARD_CLASS_CASES = _CASES["STANDARD_CLASS_CASES"]
 
 
+class CategoryVerificationError(RuntimeError):
+    """Raised when a visible category control does not satisfy its contract."""
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise CategoryVerificationError(message)
+
+
 ORIGINAL_VALUES = {
     "DN": "CN=Test User,OU=Lab,DC=example,DC=test", "IP": "192.0.2.10",
     "MAC": "02:00:5e:10:00:00", "IMEI": "123456789012347", "VIN": "1HGBH41JXMN109186",
@@ -27,11 +36,13 @@ ORIGINAL_VALUES = {
     "ГОСНОМЕР": "А000АА 000", "ДАТА-РОЖДЕНИЯ": "01.02.2000",
     "ДИСК": "SYNTH01", "ДОГОВОР": "SYN-001", "ДОКУМЕНТ": "SYN-002",
     "ДОМЕН": "example.test", "ЗАДАЧА": "SYN-123", "ИНН": "0000000000",
+    "ПОРТ": "8080",
     "КАДАСТР": "00:00:0000000:000", "КАРТА": "0000000000000",
     "КПП": "000000000", "ЛОГИН": "synthetic_user", "ОГРН": "0000000000000",
     "ОРГАНИЗАЦИЯ": "ООО «Синтетикс»", "ПАСПОРТ": "0000 000000",
     "ПОЧТА": "user@example.test", "ПРОГРАММА": "Synthetic App",
     "ПРОИЗВОДИТЕЛЬ": "Synthetic Vendor", "ПУТЬ": r"C:\Synthetic\data",
+    "СОКРАЩЕНИЯ": "QZXB",
     "СЗИ": "Secret Net Studio", "СИСТЕМА": "Синтетика",
     "СКРИПТЫ": "synthetic.ps1", "СНИЛС": "00000000000",
     "ССЫЛКА": "https://example.test/path", "СТАВКА": "7%",
@@ -108,25 +119,27 @@ def _verify_one(root: Path, fmt: str, category: str, source: str, paranoid: bool
         paranoid=paranoid, disabled_categories={category}, compact_markers=False
     )
     if fmt == "docx":
-        assert DocxProcessor(enabled_engine).anonymize(source_path, enabled_path).ready
-        assert DocxProcessor(disabled_engine).anonymize(source_path, disabled_path).ready
+        enabled_result = DocxProcessor(enabled_engine).anonymize(source_path, enabled_path)
+        disabled_result = DocxProcessor(disabled_engine).anonymize(source_path, disabled_path)
     else:
-        assert XlsxProcessor(enabled_engine).anonymize(source_path, enabled_path).ready
-        assert XlsxProcessor(disabled_engine).anonymize(source_path, disabled_path).ready
+        enabled_result = XlsxProcessor(enabled_engine).anonymize(source_path, enabled_path)
+        disabled_result = XlsxProcessor(disabled_engine).anonymize(source_path, disabled_path)
+    require(enabled_result.ready, f"{fmt}/{category}: enabled output is not ready")
+    require(disabled_result.ready, f"{fmt}/{category}: disabled output is not ready")
 
     marker = "[уязвимость]" if category == "уязвимость" else f"[{category}-1]"
     original = ORIGINAL_VALUES[category]
     enabled_text, disabled_text = reader(enabled_path), reader(disabled_path)
     enabled_package, disabled_package = _package_text(enabled_path), _package_text(disabled_path)
 
-    assert marker in enabled_text, (fmt, category, enabled_text)
-    assert original not in enabled_text, (fmt, category, enabled_text)
-    assert original in disabled_text, (fmt, category, disabled_text)
-    assert marker not in disabled_text, (fmt, category, disabled_text)
-    assert marker in enabled_package, (fmt, category, "marker missing from package")
-    assert original not in enabled_package, (fmt, category, "original remains in enabled package")
-    assert original in disabled_package, (fmt, category, "original missing from disabled package")
-    assert marker not in disabled_package, (fmt, category, "marker remains in disabled package")
+    require(marker in enabled_text, f"{fmt}/{category}: marker missing from visible enabled output")
+    require(original not in enabled_text, f"{fmt}/{category}: original remains in visible enabled output")
+    require(original in disabled_text, f"{fmt}/{category}: original missing from visible disabled output")
+    require(marker not in disabled_text, f"{fmt}/{category}: marker remains in visible disabled output")
+    require(marker in enabled_package, f"{fmt}/{category}: marker missing from enabled package")
+    require(original not in enabled_package, f"{fmt}/{category}: original remains in enabled package")
+    require(original in disabled_package, f"{fmt}/{category}: original missing from disabled package")
+    require(marker not in disabled_package, f"{fmt}/{category}: marker remains in disabled package")
     return {"format": fmt, "category": category, "marker": marker, "ok": True}
 
 

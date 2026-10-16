@@ -450,6 +450,39 @@ class AppApi:
                 for marker, original in abbreviation_result.mapping.items()
             )
         )
+        unicode_abbreviation_samples = ("A\u0483BC", "AB\u200cC")
+        unicode_abbreviation_result = Anonymizer().anonymize(" ".join(unicode_abbreviation_samples))
+        abbreviation_unicode_ok = (
+            set(unicode_abbreviation_result.mapping.values()) == set(unicode_abbreviation_samples)
+            and all(value not in unicode_abbreviation_result.text for value in unicode_abbreviation_samples)
+        )
+        domain_toc_sample = (
+            "Общие данные по домену qzxsafe.test11\n"
+            "Общие данные по домену go.qzxsafe.test14"
+        )
+        domain_toc_result = Anonymizer().anonymize(domain_toc_sample)
+        domain_toc_ok = (
+            domain_toc_result.text == (
+                "Общие данные по домену [ДОМЕН-1]11\n"
+                "Общие данные по домену [ДОМЕН-2]14"
+            )
+            and domain_toc_result.mapping == {
+                "[ДОМЕН-1]": "qzxsafe.test",
+                "[ДОМЕН-2]": "go.qzxsafe.test",
+            }
+        )
+        port_result = Anonymizer().anonymize(
+            "порт 8080; 198.51.100.9:8443; https://qzxsafe.test:9443/path"
+        )
+        port_ok = (
+            port_result.text == "порт [ПОРТ-1]; [IP-1]:[ПОРТ-2]; [ССЫЛКА-1]"
+            and port_result.mapping == {
+                "[ПОРТ-1]": "8080",
+                "[IP-1]": "198.51.100.9",
+                "[ПОРТ-2]": "8443",
+                "[ССЫЛКА-1]": "https://qzxsafe.test:9443/path",
+            }
+        )
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -458,10 +491,16 @@ class AppApi:
                 and "Secret123" not in result.text
                 and vm_node_ok
                 and abbreviation_ok
+                and abbreviation_unicode_ok
+                and domain_toc_ok
+                and port_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
             "abbreviation_ok": abbreviation_ok,
+            "abbreviation_unicode_ok": abbreviation_unicode_ok,
+            "domain_toc_ok": domain_toc_ok,
+            "port_ok": port_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "replacement_count": len(result.mapping),
             "secret_count": result.text.count("(удалено)"),

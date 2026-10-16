@@ -84,10 +84,11 @@ def test_contacts_hosts_requisites_finance_and_uppercase_abbreviations():
     )
     result = Anonymizer().anonymize(text)
     assert result.text.count("[ТЕЛЕФОН-1]") == 2
-    for marker in ("[ПОЧТА-1]", "[ТЕЛЕФОН-2]", "[УЗЕЛ-1]", "[БИК-1]", "[ПАСПОРТ-1]", "[VIN-1]", "[ДОГОВОР-1]", "[ДОКУМЕНТ-1]", "[СУММА-1]", "[СУММА-2]", "[СУММА-3]", "[СТАВКА-1]"):
+    for marker in ("[ПОЧТА-1]", "[ТЕЛЕФОН-2]", "[УЗЕЛ-1]", "[БИК-1]", "[ПАСПОРТ-1]", "[VIN-1]", "[ДОГОВОР-1]", "[ДОКУМЕНТ-1]", "[СУММА-1]", "[СУММА-2]", "[СУММА-3]", "[СТАВКА-1]", "[ПОРТ-1]"):
         assert marker in result.text, marker
-    for public in ("1.7.5.16", "порт 8080"):
-        assert public in result.text
+    assert "1.7.5.16" in result.text
+    assert "порт [ПОРТ-1]" in result.text
+    assert result.mapping["[ПОРТ-1]"] == "8080"
     abbreviation_values = {
         item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
     }
@@ -116,8 +117,9 @@ def test_acceptance_sample_new_parity_requirements():
     assert "[СИСТЕМА-1]" in result.text and "Паутина" not in result.text
     assert "[ЛОГИН-1]" in result.text and "admin_db" not in result.text
     assert "qwerty123" not in result.text.lower()
-    for public in ("1.7.5.16", "порт 8080"):
-        assert public in result.text
+    assert "1.7.5.16" in result.text
+    assert "порт [ПОРТ-1]" in result.text
+    assert result.mapping["[ПОРТ-1]"] == "8080"
     abbreviation_values = {
         item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
     }

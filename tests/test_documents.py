@@ -347,6 +347,87 @@ def test_docx_abbreviations_across_runs_tables_and_tabs_restore_byte_exactly(tmp
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_toc_domains_with_attached_page_numbers_restore_byte_exactly(tmp_path):
+    source = tmp_path / "toc-domains-source.docx"
+    anonymized = tmp_path / "toc-domains-anonymized.docx"
+    restored = tmp_path / "toc-domains-restored.docx"
+    document = Document()
+    values = (
+        ("qzxsafe.", "test", "11"),
+        ("go.qzxsafe.", "test", "14"),
+        ("rf.qzxsafe.", "test", "19"),
+    )
+    for prefix, tld, page in values:
+        paragraph = document.add_paragraph("Общие данные по домену ")
+        paragraph.add_run(prefix)
+        paragraph.add_run(tld).bold = True
+        paragraph.add_run(page)
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = [paragraph.text for paragraph in Document(anonymized).paragraphs]
+    assert output == [
+        "Общие данные по домену [ДОМЕН-1]11",
+        "Общие данные по домену [ДОМЕН-2]14",
+        "Общие данные по домену [ДОМЕН-3]19",
+    ]
+    assert result.mapping == {
+        "[ДОМЕН-1]": "qzxsafe.test",
+        "[ДОМЕН-2]": "go.qzxsafe.test",
+        "[ДОМЕН-3]": "rf.qzxsafe.test",
+    }
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_ports_across_runs_tabs_and_endpoints_restore_byte_exactly(tmp_path):
+    source = tmp_path / "ports-source.docx"
+    anonymized = tmp_path / "ports-anonymized.docx"
+    restored = tmp_path / "ports-restored.docx"
+    document = Document()
+
+    labelled = document.add_paragraph("Сетевой порт ")
+    labelled.add_run("80")
+    labelled.add_run("80").bold = True
+    tabbed = document.add_paragraph("Port")
+    tabbed.add_run().add_tab()
+    tabbed.add_run("8443")
+    endpoint = document.add_paragraph()
+    endpoint.add_run("node.qzxsafe.test:")
+    endpoint.add_run("54")
+    endpoint.add_run("32").italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = [paragraph.text for paragraph in Document(anonymized).paragraphs]
+    assert output == [
+        "Сетевой порт [ПОРТ-1]",
+        "Port\t[ПОРТ-2]",
+        "[ДОМЕН-1]:[ПОРТ-3]",
+    ]
+    assert result.mapping["[ПОРТ-1]"] == "8080"
+    assert result.mapping["[ПОРТ-2]"] == "8443"
+    assert result.mapping["[ПОРТ-3]"] == "5432"
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_windows_to_alse_table_redacts_both_software_columns_and_restores(tmp_path):
     source = tmp_path / "windows-alse-source.docx"
     anonymized = tmp_path / "windows-alse-anonymized.docx"

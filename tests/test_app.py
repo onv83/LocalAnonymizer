@@ -33,6 +33,9 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["ok"] is True
     assert summary["vm_node_ok"] is True
     assert summary["abbreviation_ok"] is True
+    assert summary["abbreviation_unicode_ok"] is True
+    assert summary["domain_toc_ok"] is True
+    assert summary["port_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
 
@@ -227,7 +230,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert all("," not in category for category in categories)
 
     expected = {
-        "уязвимость", "ПОЧТА", "ТЕЛЕФОН", "АККАУНТ", "IP", "MAC", "IMEI", "ССЫЛКА",
+        "уязвимость", "ПОЧТА", "ТЕЛЕФОН", "АККАУНТ", "IP", "ПОРТ", "MAC", "IMEI", "ССЫЛКА",
         "ДОМЕН", "УЗЕЛ", "DN", "СТРУКТУРА-AD", "ДИСК", "ПУТЬ", "СЗИ",
         "ПРОГРАММА", "СОКРАЩЕНИЯ", "СКРИПТЫ", "ПРОИЗВОДИТЕЛЬ", "ИНН", "ОГРН", "СНИЛС",
         "КАРТА", "КПП", "СЧЁТ", "БИК", "ПАСПОРТ", "VIN", "КАДАСТР",
@@ -239,6 +242,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert set(categories) == expected
 
     assert "IP-адрес → <code>[IP-N]</code>" in html
+    assert "Порт → <code>[ПОРТ-N]</code>" in html
     assert "Домен → <code>[ДОМЕН-N]</code>" in html
     assert "Электронная почта → <code>[ПОЧТА-N]</code>" in html
     assert "Ссылка → <code>[ССЫЛКА-N]</code>" in html
@@ -249,8 +253,10 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert "function updateCategoryMarkerExamples()" in javascript
     assert "updateCategoryMarkerExamples();markSettingsDirty()" in javascript
     assert "СОКРАЩЕНИЯ:'СОКР'" in javascript
+    assert "ПОРТ:'ПРТ'" in javascript
     assert "\"Сокращения\":['СОКРАЩЕНИЯ']" in javascript
     assert "СОКРАЩЕНИЯ:'СОКР'" in english_javascript
+    assert "ПОРТ:'ПРТ'" in english_javascript
     assert "\"Abbreviations\":['СОКРАЩЕНИЯ']" in english_javascript
 
 

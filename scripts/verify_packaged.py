@@ -24,7 +24,15 @@ def validate_smoke(payload: dict) -> None:
     engine = payload.get("engine")
     if not isinstance(engine, dict):
         raise VerificationError("smoke.engine must be an object")
-    for key in ("ok", "vm_node_ok", "abbreviation_ok", "graphics_roundtrip_ok"):
+    for key in (
+        "ok",
+        "vm_node_ok",
+        "abbreviation_ok",
+        "abbreviation_unicode_ok",
+        "domain_toc_ok",
+        "port_ok",
+        "graphics_roundtrip_ok",
+    ):
         _require_true(engine, key, "smoke.engine")
 
 

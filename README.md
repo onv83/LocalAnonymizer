@@ -37,6 +37,9 @@ The packaged application does not require Python, `uv`, pip, or manually install
 - Clearing a formatted document now removes both formatted-preview hosts before restoring the empty text panes, preventing a stale blank panel.
 - Rewrote the built-in English and Russian usage guide for the current preview, review, apply, export, and portable `.larecovery` workflow.
 - Improved anonymization of explicitly labelled postal addresses and five- or six-digit postal indexes while retaining negative checks for unrelated numbers.
+- Added a separate reversible `ПОРТ` / Port category: values from 1 through 65535 are anonymized after an explicit `порт`/`port` label, in ranges, TCP/UDP forms, and network endpoints such as `IP:port`, `domain:port`, `[IPv6]:port`, and infrastructure `host:port`. Bare numbers, times, versions, invalid values, and numeric credentials are not treated as ports; a URL containing a port remains one link marker.
+- Added a separate `СОКРАЩЕНИЯ` / Abbreviations category for tokens containing at least three consecutive uppercase letters; domains concatenated by Word with table-of-contents page numbers are now fully redacted while the page number is preserved.
+- Embedded DOCX images and static diagrams are removed from the anonymized copy with a visible `[СХЕМА-N]` marker and restored exactly on the local computer; the public screenshots use only a synthetic acceptance document.
 - Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
@@ -126,6 +129,9 @@ Python, `uv`, pip и установка зависимостей для гото
 - После очистки форматированного документа обе области форматированного предпросмотра удаляются до возврата пустых текстовых панелей, поэтому лишняя пустая панель больше не остаётся.
 - Встроенная инструкция на русском и английском переписана под актуальный процесс предпросмотра, проверки, применения, экспорта и переносимых файлов `.larecovery`.
 - Улучшено обезличивание явно подписанных почтовых адресов и пяти- или шестизначных индексов; посторонние числа по-прежнему не считаются индексами.
+- Добавлена отдельная обратимая категория `ПОРТ`: номера от 1 до 65535 обезличиваются после явной подписи `порт`/`port`, в диапазонах, обозначениях `TCP`/`UDP` и сетевых конечных точках `IP:порт`, `домен:порт`, `[IPv6]:порт` и инфраструктурный `узел:порт`. Голые числа, время, версии, недопустимые номера и цифровые учётные данные не считаются портами; ссылка с портом остаётся одним маркером ссылки.
+- Добавлена отдельная категория `СОКРАЩЕНИЯ` для токенов минимум с тремя подряд заглавными буквами; домены, склеенные Word с номерами страниц оглавления, теперь заменяются целиком с сохранением номера страницы.
+- Встроенные рисунки и статические схемы DOCX удаляются из обезличенной копии с видимым маркером `[СХЕМА-N]` и точно восстанавливаются локально; публичные скриншоты используют только синтетический проверочный документ.
 - Расширены регрессионные проверки компоновки, эквивалентности локализаций, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и нативных platform smoke checks.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
@@ -181,7 +187,7 @@ Linux/macOS-сборки пока не публикуются и не счита
 
 ## Покрытие движка
 
-Движок распознаёт контекстные секреты и токены, ФИО/инициалы и устойчивые псевдонимы, организации с ОПФ и отдельные системы, логины, обычную и обфусцированную почту, международные телефоны, сетевые узлы, реквизиты и коммерческие суммы. Версии, SLA, НДС и порты не считаются финансовыми или сетевыми идентификаторами без соответствующего контекста. Результат API содержит части замен/подсказок с исходными offsets, категорийные counts, общее число срабатываний и размер легенды; plaintext необратимых секретов в этих структурах отсутствует.
+Движок распознаёт контекстные секреты и токены, ФИО/инициалы и устойчивые псевдонимы, организации с ОПФ и отдельные системы, логины, обычную и обфусцированную почту, международные телефоны, сетевые узлы и порты, реквизиты и коммерческие суммы. Версии и голые числа не считаются портами без сетевого контекста. Результат API содержит части замен/подсказок с исходными offsets, категорийные counts, общее число срабатываний и размер легенды; plaintext необратимых секретов в этих структурах отсутствует.
 
 ## Сборка и тесты
 

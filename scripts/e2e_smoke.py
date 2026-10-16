@@ -25,10 +25,12 @@ def main() -> int:
         report = service.anonymize(document_id)
         anon = Path(report["output_path"])
         text = "\n".join(p.text for p in Document(anon).paragraphs)
-        required = ["[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[ТЕЛЕФОН-1]", "[ТЕЛЕФОН-2]", "[IP-1]", "[IP-2]", "[уязвимость]", "(удалено)"]
-        preserved = ["1.7.5.16", "SLA 99,9%", "НДС 20%", "порт 8080"]
+        required = ["[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[ТЕЛЕФОН-1]", "[ТЕЛЕФОН-2]", "[IP-1]", "[IP-2]", "[ПОРТ-1]", "[уязвимость]", "(удалено)"]
+        preserved = ["1.7.5.16"]
         assert all(x in text for x in required)
         assert all(x in text for x in preserved)
+        assert "[СОКРАЩЕНИЯ-" in text
+        assert all(x not in text for x in ("SLA", "НДС", "порт 8080"))
         edited = work / "edited.docx"
         edit = Document(anon); edit.add_paragraph("Проверка [ФИО-1] [ФИО-999]"); edit.save(edited)
         restored = service.restore(document_id, edited)

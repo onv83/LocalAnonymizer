@@ -25,6 +25,7 @@ COMPACT_MARKER_LABELS = {
     "АККАУНТ": "АКК",
     "ЛОГИН": "ЛОГ",
     "ДОМЕН": "ДОМ",
+    "ПОРТ": "ПРТ",
     "УЗЕЛ": "УЗЛ",
     "СТРУКТУРА-AD": "AD",
     "ДИСК": "ДСК",
@@ -56,6 +57,36 @@ def normalize_label(label: str) -> str:
     if not re.fullmatch(LABEL_PATTERN, normalized):
         raise ValueError("Некорректная метка правила")
     return normalized
+
+
+def _is_abbreviation_word_char(char: str) -> bool:
+    category = unicodedata.category(char)
+    return char == "_" or category.startswith(("L", "N"))
+
+
+def _is_abbreviation_continuation(char: str) -> bool:
+    category = unicodedata.category(char)
+    return _is_abbreviation_word_char(char) or category.startswith("M") or char in {"\u200c", "\u200d"}
+
+
+def _iter_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]]:
+    index = 0
+    while index < len(value):
+        if not _is_abbreviation_continuation(value[index]):
+            index += 1
+            continue
+        start = index
+        index += 1
+        while index < len(value):
+            char = value[index]
+            if _is_abbreviation_continuation(char):
+                index += 1
+                continue
+            if char == "-" and index + 1 < len(value) and _is_abbreviation_continuation(value[index + 1]):
+                index += 1
+                continue
+            break
+        yield start, index
 
 
 @dataclass(frozen=True)
@@ -190,6 +221,28 @@ def _valid_ip(value: str) -> bool:
         return False
 
 
+def _valid_port(value: str) -> bool:
+    return value.isdigit() and 1 <= int(value) <= 65535
+
+
+def _infrastructure_host(value: str) -> bool:
+    host = value.casefold()
+    return (
+        host == "localhost"
+        or bool(re.search(r"[-_\d]", host))
+        or bool(re.match(r"(?:srv|host|vm|node|dc|db|app|web|mail|proxy|fw|gw|dns|vpn|nas)", host))
+    )
+
+
+def _strong_infrastructure_host(value: str) -> bool:
+    host = value.casefold()
+    return (
+        host == "localhost"
+        or bool(re.match(r"(?:srv|host|vm|node|dc|db|app|web|mail|proxy|fw|gw|dns|vpn|nas)(?:[-_]|\d)", host))
+        or (host.count("-") >= 2 and bool(re.search(r"\d", host)))
+    )
+
+
 class Anonymizer:
     """Deterministic, offline detector that resolves every match on source offsets."""
 
@@ -279,7 +332,14 @@ class Anonymizer:
             validate=lambda m: not (re.search(r"TOKENS\s*[:=]", m.group(0), re.I) and m.group(1).rstrip(";,)").isdigit()), irreversible=True, fixed="(удалено)")
         add(r"\b(?:парол[а-яё]*|password|пасс[а-яё]*|pwd|секретн[а-яё]+\s+фраз[а-яё]+|кодов[а-яё]+\s+слов[а-яё]*)\s+(?:(?:от|для|к|на)\s+)?(?:[а-яё]+\s+){0,3}((?=[^\s]*[\d!@#$%^&*_+])[A-Za-zА-Яа-яЁё0-9!@#$%^&*_+.\-]{4,})", "SECRET", 108, group=1, irreversible=True, fixed="(удалено)")
         add(r"(?<![\w./@-])[a-z][a-z0-9_-]{2,20}:[A-Za-z0-9!@#$%^&*_+.\-]{4,40}(?![\w/@])", "SECRET", 107,
-            validate=lambda m: bool(re.search(r"[A-Za-z]", m.group()) and re.search(r"\d|[!@#$%^&*_+]|(?=.*[a-z])(?=.*[A-Z])", m.group().split(":", 1)[1])), irreversible=True, fixed="(удалено: учётные данные)")
+            validate=lambda m: bool(
+                re.search(r"[A-Za-z]", m.group())
+                and re.search(r"\d|[!@#$%^&*_+]|(?=.*[a-z])(?=.*[A-Z])", m.group().split(":", 1)[1])
+                and not (
+                    _strong_infrastructure_host(m.group().split(":", 1)[0])
+                    and _valid_port(m.group().split(":", 1)[1])
+                )
+            ), irreversible=True, fixed="(удалено: учётные данные)")
         add(r"\b(?:Bearer|Basic)\s+([A-Za-z0-9+/=_.~-]{8,})", "SECRET", 106, group=1,
             validate=lambda m: bool(re.search(r"[\d=.]", m.group(1)) or (len(m.group(1)) >= 12 and re.search(r"[a-z]", m.group(1)) and re.search(r"[A-Z]", m.group(1)))), irreversible=True, fixed="(удалено)")
         add(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]{4,})?", "SECRET", 106, irreversible=True, fixed="(удалено: токен)")
@@ -380,7 +440,7 @@ class Anonymizer:
         )
 
         # Network and contacts.
-        add(r"(?:@url:\s*)?`?(?:https?|ftp|sftp|ssh|rdp|smb|ldaps?)://[^\s`<>\"'«»()\ufdd0]+`?", "ССЫЛКА", 90)
+        url_matches = add(r"(?:@url:\s*)?`?(?:https?|ftp|sftp|ssh|rdp|smb|ldaps?)://[^\s`<>\"'«»()\ufdd0]+`?", "ССЫЛКА", 90)
         add(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "ПОЧТА", 89, canonical=lambda m: m.group().casefold())
         add(r"[a-z0-9._-]{2,}\s*(?:[([]\s*(?:at|собака|эт)\s*[)\]]|\s(?:at|собака)\s)\s*[a-z0-9а-яё._-]{2,}(?:\s*(?:\.|точка|dot)\s*[a-zа-яё]{2,})+", "ПОЧТА", 88, canonical=lambda m: re.sub(r"\s+", "", m.group().casefold()))
         add(r"(?<![\w:])(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}(?![\w:])", "MAC", 89,
@@ -395,7 +455,98 @@ class Anonymizer:
         phone_pat = r"(?<![\d\w+])(?:\+\d{1,3}|8)(?:[\s()-]*\d){7,14}(?!\d)"
         add(phone_pat, "ТЕЛЕФОН", 87, validate=lambda m: 8 <= len(_digits(m.group())) <= 15,
             canonical=lambda m: ("7" + _digits(m.group())[1:]) if len(_digits(m.group())) == 11 and _digits(m.group())[0] in "78" else _digits(m.group()))
-        add(r"(?<![\wА-Яа-яЁё@.:/-])(?:[A-Za-zА-Яа-яЁё0-9](?:[A-Za-zА-Яа-яЁё0-9-]{0,61}[A-Za-zА-Яа-яЁё0-9])?\.){1,6}(?:[A-Za-zА-Яа-яЁёрф]{2,}|local)(?![\w-])", "ДОМЕН", 89,
+        domain_pattern = r"(?:[A-Za-zА-Яа-яЁё0-9](?:[A-Za-zА-Яа-яЁё0-9-]{0,61}[A-Za-zА-Яа-яЁё0-9])?\.){1,6}(?:[A-Za-zА-Яа-яЁёрф]{2,}|local)"
+
+        # Port numbers are sensitive only in explicit network contexts. Keep
+        # bare numerics, times, versions and invalid IANA-range values intact.
+        # URLs remain one complete marker; IP/domain/host and port digits can be
+        # independently restored.
+        def port_outside_url(match: re.Match, group: int) -> bool:
+            start, end = match.span(group)
+            return not any(start >= url.start() and end <= url.end() for url in url_matches)
+
+        port_label = r"(?:порт(?:а|у|ом|е|ы|ов)?|ports?)"
+        port_gap = r"[ \t\r\n\ufdd0\ufdd3]{0,12}"
+        add(
+            rf"(?<![\w-])(?:(?:tcp|udp)[ \t]*[-/][ \t]*)?{port_label}"
+            rf"{port_gap}(?:№|no\.?|number)?{port_gap}[:=]?{port_gap}(\d{{1,5}})(?!\d)",
+            "ПОРТ", 89, group=1,
+            validate=lambda m: _valid_port(m.group(1)) and port_outside_url(m, 1),
+            canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            rf"(?<![\w-]){port_label}{port_gap}(?:№|no\.?|number)?{port_gap}[:=]?{port_gap}"
+            rf"(\d{{1,5}}){port_gap}[-–—]{port_gap}(\d{{1,5}})(?!\d)",
+            "ПОРТ", 89, group=2,
+            validate=lambda m: (
+                _valid_port(m.group(1))
+                and _valid_port(m.group(2))
+                and int(m.group(1)) <= int(m.group(2))
+                and port_outside_url(m, 2)
+            ),
+            canonical=lambda m: m.group(2),
+            allow_boundary_context=True,
+        )
+        add(
+            r"(?<!\d)(\d{1,5})[ \t]*/[ \t]*(?:tcp|udp)\b",
+            "ПОРТ", 89, group=1,
+            validate=lambda m: _valid_port(m.group(1)) and port_outside_url(m, 1),
+            canonical=lambda m: m.group(1),
+        )
+        add(
+            r"\b(?:tcp|udp)[ \t]*(?:[/=:]|[ \t])[ \t]*(\d{1,5})(?!\d)",
+            "ПОРТ", 89, group=1,
+            validate=lambda m: _valid_port(m.group(1)) and port_outside_url(m, 1),
+            canonical=lambda m: m.group(1),
+        )
+        add(
+            r"(?<![\w.])((?:\d{1,3}\.){3}\d{1,3}):(\d{1,5})(?!\d)",
+            "ПОРТ", 89, group=2,
+            validate=lambda m: (
+                _valid_ip(m.group(1))
+                and _valid_port(m.group(2))
+                and port_outside_url(m, 2)
+            ),
+            canonical=lambda m: m.group(2),
+        )
+        add(
+            r"\[([0-9a-f:]+)\]:(\d{1,5})(?!\d)",
+            "ПОРТ", 89, group=2,
+            validate=lambda m: (
+                _valid_ip(m.group(1))
+                and _valid_port(m.group(2))
+                and port_outside_url(m, 2)
+            ),
+            canonical=lambda m: m.group(2),
+        )
+        add(
+            rf"(?<![\w.-])({domain_pattern}):(\d{{1,5}})(?!\d)",
+            "ПОРТ", 89, group=2,
+            validate=lambda m: _valid_port(m.group(2)) and port_outside_url(m, 2),
+            canonical=lambda m: m.group(2),
+        )
+
+        def infrastructure_endpoint(match: re.Match) -> bool:
+            return (
+                _valid_port(match.group(2))
+                and _infrastructure_host(match.group(1))
+                and port_outside_url(match, 2)
+            )
+
+        add(
+            r"(?<![\w.-])([A-Za-z][A-Za-z0-9_-]{2,63}):(\d{1,5})(?!\d)",
+            "ПОРТ", 89, group=2,
+            validate=infrastructure_endpoint,
+            canonical=lambda m: m.group(2),
+        )
+        # Word TOCs can concatenate a domain and its page number (example.test11).
+        # Match the complete domain before the digits so a shorter prefix such as
+        # "go.example" cannot win and leak the registered-domain suffix.
+        add(rf"(?<![\wА-Яа-яЁё@.:/-])({domain_pattern})(?=\d+(?![\w-]))", "ДОМЕН", 90,
+            group=1, validate=lambda m: m.group(1).casefold() not in self.whitelist,
+            canonical=lambda m: m.group(1).casefold())
+        add(rf"(?<![\wА-Яа-яЁё@.:/-]){domain_pattern}(?![\w-])", "ДОМЕН", 89,
             validate=lambda m: m.group().casefold() not in self.whitelist, canonical=lambda m: m.group().casefold())
         add(r"(?<![\w.@:-])(?:srv|host|vm|node|dc|db|app|web|mail|proxy|fw|gw|kvm|esx|hv|pc|dns|vpn|nas|k8s|adc)[a-z0-9]*(?:[-_][a-z0-9]+)+(?![\w-])", "УЗЕЛ", 81,
             validate=lambda m: bool(re.search(r"\d", m.group())), canonical=lambda m: m.group().casefold())
@@ -826,25 +977,23 @@ class Anonymizer:
             canonical=lambda m: _name_stem(m.group()))
 
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
-            abbreviation_pattern = re.compile(
-                r"(?<![\w\-\u0300-\u036f])"
-                r"\w(?:[\w\u0300-\u036f]|-(?=[\w\u0300-\u036f]))*"
-                r"(?![\w\-\u0300-\u036f])"
-            )
-            for match in abbreviation_pattern.finditer(source):
-                value = match.group()
+            for start, end in _iter_abbreviation_tokens(source):
+                value = source[start:end]
                 uppercase_run = 0
                 for char in unicodedata.normalize("NFC", value):
-                    if unicodedata.category(char) == "Lu":
+                    category = unicodedata.category(char)
+                    if category == "Lu":
                         uppercase_run += 1
                         if uppercase_run >= 3:
                             break
+                    elif category.startswith("M") or char in {"\u200c", "\u200d"}:
+                        continue
                     else:
                         uppercase_run = 0
                 if uppercase_run < 3:
                     continue
                 abbreviation_candidates.append(Detection(
-                    *match.span(), "СОКРАЩЕНИЯ", 45, value, value,
+                    start, end, "СОКРАЩЕНИЯ", 45, value, value,
                     case_sensitive_canonical=True,
                 ))
 
