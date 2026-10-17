@@ -27,3 +27,6 @@ NUL-
 
 # Generated reference output
 reference/*.html
+
+# Generated immediately before PyInstaller; embedded in the executable.
+src/local_anonymizer/_build_provenance.py

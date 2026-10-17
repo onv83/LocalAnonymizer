@@ -20,6 +20,44 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 
+def test_address_inventory_self_test_requires_exact_complete_mapping():
+    assert app_module._address_inventory_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, _source):
+            return SimpleNamespace(
+                text="[ГОРОД-1]\ufdd0[ГОРОД-2]\ufdd0КЦ [ГОРОД-3]\ufdd0[АДРЕС-1]",
+                mapping={"[АДРЕС-1]": "partial"},
+            )
+
+    assert app_module._address_inventory_self_test(PartialDetector()) is False
+
+
+def test_complete_postal_address_self_test_requires_every_variant():
+    assert app_module._complete_postal_address_self_test() is True
+
+    class RecordingDetector:
+        def __init__(self):
+            self.source = ""
+
+        def anonymize(self, source):
+            self.source = source
+            return Anonymizer().anonymize(source)
+
+    recording = RecordingDetector()
+    assert app_module._complete_postal_address_self_test(recording) is True
+    assert "ул. Испытателей, д. 12, корп. 1, лит. А г. Тестоградск, 123456" in recording.source
+    assert "д. 12,\u00a0лит. А" in recording.source
+    assert "ул.Испытателей" in recording.source
+    assert "ул. испытателей" in recording.source
+
+    class PartialDetector:
+        def anonymize(self, _source):
+            return SimpleNamespace(text="[АДРЕС-1]", mapping={"[АДРЕС-1]": "partial"})
+
+    assert app_module._complete_postal_address_self_test(PartialDetector()) is False
+
+
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     index = asset_path("index-v1.8.18.html")
@@ -36,6 +74,8 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["abbreviation_unicode_ok"] is True
     assert summary["domain_toc_ok"] is True
     assert summary["port_ok"] is True
+    assert summary["address_inventory_ok"] is True
+    assert summary["address_postal_variants_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
 
@@ -1953,8 +1993,8 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     assert "Выберите место для восстановленного файла" in javascript
     assert "preview.rich_html" in javascript
     assert "function hasFormattedDocumentPreview(format){return format==='docx'||format==='odt';}" in javascript
-    assert "setDocxPreviewMode(hasFormattedDocumentPreview(preview.format))" in javascript
-    assert "filePreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
+    assert "switchPreviewMode(setDocxPreviewMode,hasFormattedDocumentPreview(preview.format)&&keepFormatted)" in javascript
+    assert "filePreview&&!loadingPreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
     assert "filePreview&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
     assert "requestAnonymizedDocumentPreview(selected,...settings" in javascript
     assert "preview_anonymized_document" in javascript

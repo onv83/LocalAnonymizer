@@ -16,7 +16,7 @@ function applyTheme(theme,persist=false){
 applyTheme(preferredTheme());
 let last = {mapping:{}, candidates:[], counts:{}, parts:[], total:0, hintCount:0, warnings:[]};
 let textRestoreMapping = {};
-let selected = '', reviewIndex = -1, debounceTimer = 0, generation = 0, settingsGeneration = 0, importGeneration = 0, restoreGeneration = 0, lastEscape = 0;
+let selected = '', reviewIndex = -1, debounceTimer = 0, generation = 0, previewGeneration = 0, settingsGeneration = 0, importGeneration = 0, restoreGeneration = 0, lastEscape = 0;
 let filePreview = false, fileDirty = false, loadingPreview = false, documentsById = {}, currentPreviewFormat = '';
 let previewFullscreen = false, fullscreenReturnFocus = null;
 let previousInert = new Map();
@@ -85,9 +85,9 @@ function collectPreviewAnchors(container){
   const bounds=container.getBoundingClientRect(),anchors=[0];
   container.querySelectorAll('.docx-paragraph,li,tr').forEach(node=>{
     const offset=Math.max(0,Math.min(max,node.getBoundingClientRect().top-bounds.top+container.scrollTop));
-    if(offset-anchors[anchors.length-1]>1)anchors.push(offset);
+    anchors.push(offset);
   });
-  if(max-anchors[anchors.length-1]>1)anchors.push(max);
+  anchors.push(max);
   previewAnchorCache.set(container,{scrollHeight:container.scrollHeight,clientHeight:container.clientHeight,anchors});
   return anchors;
 }
@@ -182,6 +182,11 @@ function setDocxPreviewMode(formatted){
   $('#showFormatted').ariaPressed=String(available&&formatted);
   $('#showTextPreview').ariaPressed=String(!available||!formatted);
 }
+function setSourcePreviewLoading(loading){
+  ['#previewTop','#previewBottom','#previewFullscreen','#showFormatted'].forEach(selector=>{$(selector).disabled=loading;});
+  $('#showTextPreview').disabled=false;
+  if(loading&&hasFormattedDocumentPreview(currentPreviewFormat))setDocxPreviewMode(true);
+}
 function setModalIsolation(surface,enabled){if(enabled){previousInert=new Map();let child=surface,ancestor=surface.parentElement;while(ancestor){[...(ancestor.children||[])].forEach(sibling=>{if(sibling!==child&&!previousInert.has(sibling)){previousInert.set(sibling,!!sibling.inert);sibling.inert=true;}});if(ancestor===document.body)break;child=ancestor;ancestor=ancestor.parentElement;}}else{previousInert.forEach((value,element)=>{element.inert=value;});previousInert.clear();}}
 function modalFocusables(surface){return [...surface.querySelectorAll('button:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')].filter(el=>!el.hidden&&!el.inert);}
 function trapModalFocus(event,surface){if(event.key!=='Tab')return;const items=modalFocusables(surface);if(!items.length){event.preventDefault();surface.focus();return;}const first=items[0],last=items[items.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}
@@ -195,7 +200,7 @@ function setAnonymizedPreviewFullscreen(enabled){if(enabled===anonymizedPreviewF
 function cancelAnonymizedPreviewScrollReset(){anonymizedPreviewScrollResetToken++;}
 function resetAnonymizedPreviewScroll(){const rich=$('#anonymizedDocxPreview'),token=++anonymizedPreviewScrollResetToken,apply=()=>{if(token===anonymizedPreviewScrollResetToken)rich.scrollTop=0;};apply();if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(apply));setTimeout(apply,150);}
 function leaveAnonymizedPreview(){setAnonymizedPreviewFullscreen(false);const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';rich.hidden=true;$('#anonymizedPreviewCompleteness').textContent='';$('#anonymizedPreviewControls').hidden=true;$('#richOutput').hidden=false;}
-function leaveDocumentPreview(){setPreviewFullscreen(false);leaveAnonymizedPreview();currentPreviewFormat='';const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#previewCompleteness').textContent='';setDocxPreviewMode(false);}
+function leaveDocumentPreview(){previewGeneration++;loadingPreview=false;setSourcePreviewLoading(false);setPreviewFullscreen(false);leaveAnonymizedPreview();currentPreviewFormat='';const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#previewCompleteness').textContent='';setDocxPreviewMode(false);}
 function updatePrimaryAction(keepStatus=false){
   const button=$('#anonymize'),status=$('#settingsStatus'),apply=$('#applyNow'),exportButton=$('#exportNow'),lifecycle=$('#fileLifecycleStatus');
   if(filePreview&&selected){const ready=['Готов','Требуется ручная проверка'].includes(documentsById[selected]?.status);button.disabled=false;button.textContent=fileDirty?'Применить настройки к файлу':'Пересоздать файл с текущими настройками';apply.disabled=false;exportButton.disabled=fileDirty||!ready;lifecycle.textContent=fileDirty?'Настройки изменены — экспортируемый файл требует повторной обработки':ready?'Файл обработан и готов к сохранению':'Предпросмотр готов — примените настройки к файлу';if(!fileDirty&&!keepStatus)status.textContent='Предпросмотр и экспортируемый файл используют текущие настройки.';return;}
@@ -205,13 +210,13 @@ async function readDocumentPreviewChunks(token,field,length){let value='';let of
 async function requestDocumentPreview(documentId,onText){if(!pywebview.api.start_document_preview)return pywebview.api.preview_document(documentId);const manifest=await pywebview.api.start_document_preview(documentId);let text='';try{text=await readDocumentPreviewChunks(manifest.token,'text',manifest.text_length);if(onText)onText({...manifest,text,rich_html:''});}finally{await pywebview.api.finish_document_preview(manifest.token);}if(!pywebview.api.start_formatted_document_preview)return{...manifest,text,rich_html:''};const formatted=await pywebview.api.start_formatted_document_preview(documentId);try{const rich=await readDocumentPreviewChunks(formatted.token,'rich_html',formatted.rich_html_length);return{...manifest,...formatted,text,rich_html:rich};}finally{await pywebview.api.finish_document_preview(formatted.token);}}
 async function requestAnonymizedDocumentPreview(documentId,...settings){if(!pywebview.api.start_anonymized_document_preview)return pywebview.api.preview_anonymized_document(documentId,...settings);const manifest=await pywebview.api.start_anonymized_document_preview(documentId,...settings);try{const rich=await readDocumentPreviewChunks(manifest.token,'rich_html',manifest.rich_html_length);return{...manifest,rich_html:rich};}finally{await pywebview.api.finish_document_preview(manifest.token);}}
 async function loadDocumentPreview(){
-  if(!selected)return;$('#fileLifecycleStatus').textContent='Создаётся предпросмотр…';const documentId=selected,ticket=++generation;let preview;
-  const showTextEarly=partial=>{if(ticket!==generation||documentId!==selected)return;loadingPreview=true;$('#source').value=partial.text;loadingPreview=false;filePreview=true;fileDirty=false;currentPreviewFormat=partial.format||'';updatePrimaryAction();$('#fileLifecycleStatus').textContent='Текст загружен · готовится форматированный вид…';};
+  if(!selected)return;const documentId=selected,ticket=++previewGeneration,settingsVersion=settingsGeneration;generation++;loadingPreview=true;filePreview=false;fileDirty=false;let preview,showedPartial=false;updatePrimaryAction();$('#fileLifecycleStatus').textContent='Создаётся предпросмотр…';
+  const showTextEarly=partial=>{if(ticket!==previewGeneration||documentId!==selected)return;showedPartial=true;$('#source').value=partial.text;filePreview=true;fileDirty=settingsGeneration!==settingsVersion;currentPreviewFormat=partial.format||'';if(hasFormattedDocumentPreview(currentPreviewFormat)){const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML='';$('#previewCompleteness').textContent='Форматированный вид готовится…';setSourcePreviewLoading(true);}updatePrimaryAction();$('#fileLifecycleStatus').textContent='Текст загружен · готовится форматированный вид…';};
   try{preview=await requestDocumentPreview(documentId,showTextEarly);}
-  catch(error){$('#fileLifecycleStatus').textContent=`Ошибка предпросмотра: ${String(error?.message||error)}`;return;}
-  if(ticket!==generation||documentId!==selected)return;
-  loadingPreview=true;$('#source').value=preview.text;loadingPreview=false;filePreview=true;fileDirty=false;updatePrimaryAction();
-  currentPreviewFormat=preview.format||'';const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=preview.rich_html||'';resetDocxPreviewScroll();$('#previewCompleteness').textContent=hasFormattedDocumentPreview(preview.format)?`Текст документа загружен полностью · таблиц: ${rich.querySelectorAll('.docx-table').length}. Визуальные элементы без текста могут не отображаться.`:'';setDocxPreviewMode(hasFormattedDocumentPreview(preview.format));
+  catch(error){if(ticket===previewGeneration&&documentId===selected){loadingPreview=false;setSourcePreviewLoading(false);currentPreviewFormat='';setDocxPreviewMode(false);$('#fileLifecycleStatus').textContent=`Ошибка предпросмотра: ${String(error?.message||error)}`;}return;}
+  if(ticket!==previewGeneration||documentId!==selected)return;
+  const keepFormatted=!showedPartial||!$('#docxPreview').hidden;$('#source').value=preview.text;loadingPreview=false;setSourcePreviewLoading(false);filePreview=true;fileDirty=fileDirty||settingsGeneration!==settingsVersion;updatePrimaryAction();
+  currentPreviewFormat=preview.format||'';const rich=$('#docxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=preview.rich_html||'';resetDocxPreviewScroll();$('#previewCompleteness').textContent=hasFormattedDocumentPreview(preview.format)?`Текст документа загружен полностью · таблиц: ${rich.querySelectorAll('.docx-table').length}. Визуальные элементы без текста могут не отображаться.`:'';switchPreviewMode(setDocxPreviewMode,hasFormattedDocumentPreview(preview.format)&&keepFormatted);
   const analysisTicket=generation+1;await anonymizeText();if(analysisTicket!==generation||documentId!==selected)return;
   $('#fileStatus').textContent=`Предпросмотр: ${preview.display_name} — ${preview.status}`;
 }
@@ -279,7 +284,7 @@ async function anonymizeText(){
   const text=$('#source').value;if(!text){clearResult();return;}
   const ticket=++generation;
   const settings=[$('#paranoid').checked,$('#rules').value,$('#whitelist').value,disabled(),$('#compactMarkers').checked];
-  const needsFormattedPreview=filePreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat);
+  const needsFormattedPreview=filePreview&&!loadingPreview&&selected&&hasFormattedDocumentPreview(currentPreviewFormat);
   let formatted=null;
   if(needsFormattedPreview){
     switchPreviewMode(setAnonymizedPreviewMode,false);
@@ -352,7 +357,7 @@ window.addEventListener('resize',()=>{invalidatePreviewAnchors($('#docxPreview')
 $('#richOutput').onclick=e=>{const mark=e.target.closest('.mark-replacement,.mark-secret,.mark-hint');if(!mark)return;const i=Number(mark.dataset.part);if(mark.classList.contains('mark-hint'))focusMark(hintMarks().indexOf(mark));if(mark.classList.contains('mark-replacement'))restoreReplacement(i);};
 $('#undoChips').onclick=e=>{const b=e.target.closest('[data-undo]');if(b){const i=Number(b.dataset.undo);removeDecisionLine('#whitelist',last.parts[i]?.orig||'');restoredParts.delete(i);settingsGeneration++;if(filePreview)fileDirty=true;renderOutput();}};
 $('#reviewPrev').onclick=()=>focusMark(reviewIndex-1);$('#reviewNext').onclick=()=>focusMark(reviewIndex+1);$('#hideCandidate').onclick=hideHint;$('#keepCandidate').onclick=keepHint;
-$('#choose').onclick=async()=>{const ticket=++importGeneration;generation++;const r=await pywebview.api.choose_files();if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent=`Ошибка: ${(r.errors||[]).map(x=>x.error).join(', ')}`;};$('#dropChoose').onclick=$('#choose').onclick;
+$('#choose').onclick=async()=>{const ticket=++importGeneration;generation++;previewGeneration++;const r=await pywebview.api.choose_files();if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent=`Ошибка: ${(r.errors||[]).map(x=>x.error).join(', ')}`;};$('#dropChoose').onclick=$('#choose').onclick;
 $('#deleteDoc').onclick=async()=>{if(selected&&confirm('Удалить запись и файлы приложения? Исходный файл пользователя сохранится.')){const r=await pywebview.api.delete_document(selected);$('#source').value='';filePreview=false;fileDirty=false;leaveDocumentPreview();clearResult();showLibrary(r.documents);}};
 $('#downloadAnon').onclick=async()=>{if(!selected)return alert('Сначала выберите готовый документ.');const status=documentsById[selected]?.status;if(status==='Экспорт запрещён')return alert('Экспорт запрещён из-за критического предупреждения.');if(!['Готов','Требуется ручная проверка'].includes(status))return alert('Сначала обезличьте выбранный документ.');if(fileDirty)return alert('Сначала повторно обезличьте документ: решения предпросмотра ещё не применены к файлу.');let confirmation=false;if(status==='Требуется ручная проверка'){if(!confirm('Документ имеет предупреждения. Вы подтверждаете ручную проверку и хотите экспортировать?'))return;confirmation=true;}const r=await pywebview.api.export_anonymized(selected,confirmation);if(r.ok)$('#fileStatus').textContent=`Сохранена пара: ${r.path} + ${r.recovery_path}`;};
 $('#downloadAll').onclick=async()=>{if(fileDirty)return alert('Сначала примените импортированные настройки к выбранному файлу. Экспорт ZIP остановлен.');const r=await pywebview.api.export_all_anonymized();if(r.ok)$('#fileStatus').textContent=`ZIP экспортирован без таблиц соответствий: ${r.path}`;};
@@ -385,7 +390,7 @@ $('#compactMarkers').addEventListener('input',()=>{updateCategoryMarkerExamples(
 document.querySelectorAll('.category').forEach(x=>x.addEventListener('change',markSettingsDirty));
 $('#source').addEventListener('scroll',()=>{$('#sourceMirror').scrollTop=$('#source').scrollTop;syncPreviewScroll($('#source'),activeAnonymizedPreview());});$('#richOutput').addEventListener('scroll',()=>{syncPreviewScroll($('#richOutput'),activeSourcePreview());$('#sourceMirror').scrollTop=$('#source').scrollTop;});
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();$('#copy').click();}if(e.key==='Escape'){if(previewFullscreen){setPreviewFullscreen(false);return;}if(anonymizedPreviewFullscreen){setAnonymizedPreviewFullscreen(false);}}});
-['dragenter','dragover'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));document.addEventListener('drop',async e=>{e.preventDefault();const paths=[...e.dataTransfer.files].map(f=>f.path).filter(Boolean);if(paths.length){const ticket=++importGeneration;generation++;const r=await pywebview.api.import_paths(paths);if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent='Ошибка импорта';}});
+['dragenter','dragover'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));document.addEventListener('drop',async e=>{e.preventDefault();const paths=[...e.dataTransfer.files].map(f=>f.path).filter(Boolean);if(paths.length){const ticket=++importGeneration;generation++;previewGeneration++;const r=await pywebview.api.import_paths(paths);if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent='Ошибка импорта';}});
 window.addEventListener('pywebviewready',async()=>{await applyCurrentDesign();const savedTheme=await pywebview.api.get_theme();if(savedTheme)applyTheme(savedTheme);updateCategoryMarkerExamples();showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');await loadProfileIntoEditor('Общий');if(selected)await loadDocumentPreview();else{renderOutput();updatePrimaryAction();}});
 
 $('#languageMode').onchange=async e=>{const value=e.target.value;await pywebview.api.set_language(value);window.location.href=value==='ru'?'index-v1.8.18.html':'index-en-v1.8.18.html';};

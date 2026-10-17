@@ -74,7 +74,7 @@ def test_ui_binds_async_results_and_restore_to_current_result(tmp_path):
     assert "if(Object.keys(last.mapping||{}).length)textRestoreMapping={...last.mapping}" in javascript
     assert "export_anonymized(selected,confirmation)" in javascript
     assert "if(ticket!==generation||current!==selected)return" in javascript
-    assert "if(ticket!==generation||documentId!==selected)return" in javascript
+    assert "if(ticket!==previewGeneration||documentId!==selected)return" in javascript
 
 
 def test_hide_hint_runtime_reanonymizes_all_exact_repetitions(tmp_path):
@@ -633,6 +633,164 @@ const pywebview={api:{
     }
 
 
+def test_source_formatted_preview_survives_automatic_analysis_while_loading(tmp_path):
+    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    harness = r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;this.style={};}
+  addEventListener(){} appendChild(){} setSelectionRange(){} scrollIntoView(){} click(){}
+  setAttribute(){} removeAttribute(){} getAttribute(){return null;} contains(){return false;}
+  querySelectorAll(){return [];} closest(){return null;} getBoundingClientRect(){return {top:0,bottom:1,left:0,right:1};}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map();
+const document={
+  documentElement:{dataset:{}},body:{dataset:{}},
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];}, createElement(){return new FakeElement();}, addEventListener(){}
+};
+const window={addEventListener(){},matchMedia(){return {matches:false};}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const sourceRich='<article class="docx-page">formatted source</article>';
+const anonymizedRich='<article class="docx-page">formatted output</article>';
+let resolveSourceRich=null,sourceFormattedInFlight=false,concurrentFormattedStarts=0;
+const pywebview={api:{
+  start_document_preview:async()=>({token:'source-text',text_length:4,format:'docx',display_name:'source.docx',status:'Импортирован'}),
+  start_formatted_document_preview:async()=>{sourceFormattedInFlight=true;return {token:'source-rich',rich_html_length:sourceRich.length,format:'docx',display_name:'source.docx',status:'Импортирован'};},
+  start_anonymized_document_preview:async()=>{if(sourceFormattedInFlight)concurrentFormattedStarts++;return {token:'anonymized-rich',rich_html_length:anonymizedRich.length,format:'docx'};},
+  read_document_preview_chunk(token,field){
+    if(token==='source-text')return Promise.resolve({chunk:'TEXT',next_offset:4});
+    if(token==='source-rich')return new Promise(resolve=>{resolveSourceRich=()=>{sourceFormattedInFlight=false;resolve({chunk:sourceRich,next_offset:sourceRich.length});};});
+    return Promise.resolve({chunk:anonymizedRich,next_offset:anonymizedRich.length});
+  },
+  finish_document_preview:async()=>{},
+  anonymize_text:async()=>({mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]})
+}};
+"""
+    scenario = r"""
+(async()=>{
+  selected='doc-1';
+  const loading=loadDocumentPreview();
+  while(!resolveSourceRich)await new Promise(resolve=>setImmediate(resolve));
+  await anonymizeText();
+  resolveSourceRich();
+  await loading;
+  console.log(JSON.stringify({
+    concurrentFormattedStarts,
+    plainHidden:elements.get('#textPreview').hidden,
+    formattedHidden:elements.get('#docxPreview').hidden,
+    formattedHtml:elements.get('#docxPreview').innerHTML,
+    lifecycle:elements.get('#fileLifecycleStatus').textContent
+  }));
+})();
+"""
+    script = tmp_path / "source-formatted-preview-analysis-race.js"
+    script.write_text(harness + javascript + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {
+        "concurrentFormattedStarts": 0,
+        "plainHidden": True,
+        "formattedHidden": False,
+        "formattedHtml": '<article class="docx-page">formatted source</article>',
+        "lifecycle": "Предпросмотр готов — примените настройки к файлу",
+    }
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "pending_message"),
+    [
+        ("app-v1.8.18.js", "Форматированный вид готовится…"),
+        ("app-en-v1.8.18.js", "Preparing formatted view…"),
+    ],
+)
+def test_source_formatted_preview_is_default_while_rich_html_is_loading(
+    tmp_path, asset_name, pending_message
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    harness = r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;this.style={};}
+  addEventListener(){} appendChild(){} setSelectionRange(){} scrollIntoView(){} click(){}
+  setAttribute(){} removeAttribute(){} getAttribute(){return null;} contains(){return false;}
+  querySelectorAll(){return [];} closest(){return null;} getBoundingClientRect(){return {top:0,bottom:1,left:0,right:1};}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map();
+const document={
+  documentElement:{dataset:{}},body:{dataset:{}},
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];}, createElement(){return new FakeElement();}, addEventListener(){}
+};
+const window={addEventListener(){},matchMedia(){return {matches:false};}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const sourceRich='<article class="docx-page">formatted source</article>';
+let resolveSourceRich=null;
+const pywebview={api:{
+  start_document_preview:async()=>({token:'source-text',text_length:4,format:'docx',display_name:'source.docx',status:'Импортирован'}),
+  start_formatted_document_preview:async()=>({token:'source-rich',rich_html_length:sourceRich.length,format:'docx',display_name:'source.docx',status:'Импортирован'}),
+  start_anonymized_document_preview:async()=>({token:'anonymized-rich',rich_html_length:0,format:'docx'}),
+  read_document_preview_chunk(token){
+    if(token==='source-text')return Promise.resolve({chunk:'TEXT',next_offset:4});
+    if(token==='source-rich')return new Promise(resolve=>{resolveSourceRich=()=>resolve({chunk:sourceRich,next_offset:sourceRich.length});});
+    throw new Error('unexpected preview token');
+  },
+  finish_document_preview:async()=>{},
+  anonymize_text:async()=>({mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]})
+}};
+"""
+    scenario = r"""
+(async()=>{
+  document.querySelector('#docxPreviewControls').hidden=true;
+  document.querySelector('#docxPreview').hidden=true;
+  document.querySelector('#textPreview').hidden=false;
+  selected='doc-1';
+  const loading=loadDocumentPreview();
+  while(!resolveSourceRich)await new Promise(resolve=>setImmediate(resolve));
+  const during={
+    plainHidden:document.querySelector('#textPreview').hidden,
+    formattedHidden:document.querySelector('#docxPreview').hidden,
+    controlsHidden:document.querySelector('#docxPreviewControls').hidden,
+    status:document.querySelector('#previewCompleteness').textContent,
+    topDisabled:document.querySelector('#previewTop').disabled,
+    bottomDisabled:document.querySelector('#previewBottom').disabled,
+    fullscreenDisabled:document.querySelector('#previewFullscreen').disabled,
+    formattedDisabled:document.querySelector('#showFormatted').disabled,
+    textDisabled:document.querySelector('#showTextPreview').disabled
+  };
+  resolveSourceRich();
+  await loading;
+  console.log(JSON.stringify({during,finalFormattedDisabled:document.querySelector('#showFormatted').disabled}));
+})();
+"""
+    script = tmp_path / f"{asset_name}-source-formatted-preview-loading.js"
+    script.write_text(harness + javascript + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {
+        "during": {
+            "plainHidden": True,
+            "formattedHidden": False,
+            "controlsHidden": False,
+            "status": pending_message,
+            "topDisabled": True,
+            "bottomDisabled": True,
+            "fullscreenDisabled": True,
+            "formattedDisabled": True,
+            "textDisabled": False,
+        },
+        "finalFormattedDisabled": False,
+    }
+
+
 def test_clear_leaves_formatted_docx_preview_and_returns_to_text_editor(tmp_path):
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
@@ -1048,3 +1206,229 @@ const pywebview={api:{
     }
     assert state["formatted"] == "<p>FRESH</p>"
     assert state["formattedDisabled"] is False
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_formatted_scroll_maps_matching_blocks_when_wrapping_changes_scrollable_tail(
+    tmp_path, asset_name
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("const sourcePreviewAlignment=")
+    scroll_logic = javascript[start:end]
+    harness = r"""
+function makeContainer(scrollHeight,clientHeight,scrollTop,offsets){
+  const container={scrollHeight,clientHeight,scrollTop,hidden:false};
+  container.getBoundingClientRect=()=>({top:0});
+  container.querySelectorAll=()=>offsets.map(offset=>({
+    getBoundingClientRect:()=>({top:offset-container.scrollTop})
+  }));
+  return container;
+}
+"""
+    scenario = r"""
+const source=makeContainer(1000,200,600,[100,300,600,780,900]);
+const target=makeContainer(700,200,0,[80,250,450,540,620]);
+console.log(JSON.stringify({mapped:mapPreviewScroll(source,target)}));
+"""
+    script = tmp_path / f"formatted-scroll-logical-blocks-{asset_name}.js"
+    script.write_text(scroll_logic + harness + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {"mapped": 450}
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_formatted_scroll_sync_fallback_cache_hidden_and_mode_contracts(
+    tmp_path, asset_name
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("const sourcePreviewAlignment=")
+    scroll_logic = javascript[start:end]
+    switch_start = javascript.index("function switchPreviewMode(")
+    switch_end = javascript.index("function setDocxPreviewMode(")
+    switch_logic = javascript[switch_start:switch_end]
+    harness = r"""
+function makeContainer(scrollHeight,clientHeight,scrollTop,offsets){
+  const container={scrollHeight,clientHeight,scrollTop,offsets,hidden:false};
+  container.getBoundingClientRect=()=>({top:0});
+  container.querySelectorAll=()=>container.offsets.map(offset=>({
+    getBoundingClientRect:()=>({top:offset-container.scrollTop})
+  }));
+  return container;
+}
+const plain=makeContainer(1000,200,600,[100,300,600,780,900]);
+const formatted=makeContainer(700,200,0,[80,250,450,540,620]);
+let activeSource=plain;
+function activeSourcePreview(){return activeSource;}
+function activeAnonymizedPreview(){return formatted;}
+function setDocxPreviewMode(value){activeSource=value?formatted:plain;}
+function setAnonymizedPreviewMode(){}
+"""
+    scenario = r"""
+const unequalSource=makeContainer(1000,200,400,[100,400,700]);
+const unequalTarget=makeContainer(700,200,0,[100,300]);
+const unequalMapped=mapPreviewScroll(unequalSource,unequalTarget);
+const cached=makeContainer(700,200,0,[80,250,450]);
+const anchorsBefore=collectPreviewAnchors(cached).slice();
+cached.offsets=[50,200,400];
+const anchorsWhileCached=collectPreviewAnchors(cached).slice();
+invalidatePreviewAnchors(cached);
+const anchorsAfterInvalidation=collectPreviewAnchors(cached).slice();
+const hiddenSource=makeContainer(1000,200,400,[100,400,700]);
+const hiddenTarget=makeContainer(700,200,17,[100,300]);
+hiddenSource.hidden=true;
+syncPreviewScroll(hiddenSource,hiddenTarget);
+switchPreviewMode(setDocxPreviewMode,true);
+console.log(JSON.stringify({
+  unequalMapped,anchorsBefore,anchorsWhileCached,anchorsAfterInvalidation,
+  hiddenTargetScroll:hiddenTarget.scrollTop,modeScroll:formatted.scrollTop
+}));
+"""
+    script = tmp_path / f"formatted-scroll-contracts-{asset_name}.js"
+    script.write_text(scroll_logic + harness + switch_logic + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {
+        "unequalMapped": 250,
+        "anchorsBefore": [0, 80, 250, 450, 500],
+        "anchorsWhileCached": [0, 80, 250, 450, 500],
+        "anchorsAfterInvalidation": [0, 50, 200, 400, 500],
+        "hiddenTargetScroll": 17,
+        "modeScroll": 450,
+    }
+
+
+def _preview_async_harness() -> str:
+    return r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1000;this.clientHeight=200;this.clientWidth=400;this.style={};this.children=[];}
+  addEventListener(){} appendChild(child){this.children.push(child);if(!this.value&&child.value)this.value=child.value;} setSelectionRange(){} scrollIntoView(){} click(){if(this.onclick)return this.onclick();}
+  setAttribute(name,value){this[name]=value;} removeAttribute(name){delete this[name];} getAttribute(){return null;} contains(){return false;} focus(){}
+  querySelectorAll(){return [];} querySelector(){return null;} closest(){return null;} getBoundingClientRect(){return {top:0,bottom:200,left:0,right:400,height:200};}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map();
+const document={
+  documentElement:{dataset:{}},body:{dataset:{},children:[]},activeElement:null,
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];},createElement(){return new FakeElement();},addEventListener(){}
+};
+const window={addEventListener(){},matchMedia(){return {matches:false};}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const pywebview={api:{}};
+"""
+
+
+def _run_preview_async_scenario(tmp_path, asset_name: str, scenario: str) -> dict:
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    script = tmp_path / f"{asset_name}-preview-async-regression.js"
+    script.write_text(_preview_async_harness() + javascript + scenario, encoding="utf-8")
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+    return json.loads(completed.stdout)
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_document_load_invalidates_inflight_analysis(tmp_path, asset_name):
+    scenario = r"""
+let resolveStaleAnalysis;
+pywebview.api={
+  anonymize_text(){return new Promise(resolve=>{resolveStaleAnalysis=resolve;});},
+  preview_document(){return new Promise(()=>{});}
+};
+(async()=>{
+  selected='doc-a';filePreview=true;loadingPreview=false;
+  document.querySelector('#source').value='A';last={marker:'INITIAL',mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]};
+  const stale=anonymizeText();
+  while(!resolveStaleAnalysis)await new Promise(resolve=>setImmediate(resolve));
+  selected='doc-b';document.querySelector('#source').value='B';
+  loadDocumentPreview();
+  resolveStaleAnalysis({marker:'A-STALE',mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]});
+  await stale;
+  console.log(JSON.stringify({marker:last.marker,source:document.querySelector('#source').value,selected}));
+})();
+"""
+
+    assert _run_preview_async_scenario(tmp_path, asset_name, scenario) == {
+        "marker": "INITIAL",
+        "source": "B",
+        "selected": "doc-b",
+    }
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_settings_changed_during_preview_load_remain_dirty_and_block_export(tmp_path, asset_name):
+    scenario = r"""
+let resolvePreview;
+pywebview.api={
+  preview_document(){return new Promise(resolve=>{resolvePreview=resolve;});},
+  anonymize_text:async()=>({mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]})
+};
+(async()=>{
+  selected='doc-1';documentsById={'doc-1':{status:'Готов'}};
+  const loading=loadDocumentPreview();
+  while(!resolvePreview)await new Promise(resolve=>setImmediate(resolve));
+  settingsGeneration++;fileDirty=true;updatePrimaryAction();
+  resolvePreview({text:'TEXT',display_name:'source.txt',status:'Готов',format:'txt',rich_html:''});
+  await loading;
+  console.log(JSON.stringify({fileDirty,exportDisabled:document.querySelector('#exportNow').disabled}));
+})();
+"""
+
+    assert _run_preview_async_scenario(tmp_path, asset_name, scenario) == {
+        "fileDirty": True,
+        "exportDisabled": True,
+    }
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_text_mode_and_scroll_survive_formatted_preview_completion(tmp_path, asset_name):
+    scenario = r"""
+const richHtml='<article class="docx-page">FORMATTED</article>';
+let resolveRich;
+pywebview.api={
+  start_document_preview:async()=>({token:'text',text_length:4,format:'docx',display_name:'source.docx',status:'Импортирован'}),
+  start_formatted_document_preview:async()=>({token:'rich',rich_html_length:richHtml.length,format:'docx',display_name:'source.docx',status:'Импортирован'}),
+  read_document_preview_chunk(token){
+    if(token==='text')return Promise.resolve({chunk:'TEXT',next_offset:4});
+    return new Promise(resolve=>{resolveRich=()=>resolve({chunk:richHtml,next_offset:richHtml.length});});
+  },
+  finish_document_preview:async()=>{},
+  anonymize_text:async()=>({mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]}),
+  preview_anonymized_document:async()=>({format:'docx',rich_html:'<article>ANON</article>'})
+};
+(async()=>{
+  document.querySelector('#docxPreview').hidden=true;
+  document.querySelector('#textPreview').hidden=false;
+  selected='doc-1';
+  const loading=loadDocumentPreview();
+  while(!resolveRich)await new Promise(resolve=>setImmediate(resolve));
+  document.querySelector('#showTextPreview').onclick();
+  document.querySelector('#source').scrollTop=321;
+  resolveRich();
+  await loading;
+  console.log(JSON.stringify({
+    textHidden:document.querySelector('#textPreview').hidden,
+    formattedHidden:document.querySelector('#docxPreview').hidden,
+    sourceScroll:document.querySelector('#source').scrollTop,
+    rich:document.querySelector('#docxPreview').innerHTML
+  }));
+})();
+"""
+
+    assert _run_preview_async_scenario(tmp_path, asset_name, scenario) == {
+        "textHidden": False,
+        "formattedHidden": True,
+        "sourceScroll": 321,
+        "rich": '<article class="docx-page">FORMATTED</article>',
+    }

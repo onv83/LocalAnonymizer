@@ -24,6 +24,29 @@ def _run_posix_build(
         encoding="utf-8",
         newline="\n",
     )
+    (bin_dir / "uv").write_text(
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        "case \"$*\" in\n"
+        "  *build_provenance.py*)\n"
+        "    destination=$4\n"
+        "    mkdir -p \"$(dirname \"$destination\")\"\n"
+        "    printf '%s\\n' '# generated test provenance' > \"$destination\"\n"
+        "    ;;\n"
+        "  *verify_packaged.py*)\n"
+        "    previous=''\n"
+        "    for argument in \"$@\"; do\n"
+        "      if [ \"$previous\" = '--write-manifest' ]; then\n"
+        "        mkdir -p \"$(dirname \"$argument\")\"\n"
+        "        printf '%s\\n' '{}' > \"$argument\"\n"
+        "      fi\n"
+        "      previous=$argument\n"
+        "    done\n"
+        "    ;;\n"
+        "esac\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     pyinstaller = tmp_path / ".venv" / "bin" / "pyinstaller"
     pyinstaller.parent.mkdir(parents=True)
     pyinstaller.write_text(
@@ -42,6 +65,7 @@ def _run_posix_build(
         newline="\n",
     )
     os.chmod(bin_dir / "uname", 0o755)
+    os.chmod(bin_dir / "uv", 0o755)
     os.chmod(pyinstaller, 0o755)
     env = os.environ.copy()
     env.update(
@@ -190,7 +214,7 @@ def test_posix_native_verifier_checks_all_packaged_smoke_modes():
 
     assert "dist/LocalAnonymizer.app/Contents/MacOS/LocalAnonymizer" in verifier
     assert "dist/LocalAnonymizer/LocalAnonymizer" in verifier
-    assert 'uv run python scripts/verify_packaged.py "$executable"' in verifier
+    assert 'uv run python scripts/verify_packaged.py "$executable" --manifest' in verifier
     assert '"--smoke"' in packaged_verifier
     assert '"--pair-smoke"' in packaged_verifier
     assert '"--platform-smoke"' in packaged_verifier

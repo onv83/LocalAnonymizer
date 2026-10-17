@@ -20,7 +20,13 @@ if [ ! -x ".venv/bin/pyinstaller" ]; then
   exit 1
 fi
 
+provenance="src/local_anonymizer/_build_provenance.py"
+manifest="dist/LocalAnonymizer.manifest.json"
+trap 'rm -f "$provenance"' EXIT HUP INT TERM
+rm -f "$provenance"
+uv run python scripts/build_provenance.py "$provenance"
 .venv/bin/pyinstaller --noconfirm --clean LocalAnonymizer.spec
+rm -f "$provenance"
 
 if [ ! -f "$artifact" ]; then
   printf 'Build artifact is missing: %s\n' "$artifact" >&2
@@ -31,4 +37,6 @@ if [ ! -x "$artifact" ]; then
   exit 1
 fi
 
+uv run python scripts/verify_packaged.py "$artifact" --write-manifest "$manifest"
+trap - EXIT HUP INT TERM
 printf 'Сборка: %s/%s\n' "$(pwd)" "$artifact"

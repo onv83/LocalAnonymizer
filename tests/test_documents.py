@@ -98,6 +98,174 @@ def test_docx_new_ru_en_regressions_preserve_formatting_and_restore_exactly(tmp_
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_inventory_geography_and_split_ordinal_address_do_not_leak(tmp_path):
+    source = tmp_path / "synthetic-inventory.docx"
+    anonymized = tmp_path / "synthetic-inventory.anonymized.docx"
+    restored = tmp_path / "synthetic-inventory.restored.docx"
+    document = Document()
+    table = document.add_table(rows=2, cols=4)
+    cells = table.rows[0].cells
+    cells[0].text = "Республика Испытаний (Тестоградск)"
+    cells[1].text = "Северо-Западный"
+    cells[2].text = "КЦ Тестоградск"
+    address = cells[3].paragraphs[0]
+    address.add_run("г. Тестоградск, ").bold = True
+    address.add_run("ул. 7го примера ").italic = True
+    address.add_run("68б").underline = True
+    cells = table.rows[1].cells
+    cells[0].text = "Макетинский автономный округ — Макетия"
+    cells[1].text = "Уральский"
+    cells[2].text = "КЦ Макетинск"
+    address = cells[3].paragraphs[0]
+    address.add_run("г. Макетинск, ").bold = True
+    address.add_run("ул. 9 января ").italic = True
+    address.add_run("67а").underline = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized).decode("utf-8", errors="ignore")
+    leaked = (
+        "Республика Испытаний", "Тестоградск", "Северо-Западный",
+        "7го примера", "68б", "Макетинский автономный округ",
+        "Макетия", "Уральский", "Макетинск", "9 января", "67а",
+    )
+    assert all(value not in package_xml for value in leaked)
+    assert sum(marker.startswith("[АДРЕС-") for marker in result.mapping) == 2
+    assert sum(marker.startswith("[ГОРОД-") for marker in result.mapping) == 6
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_complete_postal_address_across_runs_restores_byte_exactly(tmp_path):
+    source = tmp_path / "synthetic-postal-address.docx"
+    anonymized = tmp_path / "synthetic-postal-address.anonymized.docx"
+    restored = tmp_path / "synthetic-postal-address.restored.docx"
+    address = (
+        "123456, Макетия, Тестовая Республика, г. Тестоградск, "
+        "Макетинский район,бульвар имени А.Б. Испытателя, д.12/3"
+    )
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run(address[:32]).bold = True
+    paragraph.add_run(address[32:79]).italic = True
+    paragraph.add_run(address[79:]).underline = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert Document(anonymized).paragraphs[0].text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": address}
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_address_record_with_reordered_geography_and_tail_restores_byte_exactly(tmp_path):
+    source = tmp_path / "synthetic-reordered-address.docx"
+    anonymized = tmp_path / "synthetic-reordered-address.anonymized.docx"
+    restored = tmp_path / "synthetic-reordered-address.restored.docx"
+    address = (
+        "ул. Испытателей, д. 12, корп. 1, лит. А г. Тестоградск, "
+        "Макетинская область, 123456"
+    )
+    document = Document()
+    table = document.add_table(rows=1, cols=1)
+    paragraph = table.cell(0, 0).paragraphs[0]
+    paragraph.add_run(address[:29]).bold = True
+    paragraph.add_run(address[29:57]).italic = True
+    paragraph.add_run(address[57:]).underline = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert Document(anonymized).tables[0].cell(0, 0).text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": address}
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_embedded_complete_address_preserves_surrounding_runs_and_restores_exactly(tmp_path):
+    source = tmp_path / "synthetic-embedded-address.docx"
+    anonymized = tmp_path / "synthetic-embedded-address.anonymized.docx"
+    restored = tmp_path / "synthetic-embedded-address.restored.docx"
+    prefix = "Оплата производится через 7 дней; доставка: "
+    address = (
+        "ул. Испытателей, д. 12, корп. 1, стр. 2, г. Тестоградск, "
+        "Макетинская область, 123456"
+    )
+    suffix = "; после подписания."
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run(prefix).bold = True
+    paragraph.add_run(address[:31]).italic = True
+    paragraph.add_run(address[31:67]).underline = True
+    paragraph.add_run(address[67:])
+    paragraph.add_run(suffix).bold = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0].text
+    assert output == f"{prefix}[АДРЕС-1]{suffix}"
+    assert result.mapping == {"[АДРЕС-1]": address}
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_address_like_project_prose_in_table_cells_stays_visible(tmp_path):
+    source = tmp_path / "synthetic-address-controls.docx"
+    anonymized = tmp_path / "synthetic-address-controls.anonymized.docx"
+    restored = tmp_path / "synthetic-address-controls.restored.docx"
+    controls = (
+        "Пр. Завершён, д. 12",
+        "Улица Проекта обсуждалась 5 дней.",
+    )
+    document = Document()
+    table = document.add_table(rows=len(controls), cols=1)
+    for index, value in enumerate(controls):
+        table.cell(index, 0).text = value
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized)
+    assert tuple(row.cells[0].text for row in output.tables[0].rows) == controls
+    assert not any(marker.startswith("[АДРЕС-") for marker in result.mapping)
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_tab_separated_english_labels_are_redacted_and_restore_exactly(tmp_path):
     source = tmp_path / "tab-labels.docx"
     anonymized = tmp_path / "tab-labels.anonymized.docx"

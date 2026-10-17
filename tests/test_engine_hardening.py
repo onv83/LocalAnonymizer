@@ -4,6 +4,8 @@ import hmac
 import json
 from dataclasses import asdict
 
+import pytest
+
 from local_anonymizer.engine import Anonymizer, _stem_surname
 
 
@@ -319,10 +321,187 @@ def test_address_and_deadline_adversarial_regressions():
     ordinary = (
         "ул. была перекрыта, 5\n"
         "Улица была перекрыта, 5\n"
+        "пр. завершён, д. 12\n"
+        "123456 задач обработано, город Тестовый модуль завершён.\n"
         "Оплата производится в течение 7 банковских дней.\n"
         "Оплата производится не позднее 7 (Семи банковских) рабочих дней."
     )
     assert Anonymizer().anonymize(ordinary).text == ordinary
+
+
+def test_complete_address_record_does_not_consume_surrounding_narrative():
+    source = (
+        "Работы выполняются по адресу Профсоюзная ул., 125А, Тестоградск, 123456.\n"
+        "г. Тестоградск, ул. Испытателей, д. 5. После проверки документ подписывается."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Работы выполняются по адресу" in result.text
+    assert "После проверки документ подписывается." in result.text
+    assert "Профсоюзная ул., 125А" not in result.text
+    assert "ул. Испытателей, д. 5" not in result.text
+
+
+def test_complete_address_span_inside_prose_consumes_all_typed_components_only():
+    address = (
+        "ул. Испытателей, д. 12, корп. 1, стр. 2, г. Тестоградск, "
+        "Макетинская область, 123456"
+    )
+    source = f"Оплата производится через 7 дней; доставка: {address}; после подписания."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == (
+        "Оплата производится через 7 дней; доставка: [АДРЕС-1]; после подписания."
+    )
+    assert result.mapping == {"[АДРЕС-1]": address}
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    (
+        ("Пр. Завершён, д. 12", "Пр. Завершён, д. 12"),
+        ("Улица Проекта обсуждалась 5 дней.", "Улица Проекта обсуждалась 5 дней."),
+        ("Проект QZXS, пр. Начат, д. 12.", "Проект [СОКРАЩЕНИЯ-1], пр. Начат, д. 12."),
+    ),
+)
+def test_address_detector_rejects_project_like_street_phrases(source, expected):
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == expected
+    assert result.counts.get("АДРЕС", 0) == 0
+
+
+def test_russian_city_street_address_without_comma_before_house_is_redacted_as_one_value():
+    source = "г. Тестоградск, ул. Испытателей 67а"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": source}
+
+
+def test_russian_ordinal_street_address_without_comma_before_house_is_redacted():
+    source = "г. Тестоградск, ул. 7го примера 68б"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": source}
+
+
+def test_russian_region_city_street_address_is_redacted_as_one_value():
+    source = "Макетинская область, г. Макетинск, ул. Испытателей 12"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": source}
+
+
+def test_russian_inventory_geography_cells_and_numeric_street_do_not_leak():
+    separator = "\ufdd0"
+    source = separator.join((
+        "Республика Испытаний (Тестоградск)",
+        "Северо-Западный",
+        "КЦ Тестоградск",
+        "г. Тестоградск, ул. Испытателей 67а",
+        "Макетинский автономный округ — Макетия",
+        "Уральский",
+        "КЦ Макетинск",
+        "г. Макетинск, ул. 9 января 68б",
+    ))
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == separator.join((
+        "[ГОРОД-1]",
+        "[ГОРОД-2]",
+        "КЦ [ГОРОД-3]",
+        "[АДРЕС-1]",
+        "[ГОРОД-4]",
+        "[ГОРОД-5]",
+        "КЦ [ГОРОД-6]",
+        "[АДРЕС-2]",
+    ))
+    assert result.mapping == {
+        "[ГОРОД-1]": "Республика Испытаний (Тестоградск)",
+        "[ГОРОД-2]": "Северо-Западный",
+        "[ГОРОД-3]": "Тестоградск",
+        "[АДРЕС-1]": "г. Тестоградск, ул. Испытателей 67а",
+        "[ГОРОД-4]": "Макетинский автономный округ — Макетия",
+        "[ГОРОД-5]": "Уральский",
+        "[ГОРОД-6]": "Макетинск",
+        "[АДРЕС-2]": "г. Макетинск, ул. 9 января 68б",
+    }
+
+
+def test_russian_official_region_forms_are_consumed_with_full_addresses():
+    sources = (
+        "Тестовая автономная область, г. Тестоградск, ул. Испытателей 12",
+        "Проверочная Республика — Макетия, г. Тестоградск, ул. Испытателей 12",
+        "Макетинская обл., г. Тестоградск, ул. Испытателей 12",
+    )
+
+    for source in sources:
+        result = Anonymizer().anonymize(source)
+        assert result.text == "[АДРЕС-1]"
+        assert result.mapping == {"[АДРЕС-1]": source}
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "123456, г. Тестоградск, пр. Испытателей, д. 12а",
+        "123456, Макетинская область, г. Макетинск, ул. Проверочная, зд.5",
+        "123456, Республика Испытаний, город Тестоградск, Макетинский район, улица Проверочная, д. № 12 а",
+        "123456, Макетинская обл., г. Макетинск, ул. А. Испытателей, дом №12",
+        "123456, Макетия, Тестовая Республика, г. Тестоградск, Макетинский район,бульвар имени А.Б. Испытателя, д.12/3",
+        "пр. Испытаний, д. 12а, г. Тестоградск, 123456",
+    ),
+)
+def test_complete_russian_postal_address_variants_are_redacted_as_one_value(source):
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": source}
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "123456, г. Тестоградск, Испытателей бульвар, 12",
+        "123456, Республика Макетия г. Тестоградск, ул. Испытателей, д. 12, корп. 1",
+        "ул. Испытателей, д. 12, г. Тестоградск, Макетинская область, 123456",
+        "ул. Испытателей, д. 12а г. Тестоградск, Республика Макетия, 123456",
+        "123456, г. Тестоградск, ул. Испытателей, д. 12, лит. А",
+        "123456, Макетинская область, г. Тестоградск, ул. Испытателей, д. 12,\u00a0лит. А",
+        "123456, г. Тестоградск, проезд Проверочный 7-А, д. 12, пом. 3",
+        "ул.Испытателей, д. 12, г. Тестоградск, Макетинская область, Республика Примерия, 123456",
+        "ул. испытателей, д. 12, г. Тестоградск, Макетинская область, Республика Примерия",
+        "ул. Испытателей, д. 12, корп. 1, лит. А г. Тестоградск, 123456",
+        "пр. Испытателей, д. 12, строение 1, г. Тестоградск, 123456",
+    ),
+)
+def test_complete_address_record_consumes_reordered_geography_and_building_tail(source):
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": source}
+
+
+def test_ambiguous_geography_like_fragments_stay_visible_without_inventory_row_context():
+    separator = "\ufdd0"
+    source = separator.join((
+        "Предметная область",
+        "Рабочая область",
+        "Центральный",
+        "Уральский",
+        "КЦ Тестирование",
+    ))
+
+    assert Anonymizer().anonymize(source).text == source
 
 
 def test_labelled_contacts_accept_initials_unicode_and_docx_boundaries():

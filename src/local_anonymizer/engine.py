@@ -376,22 +376,259 @@ class Anonymizer:
 
         # Postal addresses need an explicit address/street anchor.  This keeps
         # ordinary five- and six-digit task/build numbers out of the detector.
-        street_type = r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
+        street_type = r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|пр\.?|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
         named_street = r"[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){0,3}"
-        numeric_street = r"\d+(?:-[яйе])?(?:[ \t]+лет)?[ \t]+[А-ЯЁ][А-Яа-яЁё'’.-]*(?:[ \t]+[А-ЯЁа-яё'’.-]+){0,2}"
+        numeric_street = r"\d+(?:-?(?:го|я|й|е))?(?:[ \t]+лет)?[ \t]+[А-ЯЁа-яё][А-Яа-яЁё'’.-]*(?:[ \t]+[А-ЯЁа-яё'’.-]+){0,2}"
         street_name = rf"(?:{numeric_street}|{named_street})"
-        house = r"(?:д(?:ом)?\.?[ \t]*)?\d+[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?"
-        city = r"(?:г\.?[ \t]*)?[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁа-яё-]+){0,2}"
+        house_designator = r"(?i:д(?:ом)?|зд(?:ание)?|вл(?:адение)?|стр(?:оение)?|корп(?:ус)?)"
+        house = rf"(?:{house_designator}\.?[ \t]*(?:№[ \t]*)?)?\d+[ \t]*[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?"
+        city_name = r"[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁа-яЁё-]+){0,2}"
+        title_place = r"[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁ][А-Яа-яЁё-]+){0,2}"
+        region_suffix = r"(?i:автономная[ \t]+область|автономный[ \t]+округ|область|обл\.?|край|республика)"
+        republic_prefix = rf"(?i:республик[а-яё]*)[ \t]+{title_place}(?:[ \t]*\({title_place}\))?"
+        suffix_region = rf"{title_place}[ \t]+{region_suffix}(?:[ \t]*[—-][ \t]*{title_place})?"
+        administrative_area = rf"(?:{republic_prefix}|{suffix_region})"
+        city = rf"(?:г\.?[ \t]*)?{city_name}"
+        explicit_city = rf"г(?:ород)?\.?[ \t]*{city_name}"
+        street_house_separator = r"(?:[ \t]*,[ \t]*|[ \t]+)"
         address_value = rf"{street_name}[ \t]+{street_type}[ \t]*,[ \t]*{house}(?:[ \t]*,[ \t]*{city})?"
-        street_first_address = (
-            rf"{street_type}[ \t]+{street_name}[ \t]*,[ \t]*{house}"
-            rf"(?:[ \t]*,[ \t]*к(?:орпус)?\.?[ \t]*\d+[А-ЯЁа-яё]?)?"
+        extended_street_name = (
+            rf"(?:{numeric_street}|(?:(?i:имени|им\.)[ \t]+)?"
+            rf"[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){{0,5}})"
         )
-        direct_street_name = rf"(?:{numeric_street}|[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+)?)"
-        direct_suffix_address = (
-            rf"{direct_street_name}[ \t]+{street_type}[ \t]*,[ \t]*{house}"
-            rf"(?:[ \t]*,[ \t]*{city})?"
+        district_component = rf"{title_place}[ \t]+(?i:район|р-н\.?)"
+        geography_component = rf"(?:{administrative_area}|{explicit_city}|{district_component}|{title_place})"
+        geography_prefix = rf"(?:\d{{5,6}}[ \t]*,[ \t]*)?(?:{geography_component}[ \t]*,[ \t]*){{0,4}}"
+        complete_postal_address = (
+            rf"{geography_prefix}{street_type}[ \t]+{extended_street_name}"
+            rf"{street_house_separator}{house}"
+            rf"(?:[ \t]*,[ \t]*{explicit_city})?"
+            rf"(?:[ \t]*,[ \t]*\d{{5,6}})?"
         )
+
+        # Parse complete postal spans from typed components instead of consuming
+        # an entire line or table cell. This keeps surrounding prose visible while
+        # supporting reordered geography and repeatable building qualifiers.
+        address_hws = r"[ \t\u00a0]"
+        address_comma = rf"{address_hws}*,{address_hws}*"
+        address_join = rf"(?:{address_comma}|{address_hws}+)"
+        strong_street_type = (
+            r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|"
+            r"пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
+        )
+        ambiguous_street_type = r"(?i:пр\.?)"
+        bounded_street_type = rf"(?:{strong_street_type}|{ambiguous_street_type})"
+        bounded_street_word = r"[А-ЯЁа-яё0-9][А-Яа-яЁё0-9'’.-]*"
+        bounded_street_name = (
+            rf"(?:{numeric_street}|(?:(?i:имени|им\.){address_hws}+)?"
+            rf"{bounded_street_word}(?:{address_hws}+{bounded_street_word}){{0,5}})"
+        )
+        strict_street_name = (
+            rf"(?:{numeric_street}|[А-ЯЁ][А-Яа-яЁё0-9'’.-]*"
+            rf"(?:{address_hws}+[А-ЯЁ][А-Яа-яЁё0-9'’.-]*){{0,3}})"
+        )
+        type_name_join = rf"(?:{address_hws}+|(?<=\.))"
+        bounded_street_core = (
+            rf"(?:{bounded_street_type}{type_name_join}{bounded_street_name}|"
+            rf"{extended_street_name}{address_hws}+{bounded_street_type})"
+        )
+        strict_street_core = (
+            rf"(?:{strong_street_type}{type_name_join}{strict_street_name}|"
+            rf"{strict_street_name}{address_hws}+{strong_street_type})"
+        )
+        house_no = (
+            rf"\d{{1,5}}{address_hws}*[А-ЯЁа-яё]?"
+            rf"(?:[/-]\d{{1,5}}[А-ЯЁа-яё]?)?"
+        )
+        primary_house_designator = r"(?i:д(?:ом)?|зд(?:ание)?|вл(?:адение)?)"
+        labelled_house = (
+            rf"{primary_house_designator}\.?{address_hws}*"
+            rf"(?:№{address_hws}*)?{house_no}"
+        )
+        street_house = (
+            rf"(?:{bounded_street_core}{address_join}{labelled_house}|"
+            rf"{strict_street_core}{address_comma}{house_no}|"
+            rf"{strict_street_core}{address_hws}+{house_no})"
+        )
+        building_designator = (
+            r"(?i:корп(?:ус)?|к|стр(?:оение)?|лит(?:ера)?|"
+            r"пом(?:ещение)?|оф(?:ис)?|уч(?:асток)?|кв(?:артира)?)"
+        )
+        building_value = (
+            rf"(?:№{address_hws}*)?(?:\d{{1,5}}(?:[/-]\d{{1,5}})?"
+            rf"[А-ЯЁа-яё]?|[А-ЯЁа-яё])"
+        )
+        building_part = (
+            rf"{building_designator}\.?{address_hws}*"
+            rf"(?:,{address_hws}*)?{building_value}"
+        )
+        building_tail = rf"(?:{address_comma}{building_part}){{0,8}}"
+
+        bounded_title_place = (
+            rf"[А-ЯЁ][А-Яа-яЁё-]*(?:{address_hws}+[А-ЯЁ][А-Яа-яЁё-]+){{0,2}}"
+        )
+        bounded_city_name = (
+            rf"[А-ЯЁ][А-Яа-яЁё-]*(?:{address_hws}+[А-ЯЁа-яЁё-]+){{0,2}}"
+        )
+        bounded_explicit_city = (
+            rf"г(?:ород)?\.?{address_hws}*{bounded_city_name}"
+        )
+        bounded_region_suffix = (
+            rf"(?i:автономная{address_hws}+область|"
+            rf"автономный{address_hws}+округ|область|обл\.?|край|республика)"
+        )
+        bounded_republic_prefix = (
+            rf"(?i:республик[а-яё]*){address_hws}+{bounded_title_place}"
+            rf"(?:{address_hws}*\({bounded_title_place}\))?"
+        )
+        bounded_suffix_region = (
+            rf"{bounded_title_place}{address_hws}+{bounded_region_suffix}"
+            rf"(?:{address_hws}*[—-]{address_hws}*{bounded_title_place})?"
+        )
+        bounded_region = rf"(?:{bounded_republic_prefix}|{bounded_suffix_region})"
+        bounded_district = (
+            rf"{bounded_title_place}{address_hws}+(?i:район|р-н\.?)"
+        )
+        bounded_country = r"(?i:Россия|Российская Федерация|РФ)"
+        bounded_region_city = (
+            rf"{bounded_region}(?:{address_comma}|{address_hws}+)"
+            rf"{bounded_explicit_city}"
+        )
+        bounded_geo_unit = (
+            rf"(?:{bounded_region_city}|{bounded_region}|"
+            rf"{bounded_explicit_city}|{bounded_district})"
+        )
+        bounded_country_or_typed_title = (
+            rf"(?:{bounded_country}|{bounded_title_place}"
+            rf"(?={address_comma}{bounded_region}{address_comma}))"
+        )
+        leading_geography = (
+            rf"(?:\d{{5,6}}{address_comma})?"
+            rf"(?:{bounded_country_or_typed_title}{address_comma})?"
+            rf"(?:{bounded_geo_unit}{address_comma}){{0,6}}"
+        )
+        leading_address = rf"{leading_geography}{street_house}{building_tail}"
+        trailing_address = (
+            rf"{street_house}{building_tail}"
+            rf"(?:{address_join}{bounded_explicit_city})?"
+            rf"(?:{address_comma}{bounded_region}){{0,2}}"
+            rf"(?:{address_comma}{bounded_country})?"
+            rf"(?:{address_comma}\d{{5,6}})?"
+        )
+        bounded_full_address = rf"(?:{trailing_address}|{leading_address})"
+        ambiguous_street_token = re.compile(
+            r"(?i)(?<![А-Яа-яЁё])пр\.(?![А-Яа-яЁё])"
+        )
+        typed_geography_evidence = re.compile(
+            rf"(?:\d{{5,6}}|{bounded_country}|{bounded_region}|{bounded_explicit_city})"
+        )
+
+        def is_bounded_address(match: re.Match) -> bool:
+            value = match.group(1)
+            if not ambiguous_street_token.search(value):
+                return True
+            if typed_geography_evidence.search(value):
+                return True
+            prefix = source[max(0, match.start(1) - 24):match.start(1)]
+            return re.search(r"(?i)\bадрес(?:у|а|е)?\s*[:—-]?\s*$", prefix) is not None
+
+        add(
+            rf"(?<![А-Яа-яЁё0-9])({bounded_full_address})(?![А-Яа-яЁё0-9])",
+            "АДРЕС", 99, group=1, flags=0,
+            validate=is_bounded_address,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        )
+        labelled_bounded_address = (
+            rf"{street_house}{building_tail}"
+            rf"(?:{address_comma}{city_name})?"
+        )
+        add(
+            rf"\b(?:по{address_hws}+)?адрес(?:у|а|е)?{address_hws}*"
+            rf"[:—-]?{address_hws}*({labelled_bounded_address})",
+            "АДРЕС", 100, group=1, flags=0,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        )
+
+        # A postal address in a dedicated DOCX table cell is one record even
+        # when its components are reordered or contain uncommon building
+        # qualifiers. This fallback never applies to ordinary text lines.
+        record_street_start = re.compile(
+            rf"(?<![А-Яа-яЁё]){street_type}(?:{address_hws}+|(?<=\.))"
+            rf"(?:(?i:имени|им\.){address_hws}+)?"
+            rf"(?:\d+|[А-ЯЁа-яё](?:\.|[А-Яа-яЁё0-9'’.-]*))",
+        )
+        record_street_end = re.compile(
+            rf"(?:\d+|[А-ЯЁ][А-Яа-яЁё0-9'’.-]*)"
+            rf"(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){{0,2}}[ \t]+{street_type}"
+            rf"(?![А-Яа-яЁё])",
+        )
+        record_house = re.compile(
+            r"(?i)(?:^|[ \t,])(?:д(?:ом)?|зд(?:ание)?|вл(?:адение)?|"
+            r"стр(?:оение)?|корп(?:ус)?|лит(?:ера)?|пом(?:ещение)?|"
+            r"оф(?:ис)?|уч(?:асток)?|кв(?:артира)?)\.?[ \t]*(?:№[ \t]*)?"
+            r"\d+[ \t]*[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?",
+        )
+        record_unlabelled_house = re.compile(
+            r"(?:^|[ \t,])\d{1,5}[ \t]*[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?"
+            r"(?=$|[ \t,])",
+        )
+        record_allowed = re.compile(
+            r"[-–—А-Яа-яЁёA-Za-z0-9_\s.,№'’\"«»()/\\]+",
+        )
+        record_context_words = {
+            "г", "город", "россия", "рф", "республика", "республики",
+            "область", "обл", "край", "автономная", "автономный", "округ",
+            "район", "р", "н", "д", "дом", "зд", "здание", "вл",
+            "владение", "стр", "строение", "корп", "корпус", "к", "лит",
+            "литера", "пом", "помещение", "оф", "офис", "уч", "участок",
+            "кв", "квартира", "п", "пос", "поселок", "посёлок", "с", "село",
+            "дер", "деревня", "мкр", "микрорайон", "тер", "территория",
+        }
+
+        def is_address_only_context(value: str) -> bool:
+            if re.search(r"[:;!?]", value):
+                return False
+            for match in re.finditer(r"[А-Яа-яЁё]+", value):
+                word = match.group()
+                numeric_qualifier = re.match(
+                    r"\.?[ \t]*(?:№[ \t]*)?\d",
+                    value[match.end():],
+                )
+                if (
+                    len(word) > 1
+                    and word[0].islower()
+                    and word.casefold() not in record_context_words
+                    and numeric_qualifier is None
+                ):
+                    return False
+            return True
+
+        def is_complete_address_record(match: re.Match) -> bool:
+            value = re.sub(r"\s+", " ", match.group(1).replace("\ufdd3", " ")).strip()
+            if not 6 <= len(value) <= 400 or not record_allowed.fullmatch(value):
+                return False
+            if (
+                ambiguous_street_token.search(value)
+                and not typed_geography_evidence.search(value)
+            ):
+                return False
+            anchor = record_street_start.search(value) or record_street_end.search(value)
+            if anchor is None or not is_address_only_context(value[:anchor.start()]):
+                return False
+            tail = value[anchor.end():]
+            house_match = record_house.search(tail) or record_unlabelled_house.search(tail)
+            if house_match is None:
+                return False
+            return is_address_only_context(tail[house_match.end():])
+
+        add(
+            r"(?<=\ufdd0)([^\r\n\ufdd0\ufdd3]{5,400})(?=\ufdd0)",
+            "АДРЕС", 101, group=1, flags=0,
+            validate=is_complete_address_record,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+            allow_boundary_context=True,
+        )
+
         add(
             rf"\b(?:по[ \t]+)?адрес(?:у|а|е)?[ \t]*[:—-]?[ \t]*({address_value})",
             "АДРЕС", 96, group=1,
@@ -405,15 +642,34 @@ class Anonymizer:
             r"\b(?:почтов(?:ый|ого)[ \t]+)?индекс[ \t]*[:№—-]?[ \t]*(\d{5,6})(?!\d)",
             "ИНДЕКС", 95, group=1,
         )
-        add(
-            rf"(?<![А-Яа-яЁё])({street_first_address})(?![А-Яа-яЁё0-9])",
-            "АДРЕС", 96, group=1, flags=0,
-            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        # Region, district and service-centre cells are ambiguous by themselves.
+        # Redact them only as one contiguous inventory row ending in a validated
+        # postal address; this preserves ordinary cells such as "Рабочая область".
+        federal_district = (
+            r"(?:Центральный|Северо-Западный|Южный|Северо-Кавказский|"
+            r"Приволжский|Уральский|Сибирский|Дальневосточный)"
+            r"(?:[ \t]+федеральный[ \t]+округ)?"
+        )
+        cell_separator = r"[ \t]*\ufdd0[ \t]*"
+        inventory_row = (
+            rf"(?:(?<=\ufdd0)|^)({administrative_area}){cell_separator}"
+            rf"({federal_district}){cell_separator}КЦ[ \t]+({title_place})"
+            rf"{cell_separator}({complete_postal_address})(?=$|\ufdd0)"
         )
         add(
-            rf"(?<![А-Яа-яЁё])({direct_suffix_address})(?![А-Яа-яЁё0-9])",
-            "АДРЕС", 96, group=1, flags=0,
-            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+            inventory_row, "ГОРОД", 64, group=1, flags=0,
+            canonical=lambda m: "region:" + self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        add(
+            inventory_row, "ГОРОД", 64, group=2, flags=0,
+            canonical=lambda m: "district:" + self._canon(m.group(2)),
+            allow_boundary_context=True,
+        )
+        add(
+            inventory_row, "ГОРОД", 64, group=3, flags=0,
+            canonical=lambda m: self._canon(m.group(3)),
+            allow_boundary_context=True,
         )
 
         english_street = (
