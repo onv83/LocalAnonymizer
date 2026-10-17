@@ -21,7 +21,6 @@ if [ ! -x ".venv/bin/pyinstaller" ]; then
 fi
 
 provenance="src/local_anonymizer/_build_provenance.py"
-manifest="dist/LocalAnonymizer.manifest.json"
 trap 'rm -f "$provenance"' EXIT HUP INT TERM
 rm -f "$provenance"
 uv run python scripts/build_provenance.py "$provenance"
@@ -37,6 +36,5 @@ if [ ! -x "$artifact" ]; then
   exit 1
 fi
 
-uv run python scripts/verify_packaged.py "$artifact" --write-manifest "$manifest"
 trap - EXIT HUP INT TERM
 printf 'Сборка: %s/%s\n' "$(pwd)" "$artifact"

@@ -523,3 +523,9 @@ Verification: all 6 focused release-verifier tests passed; normal and optimized 
 **GREEN:** Manifest schema 2 records the size and SHA-256 of every regular file in the Windows/Linux package tree and the target of every package-internal symlink in a macOS bundle. Validation recomputes the complete inventory and rejects changed, missing, added, or package-root-escaping entries. The explicitly supplied external manifest is excluded only when it is copied inside the installed package, preventing the manifest from being required to hash itself while still rejecting every unrelated extra file.
 
 **VERIFY (focused):** Runtime tamper, unmanifested-addition, and installed-manifest-location checks passed together with the complete packaged-verifier suite (`11 passed`).
+
+## 2026-10-17 — Native CI verification sequencing
+
+**CI ROOT CAUSE:** Run `39001011674` failed in the native build step on both runners. `build.sh` had begun running the full external verifier immediately after PyInstaller, before Linux Secret Service/X11 setup was restored and before the macOS test-keychain item was cleared. Linux `--smoke` exited with code 1; macOS `--pair-smoke` reached the 180-second timeout. The workflow's dedicated native verification steps, which establish those prerequisites, were never reached.
+
+**RED / GREEN:** A focused regression first failed because `build.sh` invoked `verify_packaged.py`. The POSIX build now only produces the provenance-bound executable. `verify-native.sh`, already executed inside the platform-prepared CI environment, runs `--write-manifest`; that single external-verifier invocation performs all smoke checks, writes schema-2 inventory only after they pass, and validates the result. A second RED proved the native archive commands omitted that external manifest; the Linux tarball and macOS staging archive now include it alongside the application. The focused build/verifier suites then passed (`25 passed`).

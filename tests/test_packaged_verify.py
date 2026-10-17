@@ -316,4 +316,4 @@ def test_native_build_wrappers_run_the_external_packaged_verifier():
     assert windows.count("scripts\\verify_packaged.py") == 2
     native = Path("verify-native.sh").read_text(encoding="utf-8")
     assert "scripts/verify_packaged.py" in native
-    assert "--manifest" in native
+    assert "--write-manifest" in native

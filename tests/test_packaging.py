@@ -214,10 +214,18 @@ def test_posix_native_verifier_checks_all_packaged_smoke_modes():
 
     assert "dist/LocalAnonymizer.app/Contents/MacOS/LocalAnonymizer" in verifier
     assert "dist/LocalAnonymizer/LocalAnonymizer" in verifier
-    assert 'uv run python scripts/verify_packaged.py "$executable" --manifest' in verifier
+    assert 'uv run python scripts/verify_packaged.py "$executable" --write-manifest' in verifier
     assert '"--smoke"' in packaged_verifier
     assert '"--pair-smoke"' in packaged_verifier
     assert '"--platform-smoke"' in packaged_verifier
+
+
+def test_posix_build_defers_packaged_verification_until_platform_services_are_ready():
+    builder = (ROOT / "build.sh").read_text(encoding="utf-8")
+    verifier = (ROOT / "verify-native.sh").read_text(encoding="utf-8")
+
+    assert "verify_packaged.py" not in builder
+    assert '--write-manifest "dist/LocalAnonymizer.manifest.json"' in verifier
 
 
 def test_native_spec_collects_runtime_loaded_secure_storage_backends():
@@ -242,8 +250,12 @@ def test_native_ci_builds_and_smokes_linux_and_macos_packages():
     assert "Run macOS tests" in workflow
     assert "Run Linux tests with Secret Service" in workflow
     assert "security delete-generic-password -s LocalAnonymizer" in workflow
-    assert "ditto -c -k --sequesterRsrc --keepParent" in workflow
-    assert "tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz LocalAnonymizer" in workflow
+    assert "cp dist/LocalAnonymizer.manifest.json native-macos-package/" in workflow
+    assert "ditto -c -k --sequesterRsrc --keepParent native-macos-package" in workflow
+    assert (
+        "tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz "
+        "LocalAnonymizer LocalAnonymizer.manifest.json"
+    ) in workflow
     assert "uv run pytest" in workflow
     assert "./build.sh" in workflow
     assert "./verify-native.sh" in workflow

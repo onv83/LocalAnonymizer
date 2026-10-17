@@ -97,11 +97,16 @@ jobs:
 
       - name: Create macOS release archive
         if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent dist/LocalAnonymizer.app LocalAnonymizer-macos-arm64.zip
+        run: |
+          rm -rf native-macos-package
+          mkdir native-macos-package
+          ditto dist/LocalAnonymizer.app native-macos-package/LocalAnonymizer.app
+          cp dist/LocalAnonymizer.manifest.json native-macos-package/
+          ditto -c -k --sequesterRsrc --keepParent native-macos-package LocalAnonymizer-macos-arm64.zip
 
       - name: Create Linux release archive
         if: runner.os == 'Linux'
-        run: tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz LocalAnonymizer
+        run: tar -C dist -czf LocalAnonymizer-linux-x64.tar.gz LocalAnonymizer LocalAnonymizer.manifest.json
 
       - name: Upload macOS application
         if: runner.os == 'macOS'

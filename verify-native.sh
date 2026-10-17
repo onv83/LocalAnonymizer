@@ -22,6 +22,6 @@ if [ ! -x "$executable" ]; then
   exit 2
 fi
 
-uv run python scripts/verify_packaged.py "$executable" --manifest "dist/LocalAnonymizer.manifest.json"
+uv run python scripts/verify_packaged.py "$executable" --write-manifest "dist/LocalAnonymizer.manifest.json"
 
 echo "Native package verification passed: $executable"
