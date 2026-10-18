@@ -1,6 +1,72 @@
 from local_anonymizer.engine import Anonymizer
 
 
+def test_two_letter_uppercase_abbreviations_require_more_than_five_exact_tokens():
+    frequent = "ЮЯ"
+    rare = "ФХ"
+    source = " ".join([frequent] * 6 + [rare] * 5)
+
+    result = Anonymizer().anonymize(source)
+
+    frequent_marker = next(
+        marker for marker, value in result.mapping.items() if value == frequent
+    )
+    assert result.text.count(frequent_marker) == 6
+    assert result.text.count(rare) == 5
+    assert rare not in result.mapping.values()
+    assert result.counts["СОКРАЩЕНИЯ"] == 6
+
+
+def test_two_letter_frequency_uses_only_complete_uppercase_letter_tokens():
+    standalone = "QZ"
+    source = " ".join(
+        [standalone] * 5
+        + ["Qz", "qz", "QZ1", "XQZ", "QZ-QZ"] * 6
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text.startswith("QZ QZ QZ QZ QZ ")
+    assert standalone not in result.mapping.values()
+    assert "QZ1" in result.text
+    assert "QZ-QZ" in result.text
+
+
+def test_two_letter_frequency_combines_nfc_equivalents_but_restores_exactly():
+    composed = "ÅB"
+    decomposed = "A\u030aB"
+    source = " ".join([composed] * 3 + [decomposed] * 3)
+
+    result = Anonymizer().anonymize(source)
+
+    assert set(result.mapping.values()) == {composed, decomposed}
+    assert result.counts["СОКРАЩЕНИЯ"] == 6
+    restored = result.text
+    for marker, original in result.mapping.items():
+        restored = restored.replace(marker, original)
+    assert restored == source
+
+
+def test_two_letter_frequency_allows_unicode_letter_continuations():
+    samples = ("A\u0483B", "A\u200cB")
+    source = " ".join(sample for sample in samples for _ in range(6))
+
+    result = Anonymizer().anonymize(source)
+
+    assert set(result.mapping.values()) == set(samples)
+    assert result.counts["СОКРАЩЕНИЯ"] == 12
+
+
+def test_frequent_two_letter_abbreviations_can_be_disabled():
+    source = " ".join(["QZ"] * 6)
+
+    result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+    assert "СОКРАЩЕНИЯ" not in result.counts
+
+
 def test_abbreviations_have_an_independent_reversible_category():
     source = (
         "Для серверов используется UCMDB.\n"

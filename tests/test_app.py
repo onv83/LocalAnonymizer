@@ -72,6 +72,16 @@ def test_server_inventory_name_self_test_requires_standalone_and_table_context_p
     assert app_module._server_inventory_name_self_test(PartialDetector()) is False
 
 
+def test_abbreviation_frequency_self_test_requires_threshold_and_unicode_continuations():
+    assert app_module._abbreviation_frequency_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, _source):
+            return Anonymizer().anonymize(" ".join(["QZ"] * 6 + ["ZX"] * 5))
+
+    assert app_module._abbreviation_frequency_self_test(PartialDetector()) is False
+
+
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     index = asset_path("index-v1.8.18.html")
@@ -86,6 +96,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["vm_node_ok"] is True
     assert summary["abbreviation_ok"] is True
     assert summary["abbreviation_unicode_ok"] is True
+    assert summary["abbreviation_frequency_ok"] is True
     assert summary["domain_toc_ok"] is True
     assert summary["port_ok"] is True
     assert summary["address_inventory_ok"] is True

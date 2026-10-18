@@ -89,6 +89,20 @@ def _iter_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]]:
         yield start, index
 
 
+def _short_abbreviation_key(value: str) -> str | None:
+    normalized = unicodedata.normalize("NFC", value)
+    uppercase_letters = 0
+    for char in normalized:
+        category = unicodedata.category(char)
+        if category == "Lu":
+            uppercase_letters += 1
+        elif category.startswith("M") or char in {"\u200c", "\u200d"}:
+            continue
+        else:
+            return None
+    return normalized if uppercase_letters == 2 else None
+
+
 @dataclass(frozen=True)
 class Detection:
     start: int
@@ -1314,10 +1328,25 @@ class Anonymizer:
             canonical=lambda m: _name_stem(m.group()))
 
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
-            for start, end in _iter_abbreviation_tokens(source):
+            abbreviation_tokens = list(_iter_abbreviation_tokens(source))
+            short_counts: dict[str, int] = {}
+            for start, end in abbreviation_tokens:
+                short_key = _short_abbreviation_key(source[start:end])
+                if short_key is not None:
+                    short_counts[short_key] = short_counts.get(short_key, 0) + 1
+
+            for start, end in abbreviation_tokens:
                 value = source[start:end]
+                normalized = unicodedata.normalize("NFC", value)
+                short_key = _short_abbreviation_key(value)
+                if short_key is not None and short_counts.get(short_key, 0) >= 6:
+                    abbreviation_candidates.append(Detection(
+                        start, end, "СОКРАЩЕНИЯ", 45, value, value,
+                        case_sensitive_canonical=True,
+                    ))
+                    continue
                 uppercase_run = 0
-                for char in unicodedata.normalize("NFC", value):
+                for char in normalized:
                     category = unicodedata.category(char)
                     if category == "Lu":
                         uppercase_run += 1

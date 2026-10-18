@@ -144,6 +144,31 @@ def _server_inventory_name_self_test(anonymizer=None) -> bool:
     )
 
 
+def _abbreviation_frequency_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    frequent = ("QZ", "A\u0483B")
+    infrequent = "ZX"
+    source = " ".join(
+        [frequent[0]] * 6 + [frequent[1]] * 6 + [infrequent] * 5
+    )
+    result = detector.anonymize(source)
+    markers = {
+        original: marker
+        for marker, original in result.mapping.items()
+        if original in frequent
+    }
+    restored = result.text
+    for marker, original in sorted(result.mapping.items(), key=lambda item: len(item[0]), reverse=True):
+        restored = restored.replace(marker, original)
+    return (
+        set(markers) == set(frequent)
+        and all(result.text.count(markers[value]) == 6 for value in frequent)
+        and result.text.count(infrequent) == 5
+        and result.counts.get("СОКРАЩЕНИЯ") == 12
+        and restored == source
+    )
+
+
 class AppApi:
     def __init__(
         self,
@@ -560,6 +585,7 @@ class AppApi:
             set(unicode_abbreviation_result.mapping.values()) == set(unicode_abbreviation_samples)
             and all(value not in unicode_abbreviation_result.text for value in unicode_abbreviation_samples)
         )
+        abbreviation_frequency_ok = _abbreviation_frequency_self_test()
         domain_toc_sample = (
             "Общие данные по домену qzxsafe.test11\n"
             "Общие данные по домену go.qzxsafe.test14"
@@ -599,6 +625,7 @@ class AppApi:
                 and vm_node_ok
                 and abbreviation_ok
                 and abbreviation_unicode_ok
+                and abbreviation_frequency_ok
                 and domain_toc_ok
                 and port_ok
                 and address_inventory_ok
@@ -609,6 +636,7 @@ class AppApi:
             "vm_node_ok": vm_node_ok,
             "abbreviation_ok": abbreviation_ok,
             "abbreviation_unicode_ok": abbreviation_unicode_ok,
+            "abbreviation_frequency_ok": abbreviation_frequency_ok,
             "domain_toc_ok": domain_toc_ok,
             "port_ok": port_ok,
             "address_inventory_ok": address_inventory_ok,

@@ -551,6 +551,37 @@ def test_docx_abbreviations_across_runs_tables_and_tabs_restore_byte_exactly(tmp
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_frequent_two_letter_abbreviations_span_runs_and_document_blocks(tmp_path):
+    source = tmp_path / "short-abbreviations-source.docx"
+    anonymized = tmp_path / "short-abbreviations-anonymized.docx"
+    restored = tmp_path / "short-abbreviations-restored.docx"
+    document = Document()
+
+    split = document.add_paragraph()
+    split.add_run("Q")
+    split.add_run("Z").bold = True
+    for _ in range(2):
+        document.add_paragraph("QZ")
+    table = document.add_table(rows=3, cols=1)
+    for row in table.rows:
+        row.cells[0].text = "QZ"
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert set(result.mapping.values()) == {"QZ"}
+    assert b"QZ" not in _all_xml(anonymized)
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_toc_domains_with_attached_page_numbers_restore_byte_exactly(tmp_path):
     source = tmp_path / "toc-domains-source.docx"
     anonymized = tmp_path / "toc-domains-anonymized.docx"

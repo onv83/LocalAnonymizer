@@ -41,6 +41,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "vm_node_ok": True,
             "abbreviation_ok": True,
             "abbreviation_unicode_ok": True,
+            "abbreviation_frequency_ok": True,
             "domain_toc_ok": True,
             "port_ok": True,
             "address_inventory_ok": True,
@@ -125,6 +126,30 @@ def test_packaged_smoke_rejects_stale_build_without_server_inventory_name_proof(
     }
 
     with pytest.raises(VerificationError, match="server_inventory_name_ok"):
+        validate_smoke(payload)
+
+
+def test_packaged_smoke_rejects_stale_build_without_abbreviation_frequency_proof():
+    payload = {
+        "ok": True,
+        "engine": {
+            "ok": True,
+            "vm_node_ok": True,
+            "abbreviation_ok": True,
+            "abbreviation_unicode_ok": True,
+            "domain_toc_ok": True,
+            "port_ok": True,
+            "address_inventory_ok": True,
+            "address_postal_variants_ok": True,
+            "server_inventory_name_ok": True,
+            "graphics_roundtrip_ok": True,
+            "source_snapshot_sha256": "a" * 64,
+            "git_revision": "b" * 40,
+            "git_diff_sha256": "c" * 64,
+        },
+    }
+
+    with pytest.raises(VerificationError, match="abbreviation_frequency_ok"):
         validate_smoke(payload)
 
 
