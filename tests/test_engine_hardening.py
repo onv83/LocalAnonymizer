@@ -438,6 +438,33 @@ def test_russian_inventory_geography_cells_and_numeric_street_do_not_leak():
     }
 
 
+def test_ten_column_domain_inventory_redacts_full_and_abbreviated_subject_cells():
+    cell = "\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    header = cell.join((
+        "Субъект Российской Федерации", "Федеральный округ", "Наименование филиала",
+        "Местонахождение филиалов", "Порядковый номер", "Имя сервера",
+        "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
+    ))
+    first = cell.join((
+        "Испытательный край", "ТФО", "Макетный", "[АДРЕС-1]", "18",
+        "[ДОМЕН-1]", "[IP-1]", "Windows Server 2019", "[IP-2]", "2000",
+    ))
+    second = cell.join((
+        "Респ. Примерия", "ТФО", "Проверочный", "[АДРЕС-2]", "62",
+        "[ДОМЕН-2]", "[IP-3]", "Windows Server 2019", "[IP-4]", "2000",
+    ))
+
+    result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(
+        cell + "\ufdd1" + cell + header + row + first + row + second + cell + "\ufdd1" + cell
+    )
+
+    assert "Испытательный край" not in result.text
+    assert "Респ. Примерия" not in result.text
+    assert "Испытательный край" in result.mapping.values()
+    assert "Респ. Примерия" in result.mapping.values()
+
+
 def test_russian_official_region_forms_are_consumed_with_full_addresses():
     sources = (
         "Тестовая автономная область, г. Тестоградск, ул. Испытателей 12",

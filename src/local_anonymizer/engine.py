@@ -856,6 +856,19 @@ class Anonymizer:
             canonical=lambda m: m.group(1).casefold())
         add(rf"(?<![\wА-Яа-яЁё@.:/-]){domain_pattern}(?![\w-])", "ДОМЕН", 89,
             validate=lambda m: m.group().casefold() not in self.whitelist, canonical=lambda m: m.group().casefold())
+        # DNS service/subtree owners (for example an underscored locator FQDN)
+        # identify infrastructure nodes.  Keep this below URL, email and path
+        # priorities, and reject embedded account/path/dotted-identifier spans.
+        underscored_dns_fqdn = (
+            r"(?:_[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+            r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+            r"[A-Za-z]{2,63}"
+        )
+        add(
+            rf"(?<![\w@/\\.-]){underscored_dns_fqdn}(?![\w-])",
+            "УЗЕЛ", 88,
+            canonical=lambda m: m.group().casefold(),
+        )
         add(r"(?<![\w.@:-])(?:srv|host|vm|node|dc|db|app|web|mail|proxy|fw|gw|kvm|esx|hv|pc|dns|vpn|nas|k8s|adc)[a-z0-9]*(?:[-_][a-z0-9]+)+(?![\w-])", "УЗЕЛ", 81,
             validate=lambda m: bool(re.search(r"\d", m.group())), canonical=lambda m: m.group().casefold())
         # Inventory names often begin with a site code and carry the server
@@ -977,9 +990,72 @@ class Anonymizer:
                 spans.append((start, end, value[start:end]))
                 start = end + len(delimiter)
 
+        # A domain-controller inventory identifies its administrative-region
+        # column by the table header.  Treat every non-empty data cell in that
+        # column as one geography value, including abbreviated forms such as
+        # "Респ.", instead of guessing from a short list of region spellings.
+        if "ГОРОД" not in self.disabled_categories and table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                header = None
+                for index, (_, _, row_text) in enumerate(rows):
+                    cells = split_spans(row_text, "\ufdd0")
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    subject_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"Субъект\s+Российской\s+Федерации", heading, re.I)
+                    ), None)
+                    has_domain_inventory_shape = (
+                        any(re.fullmatch(r"Федеральный\s+округ", heading, re.I) for heading in headings)
+                        and any(re.fullmatch(r"Имя\s+сервера", heading, re.I) for heading in headings)
+                    )
+                    if subject_index is not None and has_domain_inventory_shape:
+                        header = (index, len(cells), subject_index)
+                        break
+                if header is None:
+                    continue
+                header_row, column_count, subject_index = header
+                for row_offset, _, row_text in rows[header_row + 1:]:
+                    cells = split_spans(row_text, "\ufdd0")
+                    if len(cells) != column_count:
+                        continue
+                    cell_start, _cell_end, raw = cells[subject_index]
+                    meaningful = [
+                        position for position, char in enumerate(raw)
+                        if char != intra_cell_boundary and not char.isspace()
+                    ]
+                    if not meaningful:
+                        continue
+                    local_start, local_end = meaningful[0], meaningful[-1] + 1
+                    physical_value = raw[local_start:local_end]
+                    logical_value = re.sub(
+                        r"[\s\ufdd3]+", " ", physical_value
+                    ).strip()
+                    if logical_value.startswith("[") or not re.search(r"[А-Яа-яЁё]", logical_value):
+                        continue
+                    left = current_start + row_offset + cell_start + local_start
+                    right = current_start + row_offset + cell_start + local_end
+                    mapping_value = physical_value.replace(intra_cell_boundary, "\n")
+                    found.append(Detection(
+                        left, right, "ГОРОД", 94, mapping_value, self._canon(logical_value),
+                        scope_start=left, scope_end=right,
+                    ))
+                    if intra_cell_boundary not in physical_value:
+                        exact_aliases.append((physical_value, self._canon(logical_value), "ГОРОД", False))
+
         if "УЗЕЛ" not in self.disabled_categories and table_boundary in source:
             contextual_server_name = re.compile(
-                r"(?a:(?:[a-z]?\d{4}-[a-z]{2,4}\d{2}(?:-\d{1,2})?|[a-z]{2}\d{2}))",
+                r"(?a:(?:"
+                r"[a-z]?\d{4}-[a-z]{2,4}\d{2}(?:-\d{1,2})?"
+                r"|[a-z]{2}\d{2}"
+                r"|[a-z][a-z0-9]{1,14}-(?:dc|srv|vm|host|node|app|db|web)\d{1,3}"
+                r"))",
                 re.I,
             )
             block_start = 0

@@ -14,6 +14,18 @@ function applyTheme(theme,persist=false){
   if(persist){try{localStorage.setItem(THEME_KEY,selected);}catch(_error){}}
 }
 applyTheme(preferredTheme());
+function initSettingsTabs(){
+  const tabs=[...document.querySelectorAll('.settings-nav [role="tab"]')];
+  const select=tab=>{
+    tabs.forEach(item=>{const active=item===tab;item.setAttribute('aria-selected',String(active));item.tabIndex=active?0:-1;const panel=document.getElementById(item.getAttribute('aria-controls'));if(panel)panel.hidden=!active;});
+  };
+  tabs.forEach((tab,index)=>{
+    tab.addEventListener('click',()=>select(tab));
+    tab.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowDown'||event.key==='ArrowRight')next=(index+1)%tabs.length;else if(event.key==='ArrowUp'||event.key==='ArrowLeft')next=(index-1+tabs.length)%tabs.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;else return;event.preventDefault();select(tabs[next]);tabs[next].focus();});
+  });
+  const selected=tabs.find(tab=>tab.getAttribute('aria-selected')==='true')||tabs[0];if(selected)select(selected);
+}
+initSettingsTabs();
 let last = {mapping:{}, candidates:[], counts:{}, parts:[], total:0, hintCount:0, warnings:[]};
 let textRestoreMapping = {};
 let selected = '', reviewIndex = -1, debounceTimer = 0, generation = 0, previewGeneration = 0, settingsGeneration = 0, importGeneration = 0, restoreGeneration = 0, lastEscape = 0;

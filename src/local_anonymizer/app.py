@@ -230,6 +230,61 @@ def _split_server_inventory_name_self_test(anonymizer=None) -> bool:
     )
 
 
+def _underscored_dns_fqdn_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    value = "_locator.synthetic.example"
+    source = f"{value} admin@{value} parent.{value}"
+    result = detector.anonymize(source)
+    node_values = [
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    ]
+    return (
+        node_values == [value]
+        and result.text.startswith("[УЗЕЛ-1] ")
+        and result.text.count("[УЗЕЛ-") == 1
+    )
+
+
+def _domain_inventory_subject_self_test(anonymizer=None) -> bool:
+    detector = (
+        anonymizer
+        if anonymizer is not None
+        else Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"})
+    )
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    headers = (
+        "Субъект Российской Федерации", "Федеральный округ", "Наименование филиала",
+        "Местонахождение филиалов", "Порядковый номер", "Имя сервера",
+        "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
+    )
+    subjects = ("Испытательный край", "Респ. Примерия")
+    rows = [cell.join(headers)]
+    for index, subject in enumerate(subjects, start=1):
+        rows.append(cell.join((
+            subject, "ТФО", "Макетный", "г. Тестоградск, ул. Проверочная, д. 1",
+            str(index), f"srv-test-0{index}", "srv", "Sample OS", "192.0.2.0/24", "1",
+        )))
+    source = table + row.join(rows) + table
+    result = detector.anonymize(source)
+    subject_mapping = {
+        marker: original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[ГОРОД-") and original in subjects
+    }
+    restored = result.text
+    for marker, original in sorted(result.mapping.items(), key=lambda item: len(item[0]), reverse=True):
+        restored = restored.replace(marker, original)
+    return (
+        set(subject_mapping.values()) == set(subjects)
+        and all(subject not in result.text for subject in subjects)
+        and restored == source
+    )
+
+
 def _service_account_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     account = "SvcQAZ-BackupTask"
@@ -712,6 +767,8 @@ class AppApi:
         address_contextual_variants_ok = _contextual_address_self_test()
         server_inventory_name_ok = _server_inventory_name_self_test()
         split_server_inventory_name_ok = _split_server_inventory_name_self_test()
+        underscored_dns_fqdn_ok = _underscored_dns_fqdn_self_test()
+        domain_inventory_subject_ok = _domain_inventory_subject_self_test()
         service_account_ok = _service_account_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
@@ -730,6 +787,8 @@ class AppApi:
                 and address_contextual_variants_ok
                 and server_inventory_name_ok
                 and split_server_inventory_name_ok
+                and underscored_dns_fqdn_ok
+                and domain_inventory_subject_ok
                 and service_account_ok
                 and graphics_roundtrip_ok
             ),
@@ -744,6 +803,8 @@ class AppApi:
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "server_inventory_name_ok": server_inventory_name_ok,
             "split_server_inventory_name_ok": split_server_inventory_name_ok,
+            "underscored_dns_fqdn_ok": underscored_dns_fqdn_ok,
+            "domain_inventory_subject_ok": domain_inventory_subject_ok,
             "service_account_ok": service_account_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,

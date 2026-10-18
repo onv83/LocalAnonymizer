@@ -153,6 +153,90 @@ def test_docx_inventory_geography_and_split_ordinal_address_do_not_leak(tmp_path
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_ten_column_domain_inventory_subjects_do_not_leak(tmp_path):
+    source = tmp_path / "synthetic-domain-inventory.docx"
+    anonymized = tmp_path / "synthetic-domain-inventory.anonymized.docx"
+    restored = tmp_path / "synthetic-domain-inventory.restored.docx"
+    document = Document()
+    table = document.add_table(rows=3, cols=10)
+    headers = (
+        "Субъект Российской Федерации", "Федеральный округ", "Наименование филиала",
+        "Местонахождение филиалов", "Порядковый номер", "Имя сервера",
+        "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
+    )
+    for cell, value in zip(table.rows[0].cells, headers):
+        cell.text = value
+    rows = (
+        ("Испытательный край", "18", "2000"),
+        ("Респ. Примерия", "62", "2000"),
+    )
+    for row_index, (subject, ordinal, count) in enumerate(rows, start=1):
+        cells = table.rows[row_index].cells
+        paragraph = cells[0].paragraphs[0]
+        paragraph.add_run(subject[: len(subject) // 2]).bold = True
+        paragraph.add_run(subject[len(subject) // 2 :]).italic = True
+        values = (
+            "ТФО", "Макетный", "г. Тестоградск, ул. Проверочная, д. 1", ordinal,
+            "srv-test-01", "srv", "Windows Server 2019", "192.0.2.0/24", count,
+        )
+        for cell, value in zip(cells[1:], values):
+            cell.text = value
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized).decode("utf-8", errors="ignore")
+    assert "Испытательный край" not in package_xml
+    assert "Респ. Примерия" not in package_xml
+    assert "Испытательный край" in result.mapping.values()
+    assert "Респ. Примерия" in result.mapping.values()
+    assert source.read_bytes() == source_bytes
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_underscored_dns_fqdn_does_not_leak_and_restores_exactly(tmp_path):
+    source = tmp_path / "synthetic-dns-inventory.docx"
+    anonymized = tmp_path / "synthetic-dns-inventory.anonymized.docx"
+    restored = tmp_path / "synthetic-dns-inventory.restored.docx"
+    value = "_locator.synthetic.example"
+    document = Document()
+    table = document.add_table(rows=2, cols=3)
+    headers = (
+        "Fully Qualified Domain Name",
+        "Integrated Forward Lookup zones",
+        "Integrated Reverse Lookup zones",
+    )
+    for cell, header in zip(table.rows[0].cells, headers):
+        cell.text = header
+    paragraph = table.rows[1].cells[1].paragraphs[0]
+    paragraph.add_run("_locator.").bold = True
+    paragraph.add_run("synthetic.example").italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized).decode("utf-8", errors="ignore")
+    assert value not in package_xml
+    assert value in result.mapping.values()
+    assert any(marker.startswith("[УЗЕЛ-") for marker in result.mapping)
+    assert source.read_bytes() == source_bytes
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_complete_postal_address_across_runs_restores_byte_exactly(tmp_path):
     source = tmp_path / "synthetic-postal-address.docx"
     anonymized = tmp_path / "synthetic-postal-address.anonymized.docx"
@@ -456,7 +540,7 @@ def test_docx_server_inventory_names_split_inside_one_cell_are_one_node_and_rest
     source = tmp_path / "split-server-inventory-source.docx"
     anonymized = tmp_path / "split-server-inventory-anonymized.docx"
     restored = tmp_path / "split-server-inventory-restored.docx"
-    server_names = ("1234-lb02-2", "q2345-qz03", "zx23")
+    server_names = ("1234-lb02-2", "q2345-qz03", "zx23", "qzlab-dc01")
     document = Document()
     table = document.add_table(rows=1, cols=4)
     for index, value in enumerate((
@@ -487,6 +571,15 @@ def test_docx_server_inventory_names_split_inside_one_cell_are_one_node_and_rest
     paragraph.add_run("23")
     cells[1].text = "Sample Linux"
     cells[2].text = "192.0.2.43"
+    cells[3].text = "Тестовый сервис"
+
+    cells = table.add_row().cells
+    paragraph = cells[0].paragraphs[0]
+    paragraph.add_run("qzlab-")
+    paragraph.add_run().add_break()
+    paragraph.add_run("dc01")
+    cells[1].text = "Sample Linux"
+    cells[2].text = "192.0.2.44"
     cells[3].text = "Тестовый сервис"
     document.save(source)
     source_bytes = source.read_bytes()

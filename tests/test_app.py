@@ -125,6 +125,16 @@ def test_split_server_inventory_name_self_test_requires_one_marker_across_intra_
     assert app_module._split_server_inventory_name_self_test(PartialDetector()) is False
 
 
+def test_underscored_dns_fqdn_self_test_requires_bounded_node_detection():
+    assert app_module._underscored_dns_fqdn_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={})
+
+    assert app_module._underscored_dns_fqdn_self_test(PartialDetector()) is False
+
+
 def test_service_account_self_test_requires_one_bounded_login_marker():
     assert app_module._service_account_self_test() is True
 
@@ -167,8 +177,10 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_contextual_variants_ok"] is True
     assert summary["server_inventory_name_ok"] is True
     assert summary["split_server_inventory_name_ok"] is True
+    assert summary["underscored_dns_fqdn_ok"] is True
     assert summary["service_account_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
+    assert summary["domain_inventory_subject_ok"] is True
     assert "Иванов" not in str(summary)
 
 
@@ -313,7 +325,7 @@ def test_profile_json_import_reports_invalid_file_without_overwriting_profile(tm
     assert api.load_profile("Общий") == before
 
 
-def test_manual_review_follows_both_aligned_text_preview_panes():
+def test_settings_and_manual_review_belong_to_their_preview_columns_in_both_languages():
     class LayoutParser(HTMLParser):
         VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
@@ -339,16 +351,51 @@ def test_manual_review_follows_both_aligned_text_preview_panes():
             if tag not in self.VOID_TAGS:
                 self.stack.pop()
 
-    parser = LayoutParser()
-    parser.feed(asset_path("index-v1.8.18.html").read_text(encoding="utf-8"))
+        def is_descendant(self, node, ancestor):
+            while node in self.parents:
+                node = self.parents[node]
+                if node == ancestor:
+                    return True
+            return False
 
-    assert parser.parents["source"] == "textPreview"
-    assert parser.parents["anonymizedDocxPreview"] == "anonymizedPreviewSurface"
-    assert parser.parents["anonymizedPreviewSurface"] == "columns"
-    assert parser.parents["manualReview"] == "columns"
-    assert parser.parents["warning"] == "manualReview"
-    assert parser.children["columns"].index("manualReview") > parser.children["columns"].index("sourceHeading")
-    assert parser.children["columns"].index("manualReview") > parser.children["columns"].index("anonymizedPreviewSurface")
+    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        parser = LayoutParser()
+        parser.feed(asset_path(filename).read_text(encoding="utf-8"))
+
+        assert parser.parents["sourceColumn"] == "columns"
+        assert parser.parents["anonymizedColumn"] == "columns"
+        assert parser.is_descendant("sourceHeading", "sourceColumn")
+        assert parser.is_descendant("source", "sourceColumn")
+        assert parser.parents["anonymizationSettings"] == "sourceColumn"
+        assert parser.is_descendant("outputHeading", "anonymizedColumn")
+        assert parser.is_descendant("anonymizedPreviewSurface", "anonymizedColumn")
+        assert parser.parents["manualReview"] == "anonymizedColumn"
+        for review_element in (
+            "warning", "reviewCurrent", "reviewPrev", "reviewNext", "reviewDecisionActions",
+            "hideCandidate", "keepCandidate", "reviewDecision", "reviewFinish", "resultStatus",
+        ):
+            assert parser.is_descendant(review_element, "manualReview")
+
+
+def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languages():
+    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(filename).read_text(encoding="utf-8")
+        assert 'class="settings-workbench"' in html
+        assert 'class="settings-nav" role="tablist"' in html
+        for panel in ("profile", "rules", "whitelist"):
+            assert f'id="settingsTab-{panel}"' in html
+            assert f'aria-controls="settingsPanel-{panel}"' in html
+            assert f'id="settingsPanel-{panel}"' in html
+            assert f'aria-labelledby="settingsTab-{panel}"' in html
+        assert 'id="rules"' in html
+        assert 'id="whitelist"' in html
+
+    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(script_name).read_text(encoding="utf-8")
+        assert "function initSettingsTabs()" in javascript
+        assert "tab.addEventListener('click'" in javascript
+        assert "tab.addEventListener('keydown'" in javascript
+        assert "initSettingsTabs();" in javascript
 
 
 def test_manual_review_decision_buttons_are_grouped_without_visible_helper_labels():
@@ -849,20 +896,27 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
 
 
-def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_controls():
+def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
-        assert html.index('id="manualReview"') > html.index('id="sourceHeading"')
-        assert html.index('id="manualReview"') > html.index('id="anonymizedPreviewSurface"')
+        source_start = html.index('id="sourceColumn"')
+        output_start = html.index('id="anonymizedColumn"')
+        settings_start = html.index('id="anonymizationSettings"')
+        review_start = html.index('id="manualReview"')
+        assert source_start < settings_start < output_start
+        assert output_start < review_start
+        assert settings_start > html.index('id="sourceHeading"')
+        assert review_start > html.index('id="anonymizedPreviewSurface"')
         assert '<details class="review-controls-disclosure">' in html
         assert '<fieldset class="review-controls">' in html
         for control_id in ("reviewHints", "paranoid", "compactMarkers", "mono"):
             assert f'id="{control_id}"' in html
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
-    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
+    assert 'body[data-design="new"] .workspace-column{display:flex;min-width:0;flex-direction:column;gap:8px}' in css
+    assert 'body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspace-column>.review,body[data-design="new"] .workspace-column>.settings-panel{width:100%;min-width:0;margin-bottom:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
     assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
@@ -873,12 +927,11 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
 
 
-def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_panes():
+def test_review_candidate_and_actions_are_first_inside_the_output_review_block():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
-    assert 'body[data-design="new"] .columns>.pane{margin-bottom:0}' in css
-    assert 'body[data-design="new"] .manual-review-row{grid-column:1/-1;margin-top:0}' in css
+    assert 'body[data-design="new"] .workspace-column{display:flex;min-width:0;flex-direction:column;gap:8px}' in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
@@ -1512,6 +1565,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
         "showAnonymizedText", "anonymize", "restore",
         "chooseRestoreFile", "restoreFile", "newProfile", "deleteProfile", "exportProfile",
         "importProfile", "selftest", "themeToggle", "applyNow", "exportNow",
+        "settingsTab-profile", "settingsTab-rules", "settingsTab-whitelist",
     }
     buttons = {button.get("id"): button for button in parser.buttons}
     assert set(buttons) == expected_ids
@@ -1759,7 +1813,9 @@ def test_manual_review_owns_its_search_and_display_controls():
     review_start = html.index('id="manualReview"')
     review_end = html.index("</section>", review_start)
     review = html[review_start:review_end]
-    settings_start = html.index("Настройки обезличивания")
+    settings_start = html.index('id="anonymizationSettings"')
+    settings_end = html.index("</details>", settings_start)
+    settings = html[settings_start:settings_end]
     categories_start = html.index('id="detectionCategories"')
 
     for control_id in ("reviewHints", "paranoid", "compactMarkers", "mono"):
@@ -1767,7 +1823,7 @@ def test_manual_review_owns_its_search_and_display_controls():
     assert "Искать спорные места для ручной проверки" in review
     assert "Дополнительные режимы" in review
     assert 'data-categories="HINTS"' not in html[categories_start:]
-    assert 'id="paranoid"' not in html[settings_start:categories_start]
+    assert 'id="paranoid"' not in settings
 
 
 def test_manual_review_panel_explains_actions_progress_result_and_completion():

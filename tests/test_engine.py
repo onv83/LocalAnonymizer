@@ -278,6 +278,51 @@ def test_explicit_server_labels_anonymize_single_label_hostnames():
         assert result.mapping == {"[УЗЕЛ-1]": hostname}
 
 
+def test_lowercase_hyphenated_directory_controller_name_is_a_node_not_a_secret():
+    source = "qzlab-dc01"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[УЗЕЛ-1]"
+    assert result.mapping == {"[УЗЕЛ-1]": source}
+    assert "удалено" not in result.text.casefold()
+
+
+def test_underscored_dns_fqdn_is_a_node_without_matching_embedded_identifiers():
+    value = "_locator.synthetic.example"
+    source = (
+        f"{value} "
+        f"admin@{value} "
+        f"https://{value}/path "
+        f"C:\\inventory\\{value} "
+        f"parent.{value}"
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text.startswith("[УЗЕЛ-1] ")
+    assert result.mapping["[УЗЕЛ-1]"] == value
+    assert result.text.count("[УЗЕЛ-") == 1
+    assert result.text.count("[ПОЧТА-") == 1
+    assert result.text.count("[ССЫЛКА-") == 1
+    assert result.text.count("[ПУТЬ-") == 1
+    node_values = [
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    ]
+    assert node_values == [value]
+
+
+def test_underscored_dns_fqdn_respects_disabled_node_category():
+    value = "_locator.synthetic.example"
+
+    result = Anonymizer(disabled_categories={"УЗЕЛ"}).anonymize(value)
+
+    assert result.text == value
+    assert result.mapping == {}
+
+
 def test_explicit_server_labels_accept_hostname_immediately_after_colon():
     cases = [
         ("Сервер:XQNODE", "XQNODE"),
