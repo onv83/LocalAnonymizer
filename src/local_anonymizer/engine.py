@@ -89,7 +89,7 @@ def _iter_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]]:
         yield start, index
 
 
-def _short_abbreviation_key(value: str) -> str | None:
+def _is_short_abbreviation(value: str) -> bool:
     normalized = unicodedata.normalize("NFC", value)
     uppercase_letters = 0
     for char in normalized:
@@ -99,8 +99,8 @@ def _short_abbreviation_key(value: str) -> str | None:
         elif category.startswith("M") or char in {"\u200c", "\u200d"}:
             continue
         else:
-            return None
-    return normalized if uppercase_letters == 2 else None
+            return False
+    return uppercase_letters == 2
 
 
 @dataclass(frozen=True)
@@ -1353,17 +1353,10 @@ class Anonymizer:
 
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
             abbreviation_tokens = list(_iter_abbreviation_tokens(source))
-            short_counts: dict[str, int] = {}
-            for start, end in abbreviation_tokens:
-                short_key = _short_abbreviation_key(source[start:end])
-                if short_key is not None:
-                    short_counts[short_key] = short_counts.get(short_key, 0) + 1
-
             for start, end in abbreviation_tokens:
                 value = source[start:end]
                 normalized = unicodedata.normalize("NFC", value)
-                short_key = _short_abbreviation_key(value)
-                if short_key is not None and short_counts.get(short_key, 0) >= 6:
+                if _is_short_abbreviation(value):
                     abbreviation_candidates.append(Detection(
                         start, end, "СОКРАЩЕНИЯ", 45, value, value,
                         case_sensitive_canonical=True,
@@ -1513,16 +1506,6 @@ class Anonymizer:
                 ))
                 occupied.append(match.span())
 
-        # Abbreviations are the broad fail-closed fallback. Apply them only
-        # after validated entities and their exact aliases, so an uppercase run
-        # cannot split a known AD path, host, program or other structured value.
-        for item in abbreviation_candidates:
-            if any(item.start < end and item.end > start for start, end in occupied):
-                continue
-            accepted.append(item)
-            occupied.append((item.start, item.end))
-        accepted.sort(key=lambda x: (x.start, x.end))
-
         # Hints fill only unoccupied spans.
         hints: list[Hint] = []
         hint_categories = {
@@ -1559,7 +1542,16 @@ class Anonymizer:
                 label = hint_categories.get(h.kind, "СКРЫТО")
                 accepted.append(Detection(h.start, h.end, label, 10, h.value, self._canon(h.value)))
             hints = []
-            accepted.sort(key=lambda x: (x.start, x.end))
+
+        # Abbreviations are the broad fail-closed fallback. Apply them only
+        # after validated entities, exact aliases and semantic review spans, so
+        # an uppercase run cannot split a known structured or contextual value.
+        for item in abbreviation_candidates:
+            if any(item.start < end and item.end > start for start, end in occupied):
+                continue
+            accepted.append(item)
+            occupied.append((item.start, item.end))
+        accepted.sort(key=lambda x: (x.start, x.end))
 
         warnings = self._warnings(source)
         counts: dict[str, int] = {}

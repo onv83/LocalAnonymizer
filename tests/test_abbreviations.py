@@ -1,64 +1,64 @@
 from local_anonymizer.engine import Anonymizer
 
 
-def test_two_letter_uppercase_abbreviations_require_more_than_five_exact_tokens():
-    frequent = "ЮЯ"
-    rare = "ФХ"
-    source = " ".join([frequent] * 6 + [rare] * 5)
+def test_single_two_letter_uppercase_unicode_abbreviation_is_redacted_and_restored_exactly():
+    abbreviation = "ЮЯ"
+    source = f"Код: {abbreviation}."
 
     result = Anonymizer().anonymize(source)
 
-    frequent_marker = next(
-        marker for marker, value in result.mapping.items() if value == frequent
+    marker = next(
+        marker for marker, value in result.mapping.items() if value == abbreviation
     )
-    assert result.text.count(frequent_marker) == 6
-    assert result.text.count(rare) == 5
-    assert rare not in result.mapping.values()
-    assert result.counts["СОКРАЩЕНИЯ"] == 6
+    assert result.text == f"Код: {marker}."
+    assert result.counts["СОКРАЩЕНИЯ"] == 1
+    assert result.text.replace(marker, result.mapping[marker]) == source
 
 
-def test_two_letter_frequency_uses_only_complete_uppercase_letter_tokens():
+def test_two_letter_rule_uses_only_complete_uppercase_letter_tokens():
     standalone = "QZ"
-    source = " ".join(
-        [standalone] * 5
-        + ["Qz", "qz", "QZ1", "XQZ", "QZ-QZ"] * 6
-    )
+    source = " ".join([
+        standalone, "Qz", "qz", "QZ1", "XQZ", "QZ-QZ", "QZ_id", "id_QZ",
+    ])
 
     result = Anonymizer().anonymize(source)
 
-    assert result.text.startswith("QZ QZ QZ QZ QZ ")
-    assert standalone not in result.mapping.values()
+    assert standalone in result.mapping.values()
     assert "QZ1" in result.text
     assert "QZ-QZ" in result.text
+    assert "QZ_id" in result.text and "id_QZ" in result.text
+    assert "Qz" in result.text and "qz" in result.text
+    assert set(result.mapping.values()) == {standalone, "XQZ"}
 
 
-def test_two_letter_frequency_combines_nfc_equivalents_but_restores_exactly():
+def test_two_letter_rule_preserves_nfc_equivalents_as_exact_distinct_values():
     composed = "ÅB"
     decomposed = "A\u030aB"
-    source = " ".join([composed] * 3 + [decomposed] * 3)
+    source = f"{composed} {decomposed}"
 
     result = Anonymizer().anonymize(source)
 
     assert set(result.mapping.values()) == {composed, decomposed}
-    assert result.counts["СОКРАЩЕНИЯ"] == 6
+    assert result.counts["СОКРАЩЕНИЯ"] == 2
     restored = result.text
     for marker, original in result.mapping.items():
         restored = restored.replace(marker, original)
     assert restored == source
 
 
-def test_two_letter_frequency_allows_unicode_letter_continuations():
-    samples = ("A\u0483B", "A\u200cB")
-    source = " ".join(sample for sample in samples for _ in range(6))
+def test_two_letter_rule_allows_unicode_letter_continuations_without_partial_matches():
+    samples = ("A\u0483B", "A\u200cB", "\u0301QZ", "QZ\u0301")
+    source = " ".join(samples)
 
     result = Anonymizer().anonymize(source)
 
     assert set(result.mapping.values()) == set(samples)
-    assert result.counts["СОКРАЩЕНИЯ"] == 12
+    assert result.counts["СОКРАЩЕНИЯ"] == len(samples)
+    assert "AB" not in result.mapping.values()
 
 
-def test_frequent_two_letter_abbreviations_can_be_disabled():
-    source = " ".join(["QZ"] * 6)
+def test_single_two_letter_abbreviation_can_be_disabled():
+    source = "QZ"
 
     result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
 
@@ -78,12 +78,12 @@ def test_abbreviations_have_an_independent_reversible_category():
     result = Anonymizer().anonymize(source)
 
     assert all(value not in result.text for value in ("UCMDB", "QZXB", "SSO", "NTLM"))
-    assert "ИС" in result.text
-    assert "AD" in result.text
+    assert "ИС" not in result.text
+    assert "AD" not in result.text
     qzxb_marker = next(marker for marker, value in result.mapping.items() if value == "QZXB")
     assert result.text.count(qzxb_marker) == 2
-    assert result.counts["СОКРАЩЕНИЯ"] == 5
-    assert set(result.mapping.values()) >= {"UCMDB", "QZXB", "SSO", "NTLM"}
+    assert result.counts["СОКРАЩЕНИЯ"] == 7
+    assert set(result.mapping.values()) >= {"UCMDB", "ИС", "AD", "QZXB", "SSO", "NTLM"}
 
     restored = result.text
     for marker, original in result.mapping.items():
@@ -102,7 +102,7 @@ def test_abbreviations_can_be_disabled_without_blocking_other_categories():
     assert "192.0.2.1" not in result.text
 
 
-def test_abbreviations_use_three_uppercase_letters_but_preserve_short_units_and_markers():
+def test_abbreviations_include_two_letter_units_but_preserve_existing_markers():
     source = (
         "Объем 128 GB, 500 МБ, версия 2.0, ИНН 7707083893, КПП 773601001, "
         "IP 192.0.2.1, [ФИО-7]."
@@ -110,7 +110,7 @@ def test_abbreviations_use_three_uppercase_letters_but_preserve_short_units_and_
 
     result = Anonymizer().anonymize(source)
 
-    assert all(value in result.text for value in ("GB", "МБ", "IP", "[ФИО-7]"))
+    assert {"GB", "МБ", "IP"} <= set(result.mapping.values())
     assert "[ФИО-7]" in result.text
     assert result.mapping.get("[ИНН-1]") == "7707083893"
     assert result.mapping.get("[КПП-1]") == "773601001"
@@ -118,7 +118,7 @@ def test_abbreviations_use_three_uppercase_letters_but_preserve_short_units_and_
     abbreviation_values = {
         item["orig"] for item in result.legend if item["cat"] == "СОКРАЩЕНИЯ"
     }
-    assert abbreviation_values == {"ИНН", "КПП"}
+    assert abbreviation_values == {"GB", "МБ", "ИНН", "КПП", "IP"}
 
 
 def test_abbreviations_redact_every_token_with_three_consecutive_uppercase_letters():
@@ -135,9 +135,10 @@ def test_abbreviations_redact_every_token_with_three_consecutive_uppercase_lette
 
     assert abbreviation_values == {
         "ОБЩИЕ", "ДАННЫЕ", "ДОМЕНУ", "ВАЖНО", "ТЕКСТ", "ДОКУМЕНТА",
-        "АКТ", "ГОСТ", "МВД", "ФНС", "IMPORTANT", "DOCUMENT", "DATA", "SLA",
+        "ПО", "АКТ", "ТЗ", "РФ", "ГОСТ", "МВД", "ФНС", "ЦБ",
+        "IMPORTANT", "DOCUMENT", "DATA", "SLA", "GB", "МБ",
     }
-    assert all(value in result.text for value in ("ПО", "ТЗ", "РФ", "ЦБ", "GB", "МБ", "[ФИО-7]"))
+    assert "[ФИО-7]" in result.text
 
 
 def test_abbreviations_cover_multi_vowel_and_internal_identifier_forms():

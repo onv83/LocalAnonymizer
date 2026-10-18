@@ -418,16 +418,17 @@ def test_russian_inventory_geography_cells_and_numeric_street_do_not_leak():
     assert result.text == separator.join((
         "[ГОРОД-1]",
         "[ГОРОД-2]",
-        "КЦ [ГОРОД-3]",
+        "[СОКРАЩЕНИЯ-1] [ГОРОД-3]",
         "[АДРЕС-1]",
         "[ГОРОД-4]",
         "[ГОРОД-5]",
-        "КЦ [ГОРОД-6]",
+        "[СОКРАЩЕНИЯ-1] [ГОРОД-6]",
         "[АДРЕС-2]",
     ))
     assert result.mapping == {
         "[ГОРОД-1]": "Республика Испытаний (Тестоградск)",
         "[ГОРОД-2]": "Северо-Западный",
+        "[СОКРАЩЕНИЯ-1]": "КЦ",
         "[ГОРОД-3]": "Тестоградск",
         "[АДРЕС-1]": "г. Тестоградск, ул. Испытателей 67а",
         "[ГОРОД-4]": "Макетинский автономный округ — Макетия",
@@ -570,7 +571,7 @@ def test_address_list_context_accepts_a_dotted_street_type_before_an_ambiguous_i
     assert result.text == "Площадки расположены по адресам [АДРЕС-1], [АДРЕС-2]."
 
 
-def test_ambiguous_geography_like_fragments_stay_visible_without_inventory_row_context():
+def test_ambiguous_geography_stays_visible_but_two_letter_token_is_redacted():
     separator = "\ufdd0"
     source = separator.join((
         "Предметная область",
@@ -580,7 +581,17 @@ def test_ambiguous_geography_like_fragments_stay_visible_without_inventory_row_c
         "КЦ Тестирование",
     ))
 
-    assert Anonymizer().anonymize(source).text == source
+    result = Anonymizer().anonymize(source)
+
+    expected = separator.join((
+        "Предметная область",
+        "Рабочая область",
+        "Центральный",
+        "Уральский",
+        "[СОКРАЩЕНИЯ-1] Тестирование",
+    ))
+    assert result.text == expected
+    assert result.mapping == {"[СОКРАЩЕНИЯ-1]": "КЦ"}
 
 
 def test_labelled_contacts_accept_initials_unicode_and_docx_boundaries():

@@ -63,7 +63,8 @@ def test_people_org_system_logins_and_derived_aliases():
     assert "подрядчик «[ОРГАНИЗАЦИЯ-4]»" in result.text
     assert "компания — [ОРГАНИЗАЦИЯ-5]" in result.text
     assert "называется [ОРГАНИЗАЦИЯ-" in result.text
-    assert "АС «[СИСТЕМА-1]»" in result.text
+    assert "[СОКРАЩЕНИЯ-1] «[СИСТЕМА-1]»" in result.text
+    assert result.mapping["[СОКРАЩЕНИЯ-1]"] == "АС"
 
 
 def test_people_with_same_surname_do_not_collide_or_claim_ambiguous_alias():
