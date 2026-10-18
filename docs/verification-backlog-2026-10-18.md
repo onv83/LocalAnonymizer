@@ -48,7 +48,7 @@
 - **Источник:** текущее сообщение и privacy-safe structural analysis `image_993903.png`, `image_e43aff.png`, `image_ff843e.png`, `image_2d7af8.png`; реальные значения с изображений не сохраняются.
 - **Privacy-safe класс:** bounded policy/task identifiers из нескольких дефисных сегментов, смешанного регистра, цифр, точки и внутреннего `_`, включая длинный descriptive suffix.
 - **Корневая причина для проверки:** общий detector `СОКРАЩЕНИЯ` ищет uppercase-run внутри отдельных токенов и overlap resolution допускает частичную замену; он не гарантирует один маркер на весь составной identifier.
-- **Статус:** повторно открыт после независимого аудита: вариант с числовой dotted-version после смешанного descriptive segment должен покрываться общим правилом; alphanumeric dotted hostname-подобные формы должны оставаться negative. После GREEN снова пройти source/package/install/CI gates.
+- **Статус:** ~~выполнено~~ — implementation commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`; numeric dotted-version, hostname-shaped negatives и punctuation boundaries подтверждены source/package/install/review/CI gates. Package и installed tree совпали `407/407`, fail-closed verifier прошёл normal/`python -O`, exact-head CI `39157356254` завершился `success`.
 - **Дополнительный RED/GREEN:** synthetic форма с numeric dotted-version после буквенного segment сначала осталась видимой; scanner расширен только на numeric dotted-version в достаточно составном identifier. Алфавитный dotted suffix и короткая numeric dotted hostname-подобная форма остаются negative; terminal `.`/`:` теперь допускаются только как punctuation, а не как начало продолжения; добавлены DOCX hard-break/byte-exact regression и отдельный fail-closed proof `dotted_version_compound_abbreviation_ok`.
 - **Требование:** распознавать весь structurally valid identifier единым `СОКРАЩЕНИЯ`, а не отдельные сегменты; не хранить literals и не ограничиваться увиденными примерами.
 - **Границы:** не захватывать email, URL, filesystem paths, dotted hostnames, обычную прозу, соседние punctuation/cells/rows; поддержать DOCX runs/hard breaks только внутри одной semantic region.
@@ -59,7 +59,7 @@
 - **Источник:** текущее сообщение и privacy-safe structural analysis `image_99b90c.png`, `image_5d080c.png`; реальные адреса и названия с изображений не сохраняются.
 - **Privacy-safe класс:** топонимические/региональные прилагательные в колонке названия площадки рядом с колонкой `Адрес`; адреса с типами `ул`, `пер`, `стр`, `д`, `пр-кт` и аналогами, включая parenthetical expansion между типом и названием.
 - **Корневая причина для проверки:** существующее address правило ориентируется на прямую последовательность типа улицы и названия и не использует семантику парных колонок; hyphenated type и вставка в скобках разрывают шаблон.
-- **Статус:** SOURCE GREEN; повторно открыто до fresh package/install/CI после follow-up.
+- **Статус:** ~~выполнено~~ — commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`; source/package/install/review gates и exact-head CI `39157356254` пройдены, package и install совпали `407/407`.
 - **Требование:** в подтверждённой location table обезличивать название площадки как `АДРЕС` и весь bounded address-cell как один `АДРЕС`; вне таблиц поддержать contextual street-type grammar, включая дефисные сокращения и parenthetical expansion.
 - **Границы:** не считать любое прилагательное адресом без cues; не пересекать cells/rows; URL/email/path/account identifiers не захватывать; category disablement обязателен.
 - **Приёмка:** synthetic morphologic variants вместо словаря конкретных регионов, RED/GREEN, split-run/hard-break tests, negatives, ZIP leakage scan, restoration и packaged proof.
@@ -68,7 +68,7 @@
 
 - **Источник:** текущее сообщение и `image_104ff0.png`, `image_71560d.png`.
 - **Проблема:** элементы `Профиль словаря`, `Скрывать дополнительно`, `Белый список` выглядят как статические labels и не показывают, что открывают отдельные панели.
-- **Статус:** SOURCE GREEN; повторно открыто до fresh package/install/CI после follow-up.
+- **Статус:** ~~выполнено~~ — commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`; RU/EN contracts, browser layout/accessibility, fresh package/install и exact-head CI `39157356254` подтверждены.
 - **Требование:** у каждого пункта справа показывать chevron `›`; у активного пункта сохранять стрелку и явное active-state оформление; английский интерфейс получает тот же affordance и доступное имя.
 - **Границы:** стрелка не должна сжимать/обрезать текст, создавать горизонтальный overflow или ломать keyboard navigation/focus-visible на узкой и широкой ширине.
 - **Приёмка:** RU/EN static contract, headless layout/accessibility regression и packaged UI proof.
@@ -76,7 +76,7 @@
 ## B21 — обобщённое правило service-account с внутренним `_`
 
 - **Источник:** текущее сообщение и privacy-safe structural analysis `image_22c6ce.png`; реальное значение не сохраняется.
-- **Текущий статус:** SOURCE GREEN; повторно открыто до fresh package/install/CI после follow-up.
+- **Текущий статус:** ~~выполнено~~ — generalized structural rule и semantic precedence подтверждены commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`, fresh package/install и exact-head CI `39157356254`.
 - **Требование:** схема `service-prefix + site-code + '-' + mixed-case purpose`, допускающая внутренний `_`, определяется целиком как `ЛОГИН`; одинаковые значения используют один marker.
 - **Границы:** bounded matching, category disablement, semantic precedence, DOCX runs/hard breaks внутри одной region; email/URL/path/embedded longer token исключены.
 - **Приёмка:** повторная regression/package proof; без example-specific hardcode.
@@ -87,7 +87,7 @@
 - **Дефект:** на узком экране четыре колонки `compact-library` оставляли часть кнопок за правой границей.
 - **Исправление:** при ширине до 800 px библиотека переходит в одну ограниченную колонку; все элементы получают `min-width:0`, `max-width:100%` и `width:100%`.
 - **Проверка:** static contract и реальный браузер при viewport 305 px: `scrollWidth == clientWidth`, все элементы находятся внутри доступной ширины.
-- **Статус:** SOURCE GREEN; открыто до fresh package/install/CI.
+- **Статус:** ~~выполнено~~ — narrow-browser proof, fresh package/install и exact-head CI `39157356254` подтверждены для commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`.
 
 ## B23 — восстановление одинаковых названий с разной DOCX-разметкой
 
@@ -95,4 +95,4 @@
 - **Дефект:** split и unsplit варианты одного названия использовали общий canonical key, поэтому первый hard break мог переноситься во второе значение при восстановлении без byte-exact archive.
 - **Исправление:** topology `U+FDD3` включена во внутренний canonical key semantic location-cell; разные разбиения получают разные обратимые маркеры.
 - **Проверка:** synthetic DOCX с одинаковым названием в split/unsplit строках восстанавливается без archive с исходной topology каждой строки.
-- **Статус:** SOURCE GREEN; открыто до fresh package/install/CI.
+- **Статус:** ~~выполнено~~ — topology-aware restoration, fresh package/install и exact-head CI `39157356254` подтверждены для commit `05b9de0ab4d960ad53ab11a15b2bf7959a62bec4`.
