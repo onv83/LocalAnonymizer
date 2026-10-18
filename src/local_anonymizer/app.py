@@ -324,6 +324,28 @@ def _service_account_self_test(anonymizer=None) -> bool:
     )
 
 
+def _split_service_account_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    intra = "\ufdd3"
+    physical = f"SvcQXZ-DB_{intra}Backup"
+    source = f"{physical} {physical}"
+    result = detector.anonymize(source)
+    disabled = Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(physical)
+    bounded = Anonymizer(
+        disabled_categories={"ДОМЕН", "ССЫЛКА", "ПОЧТА", "ПУТЬ"}
+    ).anonymize(f"user@{physical}.example.test /{physical}/log")
+    return (
+        result.text.count("[ЛОГИН-1]") == 2
+        and result.text.count(intra) == 2
+        and "[СОКРАЩЕНИЯ-" not in result.text
+        and result.mapping == {"[ЛОГИН-1]": "SvcQXZ-DB_\nBackup"}
+        and result.counts.get("ЛОГИН") == 2
+        and disabled.text == physical
+        and disabled.mapping == {}
+        and "[ЛОГИН-" not in bounded.text
+    )
+
+
 def _single_two_letter_abbreviation_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     abbreviations = ("QZ", "A\u0483B")
@@ -799,6 +821,7 @@ class AppApi:
         domain_inventory_row_ok = domain_inventory_subject_ok
         device_inventory_identifier_ok = _device_inventory_identifier_self_test()
         service_account_ok = _service_account_self_test()
+        split_service_account_ok = _split_service_account_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -821,6 +844,7 @@ class AppApi:
                 and domain_inventory_row_ok
                 and device_inventory_identifier_ok
                 and service_account_ok
+                and split_service_account_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
@@ -839,6 +863,7 @@ class AppApi:
             "domain_inventory_row_ok": domain_inventory_row_ok,
             "device_inventory_identifier_ok": device_inventory_identifier_ok,
             "service_account_ok": service_account_ok,
+            "split_service_account_ok": split_service_account_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,
             "git_revision": BUILD_GIT_REVISION,

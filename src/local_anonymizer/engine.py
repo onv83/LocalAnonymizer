@@ -1475,14 +1475,43 @@ class Anonymizer:
                     found.append(Detection(*m.span(1), "ФИО", 64, name, key,
                                            scope_start=m.start(), scope_end=m.end()))
 
-        # Login/account names are reversible, unlike passwords.
-        add(
-            r"(?<![\w@./\\-])(Svc[A-Z]{2,8}-(?=[A-Za-z_]{4,30}(?![\w@/\\-]|\.[A-Za-z0-9]))"
-            r"(?=[A-Za-z_]*[A-Z])(?=[A-Za-z_]*[a-z])[A-Za-z](?:[A-Za-z_]{2,28}[A-Za-z]))"
-            r"(?![\w@/\\-]|\.[A-Za-z0-9])",
-            "ЛОГИН", 86, group=1, flags=0,
-            canonical=lambda m: m.group(1), case_sensitive_canonical=True,
+        # Login/account names are reversible, unlike passwords. U+FDD3 is a
+        # protected DOCX boundary inside one paragraph/cell; accept it between
+        # identifier characters, but never across a cell/row boundary. Store
+        # hard breaks as newlines so restoration can redistribute the original
+        # segments over the preserved OOXML boundary.
+        service_account_logical = re.compile(
+            r"Svc[A-Z]{2,8}-(?=[A-Za-z_]{4,30}$)(?=[A-Za-z_]*[A-Z])"
+            r"(?=[A-Za-z_]*[a-z])[A-Za-z](?:[A-Za-z_]{2,28}[A-Za-z])"
         )
+        optional_intra_boundary = r"\ufdd3?"
+        service_account_physical = (
+            rf"S{optional_intra_boundary}v{optional_intra_boundary}c{optional_intra_boundary}"
+            rf"(?:[A-Z]{optional_intra_boundary}){{2,8}}-{optional_intra_boundary}"
+            rf"[A-Za-z]{optional_intra_boundary}"
+            rf"(?:[A-Za-z_]{optional_intra_boundary}){{2,28}}[A-Za-z]"
+        )
+        for match in re.finditer(
+            rf"(?<![\w@./\\-])({service_account_physical})"
+            rf"(?![\w@/\\-]|\.[A-Za-z0-9])",
+            source,
+            flags=0,
+        ):
+            physical = match.group(1)
+            logical = physical.replace("\ufdd3", "")
+            if service_account_logical.fullmatch(logical) is None:
+                continue
+            if logical.casefold() in self.whitelist:
+                continue
+            if "ЛОГИН" in self.disabled_categories:
+                disabled_spans.append(match.span(1))
+                continue
+            found.append(Detection(
+                *match.span(1), "ЛОГИН", 86,
+                physical.replace("\ufdd3", "\n"), logical,
+                scope_start=match.start(1), scope_end=match.end(1),
+                case_sensitive_canonical=True,
+            ))
         add(r"\b[A-Za-z][\w.-]{1,20}\\[A-Za-z][\w.-]{1,30}\b", "ЛОГИН", 63, canonical=lambda m: m.group().casefold())
         add(r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|уч[её]тк[а-яё]+)\s*[:=—-]?\s*([A-Za-z][\w.@-]{2,30})", "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold())
         if re.search(r"\b(?:Enterprise|Schema)\s+Admins\b", source, re.I):

@@ -70,6 +70,7 @@ def validate_smoke(payload: dict) -> None:
         "domain_inventory_row_ok",
         "device_inventory_identifier_ok",
         "service_account_ok",
+        "split_service_account_ok",
         "abbreviation_single_two_letter_ok",
         "graphics_roundtrip_ok",
     ):

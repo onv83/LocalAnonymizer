@@ -853,6 +853,32 @@ def test_service_account_assignment_with_internal_underscore_is_one_login_marker
     assert disabled.mapping == {}
 
 
+def test_service_account_hard_break_is_supported_at_every_internal_character_boundary():
+    account = "SvcQXZ-DB_Backup"
+    intra = "\ufdd3"
+
+    for split_at in range(1, len(account)):
+        physical = account[:split_at] + intra + account[split_at:]
+        result = Anonymizer().anonymize(physical)
+
+        assert result.text == "[ЛОГИН-1]" + intra
+        assert result.mapping == {
+            "[ЛОГИН-1]": account[:split_at] + "\n" + account[split_at:]
+        }
+        assert result.counts == {"ЛОГИН": 1}
+        disabled = Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(physical)
+        assert disabled.text == physical
+        assert disabled.mapping == {}
+
+
+def test_service_account_detection_never_crosses_docx_cell_boundary():
+    source = "SvcQXZ-DB_\ufdd0Backup"
+    result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+
+    assert "[ЛОГИН-" not in result.text
+    assert result.mapping == {}
+
+
 def test_service_account_rule_does_not_capture_embedded_or_malformed_tokens():
     source = (
         "xSvcQAZ-BackupTask SvcQAZ-BackupTask9 "

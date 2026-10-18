@@ -730,6 +730,75 @@ def test_docx_underscored_service_accounts_across_runs_and_hard_break_restore_ex
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_service_account_split_inside_token_by_hard_break_has_no_fragment_leak(tmp_path):
+    source = tmp_path / "split-service-account-source.docx"
+    anonymized = tmp_path / "split-service-account-anonymized.docx"
+    restored = tmp_path / "split-service-account-restored.docx"
+    prefix = "SvcQXZ-DB_"
+    suffix = "Backup"
+    account = prefix + suffix
+    document = Document()
+    paragraph = document.add_paragraph("Пример: ")
+    paragraph.add_run(prefix)
+    paragraph.add_run().add_break()
+    paragraph.add_run(suffix).bold = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0].text
+    payload = _all_xml(anonymized)
+    assert output.count("[ЛОГИН-") == 1
+    assert "[СОКРАЩЕНИЯ-" not in output
+    assert prefix not in output
+    assert suffix not in output
+    assert prefix.encode() not in payload
+    assert suffix.encode() not in payload
+    assert account not in output.replace("\n", "")
+    assert account not in payload.decode("utf-8", errors="ignore").replace("\n", "")
+    assert list(result.mapping.values()) == [prefix + "\n" + suffix]
+    assert b"<w:br" in payload
+    assert source.read_bytes() == source_bytes
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_same_service_account_with_distinct_break_layouts_restores_exactly(tmp_path):
+    source = tmp_path / "service-account-layouts-source.docx"
+    anonymized = tmp_path / "service-account-layouts-anonymized.docx"
+    restored = tmp_path / "service-account-layouts-restored.docx"
+    account = "SvcQXZ-DB_Backup"
+    document = Document()
+    document.add_paragraph(account)
+    split = document.add_paragraph()
+    split.add_run("SvcQXZ-DB_")
+    split.add_run().add_break()
+    split.add_run("Backup")
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized)
+    assert all(account not in paragraph.text.replace("\n", "") for paragraph in output.paragraphs)
+    assert len(result.mapping) == 2
+    assert set(result.mapping.values()) == {account, "SvcQXZ-DB_\nBackup"}
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_hard_line_breaks_do_not_join_server_names_to_preceding_ips(tmp_path):
     source = tmp_path / "line-break-source.docx"
     anonymized = tmp_path / "line-break-anonymized.docx"

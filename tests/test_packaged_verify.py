@@ -53,6 +53,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "domain_inventory_row_ok": True,
             "device_inventory_identifier_ok": True,
             "service_account_ok": True,
+            "split_service_account_ok": True,
             "graphics_roundtrip_ok": True,
             "domain_inventory_subject_ok": True,
             "source_snapshot_sha256": "a" * 64,
@@ -76,7 +77,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
 @pytest.mark.parametrize("missing", (
     "split_server_inventory_name_ok", "underscored_dns_fqdn_ok",
     "domain_inventory_subject_ok", "domain_inventory_row_ok",
-    "device_inventory_identifier_ok", "service_account_ok",
+    "device_inventory_identifier_ok", "service_account_ok", "split_service_account_ok",
 ))
 def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
     required = (
@@ -85,6 +86,7 @@ def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
         "address_inventory_ok", "address_postal_variants_ok",
         "address_contextual_variants_ok", "server_inventory_name_ok",
         "split_server_inventory_name_ok", "underscored_dns_fqdn_ok", "service_account_ok",
+        "split_service_account_ok",
         "graphics_roundtrip_ok", "domain_inventory_subject_ok", "domain_inventory_row_ok",
         "device_inventory_identifier_ok",
     )
@@ -208,6 +210,7 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "domain_inventory_row_ok": True,
             "device_inventory_identifier_ok": True,
             "service_account_ok": True,
+            "split_service_account_ok": True,
             "graphics_roundtrip_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,

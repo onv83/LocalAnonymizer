@@ -201,6 +201,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["domain_inventory_row_ok"] is True
     assert summary["device_inventory_identifier_ok"] is True
     assert summary["service_account_ok"] is True
+    assert summary["split_service_account_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert summary["domain_inventory_subject_ok"] is True
     assert "Иванов" not in str(summary)
