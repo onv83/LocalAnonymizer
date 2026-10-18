@@ -961,7 +961,7 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
             assert f'id="{control_id}"' in html
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
-    assert 'body[data-design="new"] .workspace-column{display:flex;min-width:0;flex-direction:column;gap:8px}' in css
+    assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
     assert 'body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspace-column>.review,body[data-design="new"] .workspace-column>.settings-panel{width:100%;min-width:0;margin-bottom:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
@@ -970,14 +970,14 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
     assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row;flex-wrap:wrap}' in css
     assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
 
 
 def test_review_candidate_and_actions_are_first_inside_the_output_review_block():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
-    assert 'body[data-design="new"] .workspace-column{display:flex;min-width:0;flex-direction:column;gap:8px}' in css
+    assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
@@ -1038,7 +1038,7 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
     assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
     assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
     assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
     assert 'body[data-design="new"] .review-actions button{justify-self:start;' in css
     assert '@media(max-width:800px){body[data-design="new"] .review{grid-template-columns:1fr}' in css
     assert 'body[data-design="new"] .review-actions{flex-direction:column}' in css
@@ -1102,9 +1102,97 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     assert "`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`" in en_js
 
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
-    assert 'body[data-design="new"] .review-candidate .review-help{grid-column:1;grid-row:2}' in css
-    assert 'body[data-design="new"] .review-candidate small{grid-column:2;grid-row:2}' in css
+    assert 'body[data-design="new"] .review-candidate .review-help{grid-column:1/-1;grid-row:2' in css
+    assert 'body[data-design="new"] .review-candidate small{grid-column:1/-1;grid-row:3' in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{min-width:0}' in css
+
+
+def test_manual_review_layout_is_bound_to_workspace_width_and_contains_long_copy():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+
+    assert 'body[data-design="new"] .workspace-column{container-type:inline-size;' in css
+    assert 'body[data-design="new"] .review-actions>div{min-width:0;width:100%;max-width:100%;box-sizing:border-box}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;' in css
+    assert 'body[data-design="new"] .review-actions button{flex:1 1 180px;margin:0;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.25}' in css
+    assert '@container(max-width:719px)' in css
+    assert 'body[data-design="new"] .review{grid-template-columns:minmax(0,1fr)}' in css
+
+
+def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
+    edge_candidates = (
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    )
+    edge = next((candidate for candidate in edge_candidates if candidate.exists()), None)
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows layout regression")
+
+    links = "".join(
+        f'<link rel="stylesheet" href="{asset_path(name).as_uri()}">'
+        for name in ("style-v1.1.css", "new-design-v1.11.css")
+    )
+    localized = (
+        ("ru", "Что проверяется", "Синтетический спорный фрагмент с длинным безопасным значением", "Почему требуется решение", "Скрыть и запомнить правило", "Оставить и добавить в исключения"),
+        ("en", "What is checked", "Synthetic ambiguous fragment with a long safe documentation value", "Why a decision is required", "Hide and remember the rule", "Keep and add to exceptions"),
+    )
+
+    for width in (390, 700, 900):
+        cases = []
+        for language, label, value, help_text, hide_text, keep_text in localized:
+            cases.append(
+                f'<div class="workspace-column case" data-language="{language}" style="width:{width}px">'
+                '<section class="review">'
+                '<div class="review-heading"><div><b>Manual review</b><p>Choose one action for the synthetic fragment.</p></div><span class="review-progress">2 remaining</span></div>'
+                '<details class="review-controls-disclosure"><summary>Additional modes</summary></details>'
+                '<div class="warning">Review every synthetic highlight.</div>'
+                '<div class="review-context"><div class="review-candidate">'
+                f'<b class="review-label">{label}</b><span class="review-value">{value}</span>'
+                f'<span class="review-help">{help_text}</span><small>3 matches · Documentation profile</small>'
+                '</div><div class="review-navigation"><button>Previous</button><button>Next</button></div></div>'
+                '<div class="review-actions"><div>'
+                f'<button>{hide_text}</button><button>{keep_text}</button>'
+                '</div></div>'
+                '<p class="review-decision">The current choice applies only to the selected synthetic fragment.</p>'
+                '<p class="review-finish">Resolve every fragment before continuing.</p>'
+                '<p id="resultStatus" class="review-decision">Synthetic result status.</p>'
+                '</section></div>'
+            )
+        probe = tmp_path / f"manual-review-layout-{width}.html"
+        probe.write_text(
+            '<!doctype html><html><head><meta charset="utf-8">' + links
+            + '<style>body{padding:8px}.case{margin-bottom:16px}</style></head><body data-design="new">'
+            + "".join(cases)
+            + '<pre id="probe"></pre><script>'
+            + "const box=e=>e.getBoundingClientRect();"
+            + "const inside=(child,parent)=>{const c=box(child),p=box(parent);return c.left>=p.left-1&&c.right<=p.right+1&&c.top>=p.top-1&&c.bottom<=p.bottom+1};"
+            + "const overlaps=(a,b)=>{const x=box(a),y=box(b);return Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1};"
+            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),actions=root.querySelector('.review-actions'),decision=root.querySelector('.review-decision'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-actions button')],direct=[...review.children].filter(e=>getComputedStyle(e).display!=='none');const compact=root.clientWidth<=719;const descendants=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-navigation,.review-actions,.review-actions>div,.review-actions button,.review-decision,.review-finish,.review-controls-disclosure,.warning')];return {language:root.dataset.language,width:root.clientWidth,compact,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:descendants.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),actionHeight:box(actions).height,maxButtonHeight:Math.max(...buttons.map(e=>box(e).height)),topOverlap:overlaps(context,actions),lowerOverlap:[decision,finish].some(e=>overlaps(e,context)||overlaps(e,actions)),compactOrder:!compact||(Math.abs(box(context).left-box(actions).left)<=1&&box(actions).top>=box(context).bottom-1),wideOrder:compact||(box(actions).left>=box(context).right-1)};});"
+            + "document.querySelector('#probe').textContent=JSON.stringify(result);</script></body></html>",
+            encoding="utf-8",
+        )
+        profile = tmp_path / f"edge-profile-manual-review-{width}"
+        result = subprocess.run(
+            [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--window-size=1200,1000", "--dump-dom", probe.as_uri()],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=True,
+        )
+        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+        assert match, result.stdout[-2000:]
+        metrics = json.loads(html_module.unescape(match.group(1)))
+        assert len(metrics) == 2
+        for metric in metrics:
+            assert not metric["reviewOverflow"], metric
+            assert metric["contained"], metric
+            assert metric["candidateContained"], metric
+            assert metric["directChildrenDisjoint"], metric
+            assert not metric["compact"] or metric["actionHeight"] < 160, metric
+            assert metric["maxButtonHeight"] < 72, metric
+            assert not metric["topOverlap"], metric
+            assert not metric["lowerOverlap"], metric
+            assert metric["compactOrder"], metric
+            assert metric["wideOrder"], metric
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
