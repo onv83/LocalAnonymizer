@@ -1114,13 +1114,13 @@ class Anonymizer:
             ))
             exact_aliases.append((value, value, "УЗЕЛ", True))
 
-        if "УЗЕЛ" not in self.disabled_categories and table_boundary in source:
+        if table_boundary in source:
+            # Once the table headers and a row-local IP prove that this is a
+            # server inventory, the node-name column is authoritative.  Do not
+            # restrict role segments to a small vocabulary: real inventories use
+            # locally defined role codes.  Keep only hostname-safe cell syntax.
             contextual_server_name = re.compile(
-                r"(?a:(?:"
-                r"[a-z]?\d{4}-[a-z]{2,4}\d{2}(?:-\d{1,2})?"
-                r"|[a-z]{2}\d{2}"
-                r"|[a-z][a-z0-9]{1,14}-(?:dc|srv|vm|host|node|app|db|web)\d{1,3}"
-                r"))",
+                r"(?a:[a-z0-9](?:[a-z0-9._-]{0,61}[a-z0-9])?)",
                 re.I,
             )
             block_start = 0
@@ -1184,14 +1184,21 @@ class Anonymizer:
                         continue
                     local_start, local_end = meaningful[0], meaningful[-1] + 1
                     value = raw[local_start:local_end]
-                    logical_value = re.sub(r"[\s\ufdd3]+", "", value)
-                    if not contextual_server_name.fullmatch(logical_value):
+                    logical_value = value.replace(intra_cell_boundary, "")
+                    if (
+                        len(logical_value) < 2
+                        or not re.search(r"[A-Za-z]", logical_value)
+                        or not contextual_server_name.fullmatch(logical_value)
+                    ):
                         continue
                     left = current_start + row_offset + cell_start + local_start
                     right = current_start + row_offset + cell_start + local_end
+                    if "УЗЕЛ" in self.disabled_categories:
+                        disabled_spans.append((left, right))
+                        continue
                     mapping_value = value.replace(intra_cell_boundary, "\n")
                     found.append(Detection(
-                        left, right, "УЗЕЛ", 88, mapping_value, logical_value,
+                        left, right, "УЗЕЛ", 120, mapping_value, logical_value,
                         scope_start=left, scope_end=right,
                         case_sensitive_canonical=True,
                     ))

@@ -65,6 +65,7 @@ def validate_smoke(payload: dict) -> None:
         "address_contextual_variants_ok",
         "server_inventory_name_ok",
         "split_server_inventory_name_ok",
+        "semantic_server_capacity_node_ok",
         "underscored_dns_fqdn_ok",
         "domain_inventory_subject_ok",
         "domain_inventory_row_ok",

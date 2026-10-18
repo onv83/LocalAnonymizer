@@ -197,6 +197,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_contextual_variants_ok"] is True
     assert summary["server_inventory_name_ok"] is True
     assert summary["split_server_inventory_name_ok"] is True
+    assert summary["semantic_server_capacity_node_ok"] is True
     assert summary["underscored_dns_fqdn_ok"] is True
     assert summary["domain_inventory_row_ok"] is True
     assert summary["device_inventory_identifier_ok"] is True

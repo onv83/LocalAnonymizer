@@ -988,6 +988,63 @@ def test_server_inventory_table_requires_semantic_supporting_columns():
     assert "[УЗЕЛ-" not in result.text
 
 
+def test_semantic_server_node_beats_broad_secret_and_respects_disable():
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    cell = "\ufdd0"
+    node_name = "admin-pass01"
+    source = table + row.join((
+        cell.join(("Наименование", "IP адрес", "Программное обеспечение", "CPU")),
+        cell.join((node_name, "192.0.2.81", "Synthetic Linux", "32")),
+    )) + table
+
+    enabled = Anonymizer().anonymize(source)
+    disabled = Anonymizer(disabled_categories={"УЗЕЛ"}).anonymize(source)
+
+    assert node_name not in enabled.text
+    assert "(удалено" not in enabled.text
+    assert node_name in set(enabled.mapping.values())
+    assert any(marker.startswith("[УЗЕЛ-") for marker in enabled.mapping)
+    assert "(удалено" in disabled.text
+    assert not any(marker.startswith("[УЗЕЛ-") for marker in disabled.mapping)
+
+
+def test_semantic_server_node_cell_is_whole_value_bounded():
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    cell = "\ufdd0"
+    dotted_node = "edge-04.lab.example.test"
+    rejected = (
+        "https://edge-04.lab.example.test/status",
+        "ops@edge-04.lab.example.test",
+        r"C:\edge-04.lab.example.test\config",
+        "prefix edge-04.lab.example.test suffix",
+        "edge-04.lab.example.test/child",
+    )
+    header = cell.join(("Наименование", "IP адрес", "Программное обеспечение", "CPU"))
+
+    def inventory(value, ip):
+        data = cell.join((value, ip, "Synthetic Linux", "32"))
+        return table + row.join((header, data)) + table
+
+    result = Anonymizer().anonymize(inventory(dotted_node, "192.0.2.91"))
+    node_values = {
+        value
+        for marker, value in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    }
+
+    assert node_values == {dotted_node}
+    assert result.text.count("[УЗЕЛ-") == 1
+    for index, value in enumerate(rejected):
+        rejected_result = Anonymizer().anonymize(
+            inventory(value, f"192.0.2.{92 + index}")
+        )
+        assert not any(
+            marker.startswith("[УЗЕЛ-") for marker in rejected_result.mapping
+        )
+
+
 def test_server_inventory_names_respect_disabled_and_compact_node_category():
     source = "s1234-qzx01"
 

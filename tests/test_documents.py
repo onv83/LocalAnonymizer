@@ -636,6 +636,66 @@ def test_docx_server_inventory_name_column_is_anonymized_and_restores_byte_exact
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_semantic_server_capacity_table_redacts_every_node_name(tmp_path):
+    source = tmp_path / "semantic-server-capacity-source.docx"
+    anonymized = tmp_path / "semantic-server-capacity-anonymized.docx"
+    disabled = tmp_path / "semantic-server-capacity-disabled.docx"
+    restored = tmp_path / "semantic-server-capacity-restored.docx"
+    node_names = ("qrf73-xnt04", "qrf73-vmk02", "qrf72-bkp01")
+    document = Document()
+    table = document.add_table(rows=1, cols=6)
+    for index, value in enumerate((
+        "Наименование", "IP адрес", "Программное обеспечение",
+        "CPU", "MEM цел", "HDD SATA",
+    )):
+        table.rows[0].cells[index].text = value
+    for row_index, name in enumerate(node_names, start=1):
+        cells = table.add_row().cells
+        if row_index == 2:
+            cells[0].paragraphs[0].add_run(name[:6]).bold = True
+            cells[0].paragraphs[0].add_run(name[6:]).italic = True
+        elif row_index == 3:
+            cells[0].paragraphs[0].add_run(name[:7])
+            cells[0].paragraphs[0].add_run().add_break()
+            cells[0].paragraphs[0].add_run(name[7:])
+        else:
+            cells[0].text = name
+        cells[1].text = f"192.0.2.{70 + row_index}"
+        cells[2].text = "Synthetic Linux (64-bit)"
+        cells[3].text = "32"
+        cells[4].text = "64"
+        cells[5].text = "144"
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized)
+    assert all(name.encode() not in package_xml for name in node_names)
+    assert all(
+        fragment.encode() not in package_xml
+        for fragment in ("qrf73-", "xnt04", "vmk02", "qrf72-b", "kp01")
+    )
+    assert set(node_names) <= {value.replace("\n", "") for value in result.mapping.values()}
+    output = Document(anonymized).tables[0]
+    assert all(row.cells[0].text.strip().startswith("[УЗЕЛ-") for row in output.rows[1:])
+
+    disabled_result = DocxProcessor(Anonymizer(disabled_categories={"УЗЕЛ"})).anonymize(
+        source, disabled,
+    )
+    disabled_table = Document(disabled).tables[0]
+    assert [row.cells[0].text.replace("\n", "") for row in disabled_table.rows[1:]] == list(node_names)
+    assert not any(marker.startswith("[УЗЕЛ-") for marker in disabled_result.mapping)
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_server_inventory_names_split_inside_one_cell_are_one_node_and_restore_exactly(tmp_path):
     source = tmp_path / "split-server-inventory-source.docx"
     anonymized = tmp_path / "split-server-inventory-anonymized.docx"

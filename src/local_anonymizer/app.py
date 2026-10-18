@@ -230,6 +230,40 @@ def _split_server_inventory_name_self_test(anonymizer=None) -> bool:
     )
 
 
+def _semantic_server_capacity_node_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    intra = "\ufdd3"
+    physical_name = f"qrf73-{intra}xnt04"
+    headers = (
+        "Наименование", "IP адрес", "Программное обеспечение",
+        "CPU", "MEM цел", "HDD SATA",
+    )
+    data = (physical_name, "192.0.2.71", "Synthetic Linux", "32", "64", "144")
+    source = table + cell.join(headers) + row + cell.join(data) + table
+    result = detector.anonymize(source)
+    node_values = {
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    }
+    disabled = Anonymizer(disabled_categories={"УЗЕЛ"}).anonymize(source)
+    invalid_ip = source.replace("192.0.2.71", "not-an-ip")
+    invalid = detector.anonymize(invalid_ip)
+    return (
+        result.text.count("[УЗЕЛ-") == 1
+        and "qrf73-" not in result.text
+        and "xnt04" not in result.text
+        and result.text.count(intra) == source.count(intra)
+        and node_values == {"qrf73-\nxnt04"}
+        and physical_name in disabled.text
+        and not any(marker.startswith("[УЗЕЛ-") for marker in disabled.mapping)
+        and physical_name in invalid.text
+    )
+
+
 def _underscored_dns_fqdn_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     value = "_locator.synthetic.example"
@@ -816,6 +850,7 @@ class AppApi:
         address_contextual_variants_ok = _contextual_address_self_test()
         server_inventory_name_ok = _server_inventory_name_self_test()
         split_server_inventory_name_ok = _split_server_inventory_name_self_test()
+        semantic_server_capacity_node_ok = _semantic_server_capacity_node_self_test()
         underscored_dns_fqdn_ok = _underscored_dns_fqdn_self_test()
         domain_inventory_subject_ok = _domain_inventory_subject_self_test()
         domain_inventory_row_ok = domain_inventory_subject_ok
@@ -839,6 +874,7 @@ class AppApi:
                 and address_contextual_variants_ok
                 and server_inventory_name_ok
                 and split_server_inventory_name_ok
+                and semantic_server_capacity_node_ok
                 and underscored_dns_fqdn_ok
                 and domain_inventory_subject_ok
                 and domain_inventory_row_ok
@@ -858,6 +894,7 @@ class AppApi:
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "server_inventory_name_ok": server_inventory_name_ok,
             "split_server_inventory_name_ok": split_server_inventory_name_ok,
+            "semantic_server_capacity_node_ok": semantic_server_capacity_node_ok,
             "underscored_dns_fqdn_ok": underscored_dns_fqdn_ok,
             "domain_inventory_subject_ok": domain_inventory_subject_ok,
             "domain_inventory_row_ok": domain_inventory_row_ok,
