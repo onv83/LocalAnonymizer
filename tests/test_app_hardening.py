@@ -1242,6 +1242,105 @@ console.log(JSON.stringify({mapped:mapPreviewScroll(source,target)}));
 
 
 @pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_formatted_scroll_matches_shared_structural_anchor_when_blocks_are_removed(
+    tmp_path, asset_name
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("const sourcePreviewAlignment=")
+    scroll_logic = javascript[start:end]
+    harness = r"""
+function makeContainer(scrollHeight,clientHeight,scrollTop,anchors){
+  const container={scrollHeight,clientHeight,scrollTop,hidden:false};
+  container.getBoundingClientRect=()=>({top:0});
+  container.querySelectorAll=()=>anchors.map(([key,offset])=>({
+    dataset:{previewAnchor:key},
+    getBoundingClientRect:()=>({top:offset-container.scrollTop})
+  }));
+  return container;
+}
+"""
+    scenario = r"""
+const source=makeContainer(1200,200,600,[['a',100],['removed',300],['shared',600],['tail',950]]);
+const target=makeContainer(700,200,0,[['a',80],['shared',250],['tail',470]]);
+console.log(JSON.stringify({mapped:mapPreviewScroll(source,target)}));
+"""
+    script = tmp_path / f"formatted-scroll-shared-anchors-{asset_name}.js"
+    script.write_text(scroll_logic + harness + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {"mapped": 250}
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_formatted_scroll_sorts_visual_anchors_from_nested_and_multicolumn_tables(
+    tmp_path, asset_name
+):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("const sourcePreviewAlignment=")
+    scroll_logic = javascript[start:end]
+    scenario = r"""
+const container={scrollHeight:700,clientHeight:200,scrollTop:0,hidden:false};
+container.getBoundingClientRect=()=>({top:0});
+container.querySelectorAll=()=>[
+  {dataset:{previewAnchor:'row'},getBoundingClientRect:()=>({top:100})},
+  {dataset:{previewAnchor:'left-lower'},getBoundingClientRect:()=>({top:320})},
+  {dataset:{previewAnchor:'right-nested'},getBoundingClientRect:()=>({top:180})},
+  {dataset:{previewAnchor:'next-row'},getBoundingClientRect:()=>({top:450})}
+];
+console.log(JSON.stringify({anchors:collectPreviewAnchors(container)}));
+"""
+    script = tmp_path / f"formatted-scroll-visual-order-{asset_name}.js"
+    script.write_text(scroll_logic + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {"anchors": [0, 100, 180, 320, 450, 500]}
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_formatted_scroll_realigns_after_late_image_layout_change(tmp_path, asset_name):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    start = javascript.index("let previewScrollSyncDepth=0;")
+    end = javascript.index("const sourcePreviewAlignment=")
+    scroll_logic = javascript[start:end]
+    harness = r"""
+function makeContainer(scrollHeight,clientHeight,scrollTop,anchors){
+  const container={scrollHeight,clientHeight,scrollTop,anchors,hidden:false};
+  container.getBoundingClientRect=()=>({top:0});
+  container.querySelectorAll=()=>container.anchors.map(([key,offset])=>({
+    dataset:{previewAnchor:key},
+    getBoundingClientRect:()=>({top:offset-container.scrollTop})
+  }));
+  return container;
+}
+"""
+    scenario = r"""
+const source=makeContainer(1000,200,600,[['a',100],['shared',600],['tail',780]]);
+const target=makeContainer(700,200,0,[['a',80],['shared',250],['tail',450]]);
+syncPreviewScroll(source,target);
+const before=target.scrollTop;
+target.anchors=[['a',80],['shared',350],['tail',470]];
+refreshPreviewLayout(source,target);
+console.log(JSON.stringify({before,after:target.scrollTop}));
+"""
+    script = tmp_path / f"formatted-scroll-image-reflow-{asset_name}.js"
+    script.write_text(scroll_logic + harness + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8"
+    )
+
+    assert json.loads(completed.stdout) == {"before": 250, "after": 350}
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
 def test_formatted_scroll_sync_fallback_cache_hidden_and_mode_contracts(
     tmp_path, asset_name
 ):
@@ -1309,8 +1408,8 @@ console.log(JSON.stringify({
 def _preview_async_harness() -> str:
     return r"""
 class FakeElement {
-  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1000;this.clientHeight=200;this.clientWidth=400;this.style={};this.children=[];}
-  addEventListener(){} appendChild(child){this.children.push(child);if(!this.value&&child.value)this.value=child.value;} setSelectionRange(){} scrollIntoView(){} click(){if(this.onclick)return this.onclick();}
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.disabled=false;this.hidden=false;this.scrollTop=0;this.scrollHeight=1000;this.clientHeight=200;this.clientWidth=400;this.style={};this.children=[];this.listeners={};}
+  addEventListener(type,handler){(this.listeners[type]||(this.listeners[type]=[])).push(handler);} appendChild(child){this.children.push(child);if(!this.value&&child.value)this.value=child.value;} setSelectionRange(){} scrollIntoView(){} click(){if(this.onclick)return this.onclick();}
   setAttribute(name,value){this[name]=value;} removeAttribute(name){delete this[name];} getAttribute(){return null;} contains(){return false;} focus(){}
   querySelectorAll(){return [];} querySelector(){return null;} closest(){return null;} getBoundingClientRect(){return {top:0,bottom:200,left:0,right:400,height:200};}
   classList={add(){},remove(){},toggle(){},contains(){return false;}};
@@ -1431,4 +1530,83 @@ pywebview.api={
         "formattedHidden": True,
         "sourceScroll": 321,
         "rich": '<article class="docx-page">FORMATTED</article>',
+    }
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_anonymized_formatted_preview_completion_realigns_to_current_source_block(
+    tmp_path, asset_name
+):
+    scenario = r"""
+function useOffsets(element,scrollHeight,clientHeight,scrollTop,offsets){
+  element.scrollHeight=scrollHeight;element.clientHeight=clientHeight;element.scrollTop=scrollTop;
+  element.getBoundingClientRect=()=>({top:0,bottom:clientHeight,left:0,right:400,height:clientHeight});
+  element.querySelectorAll=selector=>selector==='.docx-paragraph,li,tr'?offsets.map(offset=>({
+    getBoundingClientRect:()=>({top:offset-element.scrollTop})
+  })):[];
+}
+const sourcePreview=document.querySelector('#docxPreview');
+const formattedOutput=document.querySelector('#anonymizedDocxPreview');
+const textOutput=document.querySelector('#richOutput');
+useOffsets(sourcePreview,1000,200,300,[100,300,600,780,900]);
+useOffsets(formattedOutput,700,200,0,[80,250,450,540,620]);
+useOffsets(textOutput,1000,200,0,[]);
+sourcePreview.hidden=false;formattedOutput.hidden=false;textOutput.hidden=true;
+let resolveFormatted;
+pywebview.api={
+  preview_anonymized_document(){return new Promise(resolve=>{resolveFormatted=resolve;});},
+  anonymize_text:async()=>({mapping:{},counts:{},parts:[],total:0,hintCount:0,warnings:[]})
+};
+(async()=>{
+  selected='doc-1';filePreview=true;loadingPreview=false;currentPreviewFormat='docx';
+  document.querySelector('#source').value='TEXT';
+  const loading=anonymizeText();
+  while(!resolveFormatted)await new Promise(resolve=>setImmediate(resolve));
+  sourcePreview.scrollTop=600;
+  syncFormattedSourceScroll();
+  const interimTextScroll=textOutput.scrollTop;
+  resolveFormatted({format:'docx',rich_html:'<article>ANON</article>'});
+  await loading;
+  console.log(JSON.stringify({interimTextScroll,formattedScroll:formattedOutput.scrollTop}));
+})();
+"""
+
+    assert _run_preview_async_scenario(tmp_path, asset_name, scenario) == {
+        "interimTextScroll": 600,
+        "formattedScroll": 450,
+    }
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_late_formatted_image_load_automatically_realigns_visible_previews(
+    tmp_path, asset_name
+):
+    scenario = r"""
+function useKeyedOffsets(element,scrollHeight,clientHeight,scrollTop,anchors){
+  element.scrollHeight=scrollHeight;element.clientHeight=clientHeight;element.scrollTop=scrollTop;element.anchors=anchors;
+  element.getBoundingClientRect=()=>({top:0,bottom:clientHeight,left:0,right:400,height:clientHeight});
+  element.querySelectorAll=selector=>selector==='.docx-paragraph,li,tr'?element.anchors.map(([key,offset])=>({
+    dataset:{previewAnchor:key},getBoundingClientRect:()=>({top:offset-element.scrollTop})
+  })):[];
+}
+const sourcePreview=document.querySelector('#docxPreview');
+const formattedOutput=document.querySelector('#anonymizedDocxPreview');
+const textOutput=document.querySelector('#richOutput');
+useKeyedOffsets(sourcePreview,1000,200,600,[['a',100],['shared',600],['tail',780]]);
+useKeyedOffsets(formattedOutput,700,200,0,[['a',80],['shared',250],['tail',450]]);
+sourcePreview.hidden=false;formattedOutput.hidden=false;textOutput.hidden=true;
+(async()=>{
+  currentPreviewFormat='docx';filePreview=true;
+  syncFormattedSourceScroll();
+  const before=formattedOutput.scrollTop;
+  formattedOutput.anchors=[['a',80],['shared',350],['tail',470]];
+  (formattedOutput.listeners.load||[]).forEach(handler=>handler({target:{tagName:'IMG'}}));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  console.log(JSON.stringify({before,after:formattedOutput.scrollTop}));
+})();
+"""
+
+    assert _run_preview_async_scenario(tmp_path, asset_name, scenario) == {
+        "before": 250,
+        "after": 350,
     }

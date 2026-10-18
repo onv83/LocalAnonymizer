@@ -14,6 +14,7 @@ import local_anonymizer.app as app_module
 from local_anonymizer.app import AppApi, asset_path, platform_smoke_check, smoke_check
 from local_anonymizer.engine import Anonymizer
 from docx import Document
+from docx.enum.section import WD_SECTION
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -1864,6 +1865,68 @@ def test_docx_preview_renders_safe_embedded_png_but_anonymized_preview_only_show
     assert "[СХЕМА-1]" in anonymized_html
 
 
+def test_docx_preview_emits_stable_structural_scroll_anchors_after_graphic_removal(tmp_path):
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    image = tmp_path / "scroll-anchor.png"
+    source = tmp_path / "scroll-anchor.docx"
+    image.write_bytes(image_bytes)
+    document = Document()
+    document.add_paragraph("Раздел до схемы")
+    document.add_picture(str(image), width=Inches(2))
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Иванов Сергей Петрович"
+    nested = table.cell(0, 1).add_table(rows=1, cols=1)
+    nested.cell(0, 0).text = "Вложенный блок"
+    table.cell(1, 0).text = "Следующий блок"
+    document.add_paragraph("Раздел после схемы")
+    document.save(source)
+
+    api = AppApi(root=tmp_path / "app")
+    document_id = api.import_paths([str(source)])["ids"][0]
+    source_html = api.preview_document(document_id)["rich_html"]
+    anonymized_html = api.preview_anonymized_document(document_id)["rich_html"]
+
+    source_anchors = re.findall(r'data-preview-anchor="([^"]+)"', source_html)
+    anonymized_anchors = re.findall(r'data-preview-anchor="([^"]+)"', anonymized_html)
+    assert source_anchors
+    assert source_anchors == anonymized_anchors
+    assert len(source_anchors) == len(set(source_anchors))
+    assert "data:image/" in source_html and "data:image/" not in anonymized_html
+    assert "[СХЕМА-1]" in anonymized_html
+
+
+def test_docx_preview_header_anchor_identity_survives_image_only_header_removal(tmp_path):
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    image = tmp_path / "header-anchor.png"
+    source = tmp_path / "header-anchor.docx"
+    image.write_bytes(image_bytes)
+    document = Document()
+    document.add_paragraph("Основной текст")
+    document.sections[0].header.paragraphs[0].add_run().add_picture(str(image), width=Inches(1))
+    second = document.add_section(WD_SECTION.NEW_PAGE)
+    second.header.is_linked_to_previous = False
+    second.header.paragraphs[0].text = "Второй заголовок"
+    document.save(source)
+
+    api = AppApi(root=tmp_path / "app")
+    document_id = api.import_paths([str(source)])["ids"][0]
+    source_html = api.preview_document(document_id)["rich_html"]
+    anonymized_html = api.preview_anonymized_document(document_id)["rich_html"]
+
+    source_anchor = re.search(
+        r'data-preview-anchor="([^"]+)">Второй заголовок</p>', source_html
+    )
+    anonymized_anchor = re.search(
+        r'data-preview-anchor="([^"]+)">Второй заголовок</p>', anonymized_html
+    )
+    assert source_anchor and anonymized_anchor
+    assert source_anchor.group(1) == anonymized_anchor.group(1)
+
+
 def test_docx_preview_malformed_custom_style_id_falls_back_safely(tmp_path):
     source = tmp_path / "malformed-style.docx"
     document = Document()
@@ -1877,7 +1940,7 @@ def test_docx_preview_malformed_custom_style_id_falls_back_safely(tmp_path):
     document_id = api.import_paths([str(source)])["ids"][0]
     preview = api.preview_document(document_id)
 
-    assert '<p class="docx-paragraph">' in preview["rich_html"]
+    assert '<p class="docx-paragraph" data-preview-anchor="body/b0">' in preview["rich_html"]
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in preview["rich_html"]
     assert "<script" not in preview["rich_html"]
     assert "Custom" not in preview["rich_html"]

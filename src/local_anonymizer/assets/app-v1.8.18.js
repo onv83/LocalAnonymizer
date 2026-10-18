@@ -75,37 +75,62 @@ function showLibrary(documents){
 function updateRestoreContext(){}
 function hasFormattedDocumentPreview(format){return format==='docx'||format==='odt';}
 let previewScrollSyncDepth=0;
+let lastPreviewScrollSource=null;
 const previewAnchorCache=new WeakMap(),programmaticPreviewScrollTargets=new WeakMap();
 function invalidatePreviewAnchors(container){previewAnchorCache.delete(container);}
-function collectPreviewAnchors(container){
+function collectPreviewAnchorModel(container){
   const cached=previewAnchorCache.get(container);
-  if(cached&&cached.scrollHeight===container.scrollHeight&&cached.clientHeight===container.clientHeight)return cached.anchors;
+  if(cached&&cached.scrollHeight===container.scrollHeight&&cached.clientHeight===container.clientHeight)return cached.model;
   const max=Math.max(0,container.scrollHeight-container.clientHeight);
-  if(typeof container.getBoundingClientRect!=='function')return max?[0,max]:[0];
-  const bounds=container.getBoundingClientRect(),anchors=[0];
-  container.querySelectorAll('.docx-paragraph,li,tr').forEach(node=>{
+  if(typeof container.getBoundingClientRect!=='function'){
+    const model={offsets:max?[0,max]:[0],keyed:[],byKey:new Map()};
+    previewAnchorCache.set(container,{scrollHeight:container.scrollHeight,clientHeight:container.clientHeight,model});return model;
+  }
+  const bounds=container.getBoundingClientRect(),points=[];
+  container.querySelectorAll('.docx-paragraph,li,tr').forEach((node,index)=>{
     const offset=Math.max(0,Math.min(max,node.getBoundingClientRect().top-bounds.top+container.scrollTop));
-    anchors.push(offset);
+    points.push({offset,key:String(node.dataset?.previewAnchor||''),index});
   });
-  anchors.push(max);
-  previewAnchorCache.set(container,{scrollHeight:container.scrollHeight,clientHeight:container.clientHeight,anchors});
-  return anchors;
+  points.sort((left,right)=>left.offset-right.offset||left.index-right.index);
+  const keyed=points.filter(point=>point.key),byKey=new Map();
+  keyed.forEach(point=>{if(!byKey.has(point.key))byKey.set(point.key,point.offset);});
+  const model={offsets:[0,...points.map(point=>point.offset),max],keyed,byKey};
+  previewAnchorCache.set(container,{scrollHeight:container.scrollHeight,clientHeight:container.clientHeight,model});
+  return model;
 }
+function collectPreviewAnchors(container){return collectPreviewAnchorModel(container).offsets;}
 function proportionalPreviewScroll(source,target){
   const sourceMax=Math.max(0,source.scrollHeight-source.clientHeight),targetMax=Math.max(0,target.scrollHeight-target.clientHeight);
   return sourceMax?source.scrollTop/sourceMax*targetMax:0;
 }
 function previewScrollPosition(source){
   const sourceMax=Math.max(0,source.scrollHeight-source.clientHeight),ratio=sourceMax?Math.max(0,Math.min(1,source.scrollTop/sourceMax)):0;
-  const anchors=collectPreviewAnchors(source);
-  if(anchors.length<2)return{ratio,anchorCount:0,logical:ratio};
+  const model=collectPreviewAnchorModel(source),anchors=model.offsets;
+  if(anchors.length<2)return{ratio,anchorCount:0,logical:ratio,sourceOffset:source.scrollTop,sourceMax,keyedAnchors:model.keyed};
   let low=0,high=anchors.length-1;
   while(low+1<high){const middle=Math.floor((low+high)/2);if(anchors[middle]<=source.scrollTop)low=middle;else high=middle;}
   const start=anchors[low],end=anchors[Math.min(low+1,anchors.length-1)],fraction=end>start?(source.scrollTop-start)/(end-start):0;
-  return{ratio,anchorCount:anchors.length,logical:(low+fraction)/(anchors.length-1)};
+  return{ratio,anchorCount:anchors.length,logical:(low+fraction)/(anchors.length-1),sourceOffset:source.scrollTop,sourceMax,keyedAnchors:model.keyed};
 }
 function previewScrollForPosition(position,target){
-  const targetMax=Math.max(0,target.scrollHeight-target.clientHeight),anchors=collectPreviewAnchors(target);
+  const targetMax=Math.max(0,target.scrollHeight-target.clientHeight),model=collectPreviewAnchorModel(target),anchors=model.offsets;
+  if(position.keyedAnchors?.length&&model.byKey.size){
+    const pairs=[{sourceOffset:0,targetOffset:0},...position.keyedAnchors.filter(point=>model.byKey.has(point.key)).map(point=>({sourceOffset:point.offset,targetOffset:model.byKey.get(point.key)})),{sourceOffset:position.sourceMax,targetOffset:targetMax}]
+      .sort((left,right)=>left.sourceOffset-right.sourceOffset||left.targetOffset-right.targetOffset);
+    const monotonic=[];
+    pairs.forEach(pair=>{
+      const previous=monotonic[monotonic.length-1];
+      if(previous&&pair.sourceOffset===previous.sourceOffset){if(pair.targetOffset>previous.targetOffset)monotonic[monotonic.length-1]=pair;return;}
+      if(!previous||pair.targetOffset>=previous.targetOffset)monotonic.push(pair);
+    });
+    if(monotonic.length>1){
+      const sourceOffset=Math.max(0,Math.min(position.sourceMax,position.sourceOffset));
+      let high=monotonic.findIndex(pair=>pair.sourceOffset>=sourceOffset);if(high<0)high=monotonic.length-1;
+      const low=Math.max(0,high-1),start=monotonic[low],end=monotonic[high];
+      const fraction=end.sourceOffset>start.sourceOffset?(sourceOffset-start.sourceOffset)/(end.sourceOffset-start.sourceOffset):0;
+      return start.targetOffset+(end.targetOffset-start.targetOffset)*fraction;
+    }
+  }
   if(position.anchorCount<2||anchors.length!==position.anchorCount)return position.ratio*targetMax;
   const targetPosition=Math.max(0,Math.min(anchors.length-1,position.logical*(anchors.length-1)));
   const index=Math.min(Math.floor(targetPosition),anchors.length-2),fraction=targetPosition-index;
@@ -117,10 +142,17 @@ function restorePreviewPosition(position,target){
   programmaticPreviewScrollTargets.set(target,previewScrollForPosition(position,target));
   target.scrollTop=programmaticPreviewScrollTargets.get(target);
 }
+function refreshPreviewLayout(source,target){
+  invalidatePreviewAnchors(source);invalidatePreviewAnchors(target);
+  if(!source||!target||source.hidden||target.hidden||!source.clientHeight||!target.clientHeight)return;
+  const leader=lastPreviewScrollSource===target?target:source,follower=leader===source?target:source;
+  restorePreviewPosition(previewScrollPosition(leader),follower);
+}
 function syncPreviewScroll(source,target){
   const expected=programmaticPreviewScrollTargets.get(source);
   if(expected!==undefined){programmaticPreviewScrollTargets.delete(source);if(Math.abs(source.scrollTop-expected)<1)return;}
   if(previewScrollSyncDepth||!source||!target||source.hidden||target.hidden||!source.clientHeight||!target.clientHeight)return;
+  lastPreviewScrollSource=source;
   previewScrollSyncDepth++;
   try{
     const mapped=mapPreviewScroll(source,target);
@@ -133,6 +165,19 @@ const outputPreviewAlignment=$('#outputPreviewAlignment');
 const canAlignPreviewTops=sourcePreviewAlignment?.classList?.contains('preview-alignment-spacer')&&outputPreviewAlignment?.classList?.contains('preview-alignment-spacer');
 function activeSourcePreview(){return $('#docxPreview').hidden?$('#source'):$('#docxPreview');}
 function activeAnonymizedPreview(){return $('#anonymizedDocxPreview').hidden?$('#richOutput'):$('#anonymizedDocxPreview');}
+let previewLayoutRefreshFrame=0;
+function refreshActivePreviewLayout(){previewLayoutRefreshFrame=0;refreshPreviewLayout(activeSourcePreview(),activeAnonymizedPreview());}
+function schedulePreviewLayoutRefresh(){
+  if(previewLayoutRefreshFrame)return;
+  const run=()=>{if(!previewLayoutRefreshFrame)return;refreshActivePreviewLayout();};
+  previewLayoutRefreshFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(run):setTimeout(run,0);
+}
+const formattedPreviewContainers=[$('#docxPreview'),$('#anonymizedDocxPreview')];
+formattedPreviewContainers.forEach(preview=>preview.addEventListener?.('load',event=>{if(String(event.target?.tagName||'').toUpperCase()==='IMG')schedulePreviewLayoutRefresh();},true));
+const previewLayoutMutationObserver=typeof MutationObserver==='undefined'?null:new MutationObserver(schedulePreviewLayoutRefresh);
+if(previewLayoutMutationObserver)formattedPreviewContainers.forEach(preview=>previewLayoutMutationObserver.observe(preview,{childList:true,subtree:true}));
+window.addEventListener('resize',schedulePreviewLayoutRefresh);
+if(document.fonts?.ready)document.fonts.ready.then(schedulePreviewLayoutRefresh);
 function isPreviewActive(preview){return Boolean(preview&&!preview.hidden&&preview.clientWidth>0&&preview.clientHeight>0);}
 let previewAlignmentFrame=0;
 function syncPreviewTopAlignment(){
@@ -304,7 +349,7 @@ async function anonymizeText(){
     if(ticket!==generation)return;
     setAnonymizedPreviewLoading(false);
     if(hasFormattedDocumentPreview(formattedPreview?.format)){
-      const rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Форматированный вид готов · таблиц: ${rich.querySelectorAll('.docx-table').length}. Текстовый предпросмотр уже соответствует выбранным галочкам.`;switchPreviewMode(setAnonymizedPreviewMode,true);
+      const sourcePosition=previewScrollPosition(activeSourcePreview()),rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Форматированный вид готов · таблиц: ${rich.querySelectorAll('.docx-table').length}. Текстовый предпросмотр уже соответствует выбранным галочкам.`;setAnonymizedPreviewMode(true);restorePreviewPosition(sourcePosition,rich);
     }else{
       leaveAnonymizedPreview();
       if(formattedPreview?.error)$('#anonymizedPreviewCompleteness').textContent=`Форматированный предпросмотр недоступен: ${formattedPreview.error}`;

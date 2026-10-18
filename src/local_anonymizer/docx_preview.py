@@ -109,7 +109,7 @@ def _run_html(run_element, paragraph: Paragraph) -> str:
     return content
 
 
-def _paragraph_html(paragraph: Paragraph) -> str:
+def _paragraph_html(paragraph: Paragraph, anchor: str) -> str:
     content = "".join(
         _run_html(node, paragraph)
         for node in paragraph._p.xpath(".//w:r[not(ancestor::w:del)]")
@@ -120,7 +120,10 @@ def _paragraph_html(paragraph: Paragraph) -> str:
     style_id = style_nodes[0].get(qn("w:val"), "") if style_nodes else ""
     match = _HEADING_RE.fullmatch(style_id or "")
     tag = f"h{match.group(1)}" if match else "p"
-    return f'<{tag} class="{classes}">{content or "<br>"}</{tag}>'
+    return (
+        f'<{tag} class="{classes}" data-preview-anchor="{escape(anchor, quote=True)}">'
+        f'{content or "<br>"}</{tag}>'
+    )
 
 
 def _container_blocks(container):
@@ -133,8 +136,11 @@ def _container_blocks(container):
             yield Table(child, container)
 
 
-def _cell_html(cell: _Cell) -> str:
-    return "".join(_block_html(block) for block in _container_blocks(cell))
+def _cell_html(cell: _Cell, anchor: str) -> str:
+    return "".join(
+        _block_html(block, f"{anchor}/b{block_index}")
+        for block_index, block in enumerate(_container_blocks(cell))
+    )
 
 
 def _grid_span(cell_element) -> int:
@@ -174,7 +180,7 @@ def _vertical_span(row_elements, row_index: int, column: int, grid_span: int) ->
     return span
 
 
-def _table_html(table: Table) -> str:
+def _table_html(table: Table, anchor: str) -> str:
     row_elements = list(table._tbl.tr_lst)
     rows: list[str] = []
     for row_index, row_element in enumerate(row_elements):
@@ -194,16 +200,21 @@ def _table_html(table: Table) -> str:
                 if row_span > 1:
                     attributes.append(f' rowspan="{row_span}"')
             cell = _Cell(cell_element, table)
-            rendered_cells.append(f"<td{''.join(attributes)}>{_cell_html(cell)}</td>")
+            rendered_cells.append(
+                f"<td{''.join(attributes)}>{_cell_html(cell, f'{anchor}/r{row_index}/c{column}')}</td>"
+            )
             column += grid_span
-        rows.append(f"<tr>{''.join(rendered_cells)}</tr>")
+        rows.append(
+            f'<tr data-preview-anchor="{escape(f"{anchor}/r{row_index}", quote=True)}">'
+            f'{"".join(rendered_cells)}</tr>'
+        )
     return '<table class="docx-table"><tbody>' + "".join(rows) + "</tbody></table>"
 
 
-def _block_html(block) -> str:
+def _block_html(block, anchor: str) -> str:
     if isinstance(block, Paragraph):
-        return _paragraph_html(block)
-    return _table_html(block)
+        return _paragraph_html(block, anchor)
+    return _table_html(block, anchor)
 
 
 def _part_section(document, attr: str, class_name: str, title: str) -> str:
@@ -215,7 +226,11 @@ def _part_section(document, attr: str, class_name: str, title: str) -> str:
         if identity in seen:
             continue
         seen.add(identity)
-        body = "".join(_block_html(block) for block in _container_blocks(part))
+        part_index = len(seen) - 1
+        body = "".join(
+            _block_html(block, f"{class_name}/{part_index}/b{block_index}")
+            for block_index, block in enumerate(_container_blocks(part))
+        )
         if any((node.text or "").strip() for node in part._element.xpath(".//w:t")):
             rendered.append(f'<section class="{class_name}"><h2>{escape(title)}</h2>{body}</section>')
     return "".join(rendered)
@@ -228,7 +243,10 @@ def render_docx_preview(document) -> str:
     and arbitrary OOXML attributes are never serialized. Safe embedded PNG/JPEG
     images are rendered as local data URIs; external and unsupported images are omitted.
     """
-    body = "".join(_block_html(block) for block in _container_blocks(document))
+    body = "".join(
+        _block_html(block, f"body/b{block_index}")
+        for block_index, block in enumerate(_container_blocks(document))
+    )
     header = _part_section(document, "header", "docx-header", "Верхний колонтитул")
     footer = _part_section(document, "footer", "docx-footer", "Нижний колонтитул")
     return f'<article class="docx-preview"><section class="docx-body">{body}</section>{header}{footer}</article>'
