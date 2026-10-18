@@ -237,6 +237,60 @@ def test_docx_embedded_complete_address_preserves_surrounding_runs_and_restores_
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_contextual_address_list_is_sanitized_and_restores_byte_exactly(tmp_path):
+    source = tmp_path / "synthetic-contextual-addresses.docx"
+    anonymized = tmp_path / "synthetic-contextual-addresses.anonymized.docx"
+    restored = tmp_path / "synthetic-contextual-addresses.restored.docx"
+    addresses = (
+        "Макетный пер. д.3",
+        "Проверочный бульвар д.13 стр.1",
+        "1-ый Лабораторный пр. д.1 стр.3",
+        "Пробная аллея д.2/д",
+        "Малый Контрольный пер. д.7",
+        "Большая Испытательная, д.46",
+    )
+    text = (
+        "Площадки расположены по адресам "
+        + ", ".join(addresses[:4])
+        + ", и "
+        + addresses[4]
+        + ". Площадка расположена по адресу "
+        + addresses[5]
+        + "."
+    )
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run(text[:47]).bold = True
+    paragraph.add_run(text[47:119]).italic = True
+    paragraph.add_run(text[119:]).underline = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert source.read_bytes() == source_bytes
+    package_xml = _all_xml(anonymized)
+    assert all(address.encode() not in package_xml for address in addresses)
+    for token in (
+        "Макетный", "Проверочный", "Лабораторный",
+        "Пробная", "Контрольный", "Большая Испытательная",
+    ):
+        assert token.encode() not in package_xml
+    assert set(addresses) == {
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[АДРЕС-")
+    }
+    assert Document(anonymized).paragraphs[0].text.count("[АДРЕС-") == len(addresses)
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_address_like_project_prose_in_table_cells_stays_visible(tmp_path):
     source = tmp_path / "synthetic-address-controls.docx"
     anonymized = tmp_path / "synthetic-address-controls.anonymized.docx"

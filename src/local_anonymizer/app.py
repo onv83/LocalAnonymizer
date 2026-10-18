@@ -108,6 +108,52 @@ def _complete_postal_address_self_test(anonymizer=None) -> bool:
     return result.text == expected_text and result.mapping == expected_mapping
 
 
+def _contextual_address_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    addresses = (
+        "Макетный пер. д.3",
+        "Проверочный бульвар д.13 стр.1",
+        "ул. Контрольная, д.9",
+        "1-ый Лабораторный пр. д.1 стр.3",
+        "Пробная аллея д.2/д",
+        "Малый Контрольный пер. д.7",
+        "Большая Испытательная, д.46",
+    )
+    negative = (
+        "Пр. Завершён, д. 12. Материалы отправлены по адресу "
+        "электронной почты, д. 46."
+    )
+    source = (
+        "Площадки расположены по адресам "
+        + ", ".join(addresses[:5])
+        + ", и "
+        + addresses[5]
+        + ". Площадка расположена по адресу "
+        + addresses[6]
+        + ".\ufdd0"
+        + negative
+    )
+    expected_text = (
+        "Площадки расположены по адресам "
+        "[АДРЕС-1], [АДРЕС-2], [АДРЕС-3], [АДРЕС-4], [АДРЕС-5], и [АДРЕС-6]. "
+        "Площадка расположена по адресу [АДРЕС-7].\ufdd0"
+        + negative
+    )
+    expected_mapping = {
+        f"[АДРЕС-{index}]": value
+        for index, value in enumerate(addresses, start=1)
+    }
+    result = detector.anonymize(source)
+    restored = result.text
+    for marker, original in expected_mapping.items():
+        restored = restored.replace(marker, original)
+    return (
+        result.text == expected_text
+        and result.mapping == expected_mapping
+        and restored == source
+    )
+
+
 def _server_inventory_name_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     cell = "\ufdd0"
@@ -615,6 +661,7 @@ class AppApi:
         )
         address_inventory_ok = _address_inventory_self_test()
         address_postal_variants_ok = _complete_postal_address_self_test()
+        address_contextual_variants_ok = _contextual_address_self_test()
         server_inventory_name_ok = _server_inventory_name_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
@@ -630,6 +677,7 @@ class AppApi:
                 and port_ok
                 and address_inventory_ok
                 and address_postal_variants_ok
+                and address_contextual_variants_ok
                 and server_inventory_name_ok
                 and graphics_roundtrip_ok
             ),
@@ -641,6 +689,7 @@ class AppApi:
             "port_ok": port_ok,
             "address_inventory_ok": address_inventory_ok,
             "address_postal_variants_ok": address_postal_variants_ok,
+            "address_contextual_variants_ok": address_contextual_variants_ok,
             "server_inventory_name_ok": server_inventory_name_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,

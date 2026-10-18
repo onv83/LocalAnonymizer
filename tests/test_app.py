@@ -59,6 +59,37 @@ def test_complete_postal_address_self_test_requires_every_variant():
     assert app_module._complete_postal_address_self_test(PartialDetector()) is False
 
 
+def test_contextual_address_self_test_requires_every_complete_variant():
+    assert app_module._contextual_address_self_test() is True
+
+    class RecordingDetector:
+        def __init__(self):
+            self.source = ""
+
+        def anonymize(self, source):
+            self.source = source
+            return Anonymizer().anonymize(source)
+
+    recording = RecordingDetector()
+    assert app_module._contextual_address_self_test(recording) is True
+    assert (
+        "ул. Контрольная, д.9, 1-ый Лабораторный пр. д.1 стр.3"
+        in recording.source
+    )
+
+    class PartialDetector:
+        def anonymize(self, _source):
+            return SimpleNamespace(
+                text="[АДРЕС-1] [АДРЕС-2]",
+                mapping={
+                    "[АДРЕС-1]": "Макетный пер. д.3",
+                    "[АДРЕС-2]": "Большая Испытательная, д.46",
+                },
+            )
+
+    assert app_module._contextual_address_self_test(PartialDetector()) is False
+
+
 def test_server_inventory_name_self_test_requires_standalone_and_table_context_patterns():
     assert app_module._server_inventory_name_self_test() is True
 
@@ -101,6 +132,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["port_ok"] is True
     assert summary["address_inventory_ok"] is True
     assert summary["address_postal_variants_ok"] is True
+    assert summary["address_contextual_variants_ok"] is True
     assert summary["server_inventory_name_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)

@@ -390,12 +390,12 @@ class Anonymizer:
 
         # Postal addresses need an explicit address/street anchor.  This keeps
         # ordinary five- and six-digit task/build numbers out of the detector.
-        street_type = r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|пр\.?|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
+        street_type = r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|пр\.?|шоссе|пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд|аллея|алл\.)"
         named_street = r"[А-ЯЁ][А-Яа-яЁё0-9'’.-]*(?:[ \t]+[А-ЯЁа-яё0-9'’.-]+){0,3}"
-        numeric_street = r"\d+(?:-?(?:го|я|й|е))?(?:[ \t]+лет)?[ \t]+[А-ЯЁа-яё][А-Яа-яЁё'’.-]*(?:[ \t]+[А-ЯЁа-яё'’.-]+){0,2}"
+        numeric_street = r"\d+(?:-?(?:го|я|й|е|ый))?(?:[ \t]+лет)?[ \t]+[А-ЯЁа-яё][А-Яа-яЁё'’.-]*(?:[ \t]+[А-ЯЁа-яё'’.-]+){0,2}"
         street_name = rf"(?:{numeric_street}|{named_street})"
         house_designator = r"(?i:д(?:ом)?|зд(?:ание)?|вл(?:адение)?|стр(?:оение)?|корп(?:ус)?)"
-        house = rf"(?:{house_designator}\.?[ \t]*(?:№[ \t]*)?)?\d+[ \t]*[А-ЯЁа-яё]?(?:[/-]\d+[А-ЯЁа-яё]?)?"
+        house = rf"(?:{house_designator}\.?[ \t]*(?:№[ \t]*)?)?\d+[ \t]*[А-ЯЁа-яё]?(?:[/-](?:\d+[А-ЯЁа-яё]?|[А-ЯЁа-яё]))?"
         city_name = r"[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁа-яЁё-]+){0,2}"
         title_place = r"[А-ЯЁ][А-Яа-яЁё-]*(?:[ \t]+[А-ЯЁ][А-Яа-яЁё-]+){0,2}"
         region_suffix = r"(?i:автономная[ \t]+область|автономный[ \t]+округ|область|обл\.?|край|республика)"
@@ -428,7 +428,8 @@ class Anonymizer:
         address_join = rf"(?:{address_comma}|{address_hws}+)"
         strong_street_type = (
             r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|"
-            r"пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд)"
+            r"пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд|"
+            r"аллея|алл\.)"
         )
         ambiguous_street_type = r"(?i:пр\.?)"
         bounded_street_type = rf"(?:{strong_street_type}|{ambiguous_street_type})"
@@ -444,7 +445,7 @@ class Anonymizer:
         type_name_join = rf"(?:{address_hws}+|(?<=\.))"
         bounded_street_core = (
             rf"(?:{bounded_street_type}{type_name_join}{bounded_street_name}|"
-            rf"{extended_street_name}{address_hws}+{bounded_street_type})"
+            rf"{strict_street_name}{address_hws}+{bounded_street_type})"
         )
         strict_street_core = (
             rf"(?:{strong_street_type}{type_name_join}{strict_street_name}|"
@@ -452,7 +453,7 @@ class Anonymizer:
         )
         house_no = (
             rf"\d{{1,5}}{address_hws}*[А-ЯЁа-яё]?"
-            rf"(?:[/-]\d{{1,5}}[А-ЯЁа-яё]?)?"
+            rf"(?:[/-](?:\d{{1,5}}[А-ЯЁа-яё]?|[А-ЯЁа-яё]))?"
         )
         primary_house_designator = r"(?i:д(?:ом)?|зд(?:ание)?|вл(?:адение)?)"
         labelled_house = (
@@ -476,7 +477,8 @@ class Anonymizer:
             rf"{building_designator}\.?{address_hws}*"
             rf"(?:,{address_hws}*)?{building_value}"
         )
-        building_tail = rf"(?:{address_comma}{building_part}){{0,8}}"
+        building_tail_separator = rf"(?:{address_comma}|{address_hws}+)"
+        building_tail = rf"(?:{building_tail_separator}{building_part}){{0,8}}"
 
         bounded_title_place = (
             rf"[А-ЯЁ][А-Яа-яЁё-]*(?:{address_hws}+[А-ЯЁ][А-Яа-яЁё-]+){{0,2}}"
@@ -543,8 +545,21 @@ class Anonymizer:
                 return True
             if typed_geography_evidence.search(value):
                 return True
-            prefix = source[max(0, match.start(1) - 24):match.start(1)]
-            return re.search(r"(?i)\bадрес(?:у|а|е)?\s*[:—-]?\s*$", prefix) is not None
+            prefix = source[max(0, match.start(1) - 500):match.start(1)]
+            if re.search(r"(?i)\bадрес(?:у|а|е)?\s*[:—-]?\s*$", prefix):
+                return True
+            list_context = re.search(
+                r"(?i)\b(?:по\s+)?адресам\s*[:—-]?"
+                r"[^\r\n\ufdd0\ufdd3;!?…]{0,450}$",
+                prefix,
+            )
+            if list_context is None:
+                return False
+            return re.search(
+                rf"\d{{1,5}}(?:[А-ЯЁа-яё]|[/-](?:\d{{1,5}}[А-ЯЁа-яё]?|[А-ЯЁа-яё]))?"
+                rf"\.(?={address_hws}+[А-ЯЁ0-9])",
+                list_context.group() + value[:1],
+            ) is None
 
         add(
             rf"(?<![А-Яа-яЁё0-9])({bounded_full_address})(?![А-Яа-яЁё0-9])",
@@ -559,6 +574,15 @@ class Anonymizer:
         add(
             rf"\b(?:по{address_hws}+)?адрес(?:у|а|е)?{address_hws}*"
             rf"[:—-]?{address_hws}*({labelled_bounded_address})",
+            "АДРЕС", 100, group=1, flags=0,
+            canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
+        )
+        contextual_untyped_address = (
+            rf"{strict_street_name}{address_comma}{labelled_house}{building_tail}"
+        )
+        add(
+            rf"\b(?:по{address_hws}+)?адрес(?:у|а|е)?{address_hws}*"
+            rf"[:—-]?{address_hws}*({contextual_untyped_address})",
             "АДРЕС", 100, group=1, flags=0,
             canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
         )

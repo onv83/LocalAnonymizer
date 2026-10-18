@@ -491,6 +491,85 @@ def test_complete_address_record_consumes_reordered_geography_and_building_tail(
     assert result.mapping == {"[АДРЕС-1]": source}
 
 
+def test_contextual_russian_address_variants_are_redacted_as_complete_values():
+    addresses = (
+        "Макетный пер. д.3",
+        "Проверочный бульвар д.13 стр.1",
+        "1-ый Лабораторный пр. д.1 стр.3",
+        "Пробная аллея д.2/д",
+        "Малый Контрольный пер. д.7",
+        "Большая Испытательная, д.46",
+    )
+    source = (
+        "Площадки расположены по адресам "
+        + ", ".join(addresses[:4])
+        + ", и "
+        + addresses[4]
+        + ", используется макет. Площадка расположена по адресу "
+        + addresses[5]
+        + "."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    address_mapping = {
+        marker: original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[АДРЕС-")
+    }
+    assert set(address_mapping.values()) == set(addresses)
+    assert len(address_mapping) == len(addresses)
+    assert all(address not in result.text for address in addresses)
+    assert "Площадки расположены по адресам" in result.text
+    assert "Площадка расположена по адресу" in result.text
+    restored = result.text
+    for marker, original in address_mapping.items():
+        restored = restored.replace(marker, original)
+    assert restored == source
+
+
+def test_address_context_does_not_turn_project_prose_into_an_address():
+    source = (
+        "Пр. Завершён, д. 12. "
+        "Материалы отправлены по адресу электронной почты, д. 46."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert not any(marker.startswith("[АДРЕС-") for marker in result.mapping)
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    (
+        "Пр. Завершён, д. 12.",
+        "1-ый Проектный пр. д. 12.",
+    ),
+)
+def test_address_list_context_stops_at_a_sentence_boundary(suffix):
+    address = "Макетный пер. д.3"
+    source = f"Площадки расположены по адресам {address}. {suffix}"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == f"Площадки расположены по адресам [АДРЕС-1]. {suffix}"
+    assert result.mapping == {"[АДРЕС-1]": address}
+
+
+def test_address_list_context_accepts_a_dotted_street_type_before_an_ambiguous_item():
+    addresses = (
+        "ул. Макетная, д.3",
+        "1-ый Лабораторный пр. д.1 стр.3",
+    )
+    source = "Площадки расположены по адресам " + ", ".join(addresses) + "."
+
+    result = Anonymizer().anonymize(source)
+
+    assert set(result.mapping.values()) == set(addresses)
+    assert result.text == "Площадки расположены по адресам [АДРЕС-1], [АДРЕС-2]."
+
+
 def test_ambiguous_geography_like_fragments_stay_visible_without_inventory_row_context():
     separator = "\ufdd0"
     source = separator.join((
