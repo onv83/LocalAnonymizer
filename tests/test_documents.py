@@ -322,6 +322,42 @@ def test_docx_vm_inventory_names_are_removed_from_package_and_restore_exactly(tm
     assert restored_values == vm_names
 
 
+def test_docx_server_inventory_name_column_is_anonymized_and_restores_byte_exactly(tmp_path):
+    source = tmp_path / "server-inventory-source.docx"
+    anonymized = tmp_path / "server-inventory-anonymized.docx"
+    restored = tmp_path / "server-inventory-restored.docx"
+    server_names = ["q1234-qz01", "1234-lb02-2", "zx23"]
+    document = Document()
+    table = document.add_table(rows=1, cols=4)
+    for index, value in enumerate((
+        "Наименование", "Программное обеспечение", "IP адрес", "ИТ-сервис",
+    )):
+        table.rows[0].cells[index].text = value
+    for index, name in enumerate(server_names, start=11):
+        cells = table.add_row().cells
+        for position, value in enumerate((
+            name, "Sample Linux", f"192.0.2.{index}", "Тестовый сервис",
+        )):
+            cells[position].text = value
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    package_xml = _all_xml(anonymized)
+    assert all(name.encode() not in package_xml for name in server_names)
+    assert set(server_names) <= set(result.mapping.values())
+    output = Document(anonymized).tables[0]
+    assert all(row.cells[0].text.startswith("[УЗЕЛ-") for row in output.rows[1:])
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_hard_line_breaks_do_not_join_server_names_to_preceding_ips(tmp_path):
     source = tmp_path / "line-break-source.docx"
     anonymized = tmp_path / "line-break-anonymized.docx"

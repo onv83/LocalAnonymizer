@@ -108,6 +108,42 @@ def _complete_postal_address_self_test(anonymizer=None) -> bool:
     return result.text == expected_text and result.mapping == expected_mapping
 
 
+def _server_inventory_name_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    names = (
+        "s1234-qzx01",
+        "V2345-LAB02-1",
+        "q3456-dv03",
+        "3456-lb04-2",
+        "zx23",
+    )
+    rows = [
+        cell.join(("Наименование", "Программное обеспечение", "IP адрес", "ИТ-сервис")),
+        cell.join((names[2], "Sample Linux", "192.0.2.31", "Тестовый сервис")),
+        cell.join((names[3], "Sample Linux", "192.0.2.32", "Тестовый сервис")),
+        cell.join((names[4], "Sample Linux", "192.0.2.33", "Тестовый сервис")),
+    ]
+    source = f"{names[0]} {names[1]}\n{table}{row.join(rows)}{table}"
+    result = detector.anonymize(source)
+    node_values = [
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    ]
+    restored = result.text
+    for marker, original in sorted(result.mapping.items(), key=lambda item: len(item[0]), reverse=True):
+        restored = restored.replace(marker, original)
+    return (
+        len(node_values) == len(names)
+        and set(node_values) == set(names)
+        and all(name not in result.text for name in names)
+        and restored == source
+    )
+
+
 class AppApi:
     def __init__(
         self,
@@ -553,6 +589,7 @@ class AppApi:
         )
         address_inventory_ok = _address_inventory_self_test()
         address_postal_variants_ok = _complete_postal_address_self_test()
+        server_inventory_name_ok = _server_inventory_name_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -566,6 +603,7 @@ class AppApi:
                 and port_ok
                 and address_inventory_ok
                 and address_postal_variants_ok
+                and server_inventory_name_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
@@ -575,6 +613,7 @@ class AppApi:
             "port_ok": port_ok,
             "address_inventory_ok": address_inventory_ok,
             "address_postal_variants_ok": address_postal_variants_ok,
+            "server_inventory_name_ok": server_inventory_name_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,
             "git_revision": BUILD_GIT_REVISION,

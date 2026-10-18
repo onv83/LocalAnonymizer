@@ -59,6 +59,19 @@ def test_complete_postal_address_self_test_requires_every_variant():
     assert app_module._complete_postal_address_self_test(PartialDetector()) is False
 
 
+def test_server_inventory_name_self_test_requires_standalone_and_table_context_patterns():
+    assert app_module._server_inventory_name_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, _source):
+            return SimpleNamespace(
+                text="[УЗЕЛ-1]",
+                mapping={"[УЗЕЛ-1]": "s1234-qzx01"},
+            )
+
+    assert app_module._server_inventory_name_self_test(PartialDetector()) is False
+
+
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     index = asset_path("index-v1.8.18.html")
@@ -77,6 +90,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["port_ok"] is True
     assert summary["address_inventory_ok"] is True
     assert summary["address_postal_variants_ok"] is True
+    assert summary["server_inventory_name_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
 
@@ -759,9 +773,9 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
     assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
-    assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row}' in css
-    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr;' in css
-    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
+    assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row;flex-wrap:wrap}' in css
+    assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;padding:6px 8px}' in css
 
 
 def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_panes():
@@ -773,7 +787,51 @@ def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_pan
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
-def test_populated_review_keeps_heading_and_action_help_readable():
+def test_review_action_buttons_use_tooltips_without_adjacent_help_and_hide_sits_after_next():
+    expectations = (
+        (
+            "index-v1.8.18.html",
+            "Заменить все одинаковые вхождения маркерами и добавить это значение в дополнительные правила",
+            "Оставить текущий фрагмент и добавить это значение в белый список",
+            "Все одинаковые вхождения будут заменены маркерами; правило будет добавлено в текущие настройки.",
+            "Текущий фрагмент останется без изменения; значение будет добавлено в белый список.",
+        ),
+        (
+            "index-en-v1.8.18.html",
+            "Replace all matching occurrences with markers and add this value to additional rules",
+            "Keep the current item and add its value to the allowlist",
+            "All matching occurrences will be replaced with markers; the rule will be added to the current settings.",
+            "The current item will remain unchanged; its value will be added to the allowlist.",
+        ),
+    )
+
+    for asset_name, hide_title, keep_title, hide_help, keep_help in expectations:
+        html = asset_path(asset_name).read_text(encoding="utf-8")
+        navigation = html.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
+        actions = html.split('<div class="review-actions">', 1)[1].split(
+            '<div id="reviewDecision"', 1
+        )[0]
+
+        assert navigation.index('id="reviewNext"') < navigation.index('id="hideCandidate"')
+        assert (
+            f'id="hideCandidate" title="{hide_title}" '
+            'aria-describedby="hideCandidateHelp"'
+        ) in navigation
+        assert (
+            f'<span id="hideCandidateHelp" class="sr-only">{hide_help}</span>'
+        ) in navigation
+        assert 'id="hideCandidate"' not in actions
+        assert (
+            f'id="keepCandidate" title="{keep_title}" '
+            'aria-describedby="keepCandidateHelp"'
+        ) in actions
+        assert (
+            f'<span id="keepCandidateHelp" class="sr-only">{keep_help}</span>'
+        ) in actions
+        assert "<small>" not in actions
+
+
+def test_populated_review_keeps_heading_and_remaining_action_compact():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     base_css = css.split("@media", 1)[0]
@@ -784,11 +842,11 @@ def test_populated_review_keeps_heading_and_action_help_readable():
     assert 'body[data-design="new"] .review-heading,body[data-design="new"] .review-controls-disclosure{grid-column:1/-1}' in css
     assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
     assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
-    assert 'body[data-design="new"] .review-actions{display:grid;grid-template-columns:1fr;' in css
-    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:start;gap:4px 8px;' in css
+    assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;padding:6px 8px}' in css
     assert 'body[data-design="new"] .review-actions button{justify-self:start;' in css
     assert '@media(max-width:800px){body[data-design="new"] .review{grid-template-columns:1fr}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:grid;grid-template-columns:1fr}' in css
+    assert 'body[data-design="new"] .review-actions{flex-direction:column}' in css
 
 
 def test_restore_steps_stack_on_narrow_screens_in_both_languages():
@@ -851,7 +909,7 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
     assert 'body[data-design="new"] .review-candidate .review-help{grid-column:1;grid-row:2}' in css
     assert 'body[data-design="new"] .review-candidate small{grid-column:2;grid-row:2}' in css
-    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{min-width:0;min-height:108px}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{min-width:0}' in css
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
@@ -1625,8 +1683,6 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
         "Автопоиск не уверен — выберите действие.",
         "Скрыть и запомнить правило",
         "Оставить и добавить в исключения",
-        "заменён маркером",
-        "останется без изменения",
         "Как закончить проверку",
     ):
         assert text in html

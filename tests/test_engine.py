@@ -803,6 +803,92 @@ def test_virtual_machine_inventory_names_with_compact_role_and_digits_are_anonym
     assert restored == source
 
 
+def test_server_inventory_names_with_site_number_and_compact_role_are_anonymized():
+    server_names = [
+        "s1234-qzx01",
+        "V2345-QZX02-1",
+        "s3456-lab03",
+        "v4567-dev04-12",
+    ]
+    source = "\n".join(server_names)
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(name not in result.text for name in server_names)
+    assert result.text.splitlines() == [f"[УЗЕЛ-{index}]" for index in range(1, 5)]
+    assert set(result.mapping.values()) == set(server_names)
+    restored = result.text
+    for marker, value in result.mapping.items():
+        restored = restored.replace(marker, value)
+    assert restored == source
+
+
+def test_server_inventory_table_context_redacts_structured_and_short_name_cells():
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    cell = "\ufdd0"
+    rows = [
+        cell.join(("Наименование", "IP адрес", "Программное обеспечение", "ИТ-сервис")),
+        cell.join(("q1234-qz01", "192.0.2.11", "Sample Linux", "Тестовый сервис")),
+        cell.join(("1234-lb02-2", "192.0.2.12", "Sample Linux", "Тестовый сервис")),
+        cell.join(("zx23", "192.0.2.13", "Sample Linux", "Тестовый сервис")),
+        cell.join(("q1234-qzİ01", "192.0.2.14", "Sample Linux", "Тестовый сервис")),
+    ]
+    source = table + row.join(rows) + table
+
+    result = Anonymizer().anonymize(source)
+
+    server_names = {"q1234-qz01", "1234-lb02-2", "zx23"}
+    assert all(name not in result.text for name in server_names)
+    assert result.text.count("[УЗЕЛ-") == len(server_names)
+    assert server_names <= set(result.mapping.values())
+    assert "q1234-qzİ01" in result.text
+    for separator in ("\ufdd0", "\ufdd1", "\ufdd2"):
+        assert result.text.count(separator) == source.count(separator)
+
+
+def test_server_inventory_pattern_does_not_capture_unrelated_codes():
+    source = (
+        "Документ a1234-qzx01; план 1234-lb02-2; код zx23; "
+        "версия s1234-qzx1; пакет v1234-report01; "
+        "unicode s1234-qzİ01 s1234-qzı01 s1234-qzſ01 s1234-qzK01."
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_server_inventory_table_requires_semantic_supporting_columns():
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    cell = "\ufdd0"
+    source = table + row.join((
+        cell.join(("Наименование", "IP адрес", "Стоимость", "Статус")),
+        cell.join(("q1234-qz01", "192.0.2.21", "100", "готово")),
+        cell.join(("zx23", "192.0.2.22", "200", "готово")),
+    )) + table
+
+    result = Anonymizer().anonymize(source)
+
+    assert "q1234-qz01" in result.text
+    assert "zx23" in result.text
+    assert "[УЗЕЛ-" not in result.text
+
+
+def test_server_inventory_names_respect_disabled_and_compact_node_category():
+    source = "s1234-qzx01"
+
+    disabled = Anonymizer(disabled_categories={"УЗЕЛ"}).anonymize(source)
+    compact = Anonymizer(compact_markers=True).anonymize(source)
+
+    assert disabled.text == source
+    assert disabled.mapping == {}
+    assert compact.text == "[УЗЛ-1]"
+    assert compact.mapping == {"[УЗЛ-1]": source}
+
+
 def test_compact_vm_case_variants_receive_distinct_reversible_markers():
     source = "qzx-monitor0101 QZX-MONITOR0101"
 

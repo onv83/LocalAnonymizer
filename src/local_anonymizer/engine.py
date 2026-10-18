@@ -814,6 +814,10 @@ class Anonymizer:
         # suffix, without a delimiter before the numeric instance identifier.
         add(r"(?<![\w.@:-])[a-z0-9]{2,15}[-_](?:monitor|repo|print|fs|journal)\d{1,8}(?![\w-])", "УЗЕЛ", 83,
             canonical=lambda m: m.group(), case_sensitive_canonical=True)
+        # Physical/virtual server inventories use an S/V prefix, a four-digit
+        # site code, and a compact alphabetic role plus a two-digit instance.
+        add(r"(?<![\w.@:-])(?a:[sv]\d{4}-[a-z]{2,4}\d{2}(?:-\d{1,2})?)(?![\w-])", "УЗЕЛ", 84,
+            canonical=lambda m: m.group(), case_sensitive_canonical=True)
         add(r"(?<![\w.@:-])(?:adc\d+|ad-dns-\d+)(?![\w-])", "УЗЕЛ", 84,
             canonical=lambda m: m.group().casefold())
 
@@ -920,6 +924,83 @@ class Anonymizer:
                     return spans
                 spans.append((start, end, value[start:end]))
                 start = end + len(delimiter)
+
+        if "УЗЕЛ" not in self.disabled_categories and table_boundary in source:
+            contextual_server_name = re.compile(
+                r"(?a:(?:[a-z]?\d{4}-[a-z]{2,4}\d{2}(?:-\d{1,2})?|[a-z]{2}\d{2}))",
+                re.I,
+            )
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                header = None
+                for index, (_, _, row_text) in enumerate(rows):
+                    cells = split_spans(row_text, "\ufdd0")
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    name_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(
+                            r"(?:наименование|имя\s+(?:сервера|узла|хоста)|сервер)",
+                            heading,
+                            re.I,
+                        )
+                    ), None)
+                    ip_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"IP[\s-]*адрес", heading, re.I)
+                    ), None)
+                    supporting_columns = any(
+                        re.search(
+                            r"(?:программ\w*\s+обеспечен\w*|software|ИТ[\s-]*сервис)",
+                            heading,
+                            re.I,
+                        )
+                        for heading in headings
+                    )
+                    if (
+                        name_index is not None
+                        and ip_index is not None
+                        and name_index != ip_index
+                        and supporting_columns
+                    ):
+                        header = (index, len(cells), name_index, ip_index)
+                        break
+                if header is None:
+                    continue
+                header_row, column_count, name_index, ip_index = header
+                for row_offset, _, row_text in rows[header_row + 1:]:
+                    cells = split_spans(row_text, "\ufdd0")
+                    if len(cells) != column_count:
+                        continue
+                    ip_value = re.sub(
+                        r"\s+", "", cells[ip_index][2].replace(intra_cell_boundary, "")
+                    )
+                    if not (_valid_ip(ip_value) or re.fullmatch(r"\[IP-\d+\]", ip_value)):
+                        continue
+                    cell_start, _cell_end, raw = cells[name_index]
+                    meaningful = [
+                        position for position, char in enumerate(raw)
+                        if char != intra_cell_boundary and not char.isspace()
+                    ]
+                    if not meaningful:
+                        continue
+                    local_start, local_end = meaningful[0], meaningful[-1] + 1
+                    value = raw[local_start:local_end]
+                    if intra_cell_boundary in value or not contextual_server_name.fullmatch(value):
+                        continue
+                    left = current_start + row_offset + cell_start + local_start
+                    right = current_start + row_offset + cell_start + local_end
+                    found.append(Detection(
+                        left, right, "УЗЕЛ", 88, value, value,
+                        scope_start=left, scope_end=right,
+                        case_sensitive_canonical=True,
+                    ))
+                    exact_aliases.append((value, value, "УЗЕЛ", True))
 
         if "ПРОГРАММА" not in self.disabled_categories and table_boundary in source:
             block_start = 0
