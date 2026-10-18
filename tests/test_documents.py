@@ -699,6 +699,37 @@ def test_docx_server_inventory_names_split_inside_one_cell_are_one_node_and_rest
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_underscored_service_accounts_across_runs_and_hard_break_restore_exactly(tmp_path):
+    source = tmp_path / "service-account-source.docx"
+    anonymized = tmp_path / "service-account-anonymized.docx"
+    restored = tmp_path / "service-account-restored.docx"
+    accounts = ("SvcQXZ-DB_Backup", "SvcRTY-File_Sync")
+    document = Document()
+    paragraph = document.add_paragraph("Примеры:\n")
+    paragraph.add_run("SvcQXZ-")
+    paragraph.add_run("DB_").bold = True
+    paragraph.add_run("Backup")
+    paragraph.add_run().add_break()
+    paragraph.add_run(accounts[1])
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0].text
+    assert all(account not in output for account in accounts)
+    assert output.count("[ЛОГИН-") == 2
+    assert set(accounts) <= {value.replace("\n", "") for value in result.mapping.values()}
+    assert all(account.encode() not in _all_xml(anonymized) for account in accounts)
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_hard_line_breaks_do_not_join_server_names_to_preceding_ips(tmp_path):
     source = tmp_path / "line-break-source.docx"
     anonymized = tmp_path / "line-break-anonymized.docx"

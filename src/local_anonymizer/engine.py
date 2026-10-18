@@ -1477,8 +1477,9 @@ class Anonymizer:
 
         # Login/account names are reversible, unlike passwords.
         add(
-            r"(?<![\w@./\\-])(Svc[A-Z]{2,8}-(?=[A-Za-z]{4,30}(?![\w@/\\-]|\.[A-Za-z0-9]))"
-            r"(?=[A-Za-z]*[A-Z])(?=[A-Za-z]*[a-z])[A-Za-z]{4,30})(?![\w@/\\-]|\.[A-Za-z0-9])",
+            r"(?<![\w@./\\-])(Svc[A-Z]{2,8}-(?=[A-Za-z_]{4,30}(?![\w@/\\-]|\.[A-Za-z0-9]))"
+            r"(?=[A-Za-z_]*[A-Z])(?=[A-Za-z_]*[a-z])[A-Za-z](?:[A-Za-z_]{2,28}[A-Za-z]))"
+            r"(?![\w@/\\-]|\.[A-Za-z0-9])",
             "ЛОГИН", 86, group=1, flags=0,
             canonical=lambda m: m.group(1), case_sensitive_canonical=True,
         )

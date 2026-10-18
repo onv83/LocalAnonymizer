@@ -307,13 +307,20 @@ def _device_inventory_identifier_self_test(anonymizer=None) -> bool:
 
 def _service_account_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
-    account = "SvcQAZ-BackupTask"
+    account = "SvcQXZ-DB_Backup"
     source = f"{account} {account}"
     result = detector.anonymize(source)
+    disabled = Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(account)
+    bounded = Anonymizer(
+        disabled_categories={"ДОМЕН", "ССЫЛКА", "ПОЧТА", "ПУТЬ"}
+    ).anonymize(f"user@{account}.example.test /{account}/log")
     return (
         result.text == "[ЛОГИН-1] [ЛОГИН-1]"
         and result.mapping == {"[ЛОГИН-1]": account}
         and result.counts.get("ЛОГИН") == 2
+        and disabled.text == account
+        and disabled.mapping == {}
+        and "[ЛОГИН-" not in bounded.text
     )
 
 

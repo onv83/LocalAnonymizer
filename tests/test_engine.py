@@ -839,11 +839,27 @@ def test_service_account_with_site_code_is_one_bounded_login_marker():
     assert Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(account).text == account
 
 
+def test_service_account_assignment_with_internal_underscore_is_one_login_marker():
+    account = "SvcQXZ-DB_Backup"
+    source = f"Пример: {account}. Повтор: {account}."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Пример: [ЛОГИН-1]. Повтор: [ЛОГИН-1]."
+    assert result.mapping == {"[ЛОГИН-1]": account}
+    assert result.counts["ЛОГИН"] == 2
+    disabled = Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(account)
+    assert disabled.text == account
+    assert disabled.mapping == {}
+
+
 def test_service_account_rule_does_not_capture_embedded_or_malformed_tokens():
     source = (
         "xSvcQAZ-BackupTask SvcQAZ-BackupTask9 "
         "SvcQaZ-BackupTask SvcQAZ-backuptask "
-        "user@SvcQAZ-BackupTask.example.test /SvcQAZ-BackupTask/log"
+        "user@SvcQAZ-BackupTask.example.test /SvcQAZ-BackupTask/log "
+        "xSvcQXZ-DB_Backup SvcQXZ-DB_Backup.example.test "
+        "user@SvcQXZ-DB_Backup.example.test /SvcQXZ-DB_Backup/log"
     )
 
     result = Anonymizer(disabled_categories={"ДОМЕН", "ССЫЛКА", "ПОЧТА", "ПУТЬ"}).anonymize(source)
