@@ -195,6 +195,8 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_inventory_ok"] is True
     assert summary["address_postal_variants_ok"] is True
     assert summary["address_contextual_variants_ok"] is True
+    assert summary["compound_policy_abbreviation_ok"] is True
+    assert summary["contextual_location_table_ok"] is True
     assert summary["server_inventory_name_ok"] is True
     assert summary["split_server_inventory_name_ok"] is True
     assert summary["semantic_server_capacity_node_ok"] is True
@@ -413,6 +415,8 @@ def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languag
             assert f'aria-labelledby="settingsTab-{panel}"' in html
         assert 'id="rules"' in html
         assert 'id="whitelist"' in html
+        assert html.count('class="settings-nav-chevron" aria-hidden="true"') == 3
+        assert html.count('<span class="settings-nav-label">') == 3
 
     for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
@@ -420,6 +424,16 @@ def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languag
         assert "tab.addEventListener('click'" in javascript
         assert "tab.addEventListener('keydown'" in javascript
         assert "initSettingsTabs();" in javascript
+
+
+def test_settings_navigation_chevrons_are_right_facing_and_do_not_steal_accessibility_names():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert ".settings-nav-chevron" in css
+    assert "margin-inline-start:auto" in css
+    assert "flex:0 0 auto" in css
+    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(filename).read_text(encoding="utf-8")
+        assert html.count('aria-hidden="true">›</span>') == 3
 
 
 def test_manual_review_decision_buttons_are_grouped_without_visible_helper_labels():

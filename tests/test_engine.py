@@ -1115,3 +1115,160 @@ def test_literal_markers_do_not_collide_and_reprocessing_is_idempotent():
     assert second.text == first.text and second.mapping == {}
     restored = first.text.replace("[ФИО-2]", first.mapping["[ФИО-2]"])
     assert restored == source
+
+
+def test_compound_policy_identifiers_are_replaced_as_one_abbreviation():
+    values = (
+        "QA-IT-RefreshCache",
+        "34ZX-NW-DeviceLock_All",
+        "QA-IT-info_previous_events",
+        "51LM-NW-Policy07",
+        "QA-IT-CM_5.0.8692_ClientInstall",
+    )
+    source = " ".join(values)
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == " ".join(
+        f"[СОКРАЩЕНИЯ-{index}]" for index in range(1, len(values) + 1)
+    )
+    assert result.mapping == {
+        f"[СОКРАЩЕНИЯ-{index}]": value
+        for index, value in enumerate(values, start=1)
+    }
+    disabled = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+    assert disabled.text == source
+    assert disabled.mapping == {}
+
+
+def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_email():
+    value = "QA-IT-RefreshCache"
+    source = (
+        f"x{value} {value}9 user@{value}.example.test "
+        f"https://example.test/{value} C:\\Temp\\{value} single-Part "
+        "IF-then-ELSE DO_not_DO QA-is-IT-policy "
+        "QA-is-\ufdd3IT-policy QA-IT-host.example "
+        "EU-UK-market IF-THEN-else AB-CD-example"
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-") and original == value
+        for marker, original in result.mapping.items()
+    )
+    assert "IF-then-ELSE" in result.text
+    assert "DO_not_DO" in result.text
+    assert "QA-is-IT-policy" in result.text
+    assert "QA-is-\ufdd3IT-policy" in result.text
+    assert "EU-UK-market" in result.text
+    assert "IF-THEN-else" in result.text
+    assert "AB-CD-example" in result.text
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-")
+        and original in {"QA-IT-host", "QA-IT-host.example"}
+        for marker, original in result.mapping.items()
+    )
+
+
+def test_repeated_short_compound_policy_names_in_one_table_column_are_abbreviations():
+    cell = "\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    values = ("QA-IT-Certs", "QA-IT-Screen", "QA-IT-Prestage")
+    source = table + row.join(
+        cell.join((str(index), value))
+        for index, value in enumerate(values, start=1)
+    ) + table
+
+    result = Anonymizer().anonymize(source)
+
+    assert set(result.mapping.values()) == set(values)
+    assert result.text.count("[СОКРАЩЕНИЯ-") == len(values)
+    disabled = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+    assert all(value in disabled.text for value in values)
+
+
+def test_contextual_location_table_redacts_site_name_and_hyphenated_avenue_address():
+    cell = "\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    headers = (
+        "Название", "Оператор A скорость", "Оператор B скорость",
+        "Часовой пояс", "Адрес",
+    )
+    first = (
+        "Макетинский", "30", "10", "+3",
+        "пр-кт (проспект) Проверочный, д. 37, г. Тестоградск, 344002",
+    )
+    second = (
+        "Контрольская площадка", "40", "8", "+5",
+        "ул. Лабораторная, д. 8, г. Образцовск, 614000",
+    )
+    account_row = (
+        "SvcQWE-DB_Backup", "50", "12", "+7",
+        "ул. Синтетическая, д. 4, г. Примерск, 630000",
+    )
+    source = table + row.join((
+        cell.join(headers), cell.join(first), cell.join(second), cell.join(account_row),
+    )) + table
+
+    result = Anonymizer().anonymize(source)
+
+    address_values = {
+        original for marker, original in result.mapping.items()
+        if marker.startswith("[АДРЕС-")
+    }
+    assert address_values == {
+        first[0], first[4], second[0], second[4], account_row[4],
+    }
+    assert all(value not in result.text for value in address_values)
+    assert any(
+        marker.startswith("[ЛОГИН-") and original == account_row[0]
+        for marker, original in result.mapping.items()
+    )
+    disabled = Anonymizer(disabled_categories={"АДРЕС"}).anonymize(source)
+    assert all(value in disabled.text for value in address_values)
+
+
+def test_hyphenated_avenue_with_optional_parenthetical_expansion_is_one_address():
+    values = (
+        "пр-кт Проверочный, д. 37, г. Тестоградск, 344002",
+        "пр-кт (проспект) Лабораторный, д. 8, г. Образцовск, 614000",
+    )
+
+    for value in values:
+        result = Anonymizer().anonymize(value)
+        assert result.text == "[АДРЕС-1]"
+        assert result.mapping == {"[АДРЕС-1]": value}
+
+
+def test_contextual_location_table_requires_address_semantics_and_does_not_cross_cells():
+    cell = "\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    ordinary = table + row.join((
+        cell.join(("Название", "Описание")),
+        cell.join(("Макетинский", "Демонстрационный профиль")),
+    )) + table
+    malformed_address = table + row.join((
+        cell.join(("Название", "Адрес")),
+        cell.join(("Контрольский", "https://example.test/path")),
+    )) + table
+    commercial = table + row.join((
+        cell.join(("Название", "Канал продаж", "Адрес")),
+        cell.join((
+            "Стандартный Тариф", "Онлайн",
+            "ул. Проверочная, д. 8, г. Образцовск, 614000",
+        )),
+    )) + table
+
+    result = Anonymizer().anonymize(ordinary + malformed_address + commercial)
+
+    assert "Макетинский" in result.text
+    assert "Контрольский" in result.text
+    assert "Стандартный Тариф" in result.text
+    assert not any(
+        original in {"Макетинский", "Контрольский"}
+        for original in result.mapping.values()
+    )

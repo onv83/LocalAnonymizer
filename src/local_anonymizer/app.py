@@ -167,6 +167,47 @@ def _contextual_address_self_test(anonymizer=None) -> bool:
     )
 
 
+def _compound_policy_abbreviation_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    values = ("QA-IT-RefreshCache", "34ZX-NW-DeviceLock_All")
+    result = detector.anonymize(" ".join(values))
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    short_values = ("QA-IT-Certs", "QA-IT-Screen")
+    table_source = table + row.join(
+        cell.join((str(index), value))
+        for index, value in enumerate(short_values, start=1)
+    ) + table
+    table_result = detector.anonymize(table_source)
+    return (
+        list(result.mapping.values()) == list(values)
+        and result.text == "[СОКРАЩЕНИЯ-1] [СОКРАЩЕНИЯ-2]"
+        and set(table_result.mapping.values()) == set(short_values)
+    )
+
+
+def _contextual_location_table_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    name = "Макетинский"
+    address = "пр-кт (проспект) Проверочный, д. 37, г. Тестоградск, 344002"
+    headers = (
+        "Название", "Оператор A скорость", "Оператор B скорость",
+        "Часовой пояс", "Адрес",
+    )
+    values = (name, "30", "10", "+3", address)
+    source = table + cell.join(headers) + row + cell.join(values) + table
+    result = detector.anonymize(source)
+    address_values = {
+        original for marker, original in result.mapping.items()
+        if marker.startswith("[АДРЕС-")
+    }
+    return address_values == {name, address}
+
+
 def _server_inventory_name_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     cell = "\ufdd0"
@@ -848,6 +889,8 @@ class AppApi:
         address_inventory_ok = _address_inventory_self_test()
         address_postal_variants_ok = _complete_postal_address_self_test()
         address_contextual_variants_ok = _contextual_address_self_test()
+        compound_policy_abbreviation_ok = _compound_policy_abbreviation_self_test()
+        contextual_location_table_ok = _contextual_location_table_self_test()
         server_inventory_name_ok = _server_inventory_name_self_test()
         split_server_inventory_name_ok = _split_server_inventory_name_self_test()
         semantic_server_capacity_node_ok = _semantic_server_capacity_node_self_test()
@@ -872,6 +915,8 @@ class AppApi:
                 and address_inventory_ok
                 and address_postal_variants_ok
                 and address_contextual_variants_ok
+                and compound_policy_abbreviation_ok
+                and contextual_location_table_ok
                 and server_inventory_name_ok
                 and split_server_inventory_name_ok
                 and semantic_server_capacity_node_ok
@@ -892,6 +937,8 @@ class AppApi:
             "address_inventory_ok": address_inventory_ok,
             "address_postal_variants_ok": address_postal_variants_ok,
             "address_contextual_variants_ok": address_contextual_variants_ok,
+            "compound_policy_abbreviation_ok": compound_policy_abbreviation_ok,
+            "contextual_location_table_ok": contextual_location_table_ok,
             "server_inventory_name_ok": server_inventory_name_ok,
             "split_server_inventory_name_ok": split_server_inventory_name_ok,
             "semantic_server_capacity_node_ok": semantic_server_capacity_node_ok,

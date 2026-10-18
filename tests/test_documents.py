@@ -1078,6 +1078,95 @@ def test_docx_single_two_letter_abbreviation_spans_runs_and_restores_byte_exactl
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_compound_policy_identifier_across_runs_and_hard_break_restores_exactly(tmp_path):
+    source = tmp_path / "compound-policy-source.docx"
+    anonymized = tmp_path / "compound-policy-anonymized.docx"
+    restored = tmp_path / "compound-policy-restored.docx"
+    prefix = "QA-IT-"
+    suffix = "RefreshCache"
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run(prefix[:3])
+    paragraph.add_run(prefix[3:]).bold = True
+    paragraph.add_run().add_break()
+    paragraph.add_run(suffix).italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).paragraphs[0].text
+    payload = _all_xml(anonymized)
+    assert output.count("[СОКРАЩЕНИЯ-") == 1
+    assert prefix not in output
+    assert suffix not in output
+    assert prefix.encode() not in payload
+    assert suffix.encode() not in payload
+    assert list(result.mapping.values()) == [prefix + "\n" + suffix]
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_contextual_location_table_redacts_name_and_address_and_restores_exactly(tmp_path):
+    source = tmp_path / "location-table-source.docx"
+    anonymized = tmp_path / "location-table-anonymized.docx"
+    restored = tmp_path / "location-table-restored.docx"
+    site = "Макетинская площадка"
+    address_parts = (
+        "пр-", "кт (проспект) ", "Проверочный, ",
+        "д. 37, г. Тестоградск, 344002",
+    )
+    address = "".join(address_parts)
+    document = Document()
+    table = document.add_table(rows=2, cols=5)
+    for cell, value in zip(
+        table.rows[0].cells,
+        (
+            "Название", "Оператор A скорость", "Оператор B скорость",
+            "Часовой пояс", "Адрес",
+        ),
+    ):
+        cell.text = value
+    row = table.rows[1].cells
+    name_paragraph = row[0].paragraphs[0]
+    name_paragraph.add_run(site[:5])
+    name_paragraph.add_run(site[5:]).bold = True
+    row[1].text = "30"
+    row[2].text = "10"
+    row[3].text = "+3"
+    address_paragraph = row[4].paragraphs[0]
+    address_paragraph.add_run(address_parts[0])
+    address_paragraph.add_run().add_break()
+    address_paragraph.add_run(address_parts[1]).italic = True
+    address_paragraph.add_run(address_parts[2])
+    address_paragraph.add_run(address_parts[3])
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).tables[0].rows[1].cells
+    assert output[0].text.startswith("[АДРЕС-")
+    assert output[4].text.startswith("[АДРЕС-")
+    payload = _all_xml(anonymized)
+    assert site.encode() not in payload
+    assert all(part.encode() not in payload for part in address_parts)
+    normalized_mapping = {value.replace("\n", "") for value in result.mapping.values()}
+    assert {site, address} <= normalized_mapping
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_toc_domains_with_attached_page_numbers_restore_byte_exactly(tmp_path):
     source = tmp_path / "toc-domains-source.docx"
     anonymized = tmp_path / "toc-domains-anonymized.docx"

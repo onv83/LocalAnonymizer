@@ -32,7 +32,9 @@ body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspa
 body[data-design="new"] .settings-panel>summary{font-weight:700;font-size:13px;letter-spacing:.04em}
 body[data-design="new"] .settings-workbench{display:grid;grid-template-columns:minmax(145px,.34fr) minmax(0,1fr);min-height:180px;margin-top:8px;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--surface)}
 body[data-design="new"] .settings-nav{display:flex;flex-direction:column;gap:2px;padding:6px;background:var(--surface-raised);border-right:1px solid var(--border)}
-body[data-design="new"] .settings-nav button{width:100%;min-height:34px;margin:0;padding:6px 8px;border-color:transparent;background:transparent;text-align:left}
+body[data-design="new"] .settings-nav button{display:flex;align-items:center;gap:8px;width:100%;min-height:34px;margin:0;padding:6px 8px;border-color:transparent;background:transparent;text-align:left}
+body[data-design="new"] .settings-nav-label{min-width:0;overflow-wrap:anywhere}
+body[data-design="new"] .settings-nav-chevron{margin-inline-start:auto;flex:0 0 auto;font-size:18px;line-height:1;opacity:.8}
 body[data-design="new"] .settings-nav button[aria-selected="true"]{background:var(--action-primary);border-color:var(--action-primary);color:#fff;font-weight:700}
 html[data-theme="dark"] body[data-design="new"] .settings-nav button[aria-selected="true"]{color:#07131e}
 body[data-design="new"] .settings-editor{min-width:0;padding:10px}

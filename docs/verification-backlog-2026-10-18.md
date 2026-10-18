@@ -36,9 +36,46 @@
 - **Источник:** новое сообщение и `image_f6f0fc.png`; реальные значения с изображения не сохраняются.
 - **Privacy-safe класс:** значения колонки с наименованиями узлов в семантической таблице, где рядом присутствуют IP-адрес, программное обеспечение и аппаратные характеристики.
 - **Корневая причина:** таблица уже распознавалась по заголовкам и валидному IP, но после этого применялся узкий словарь допустимых ролей в имени узла. Структурно корректные значения с другими кодами ролей оставались видимыми.
-- **Текущий статус:** RED подтверждён на прежнем detector; source GREEN подтверждён focused regressions (`30 passed`), полным suite (`635 passed`), category controls (`92/92`) и normal/`python -O` E2E/application-smoke/release gates. Pre-commit review, package/install и CI ещё открыты.
+- **Текущий статус:** ~~выполнено~~ — commit `a808c9b046dac75b6f4cba51b207eafbe2dcc97b`; source/package/install/CI/review gates пройдены, package и install совпадают побайтово.
 - **Требование:** после подтверждения семантики таблицы обезличивать всё bounded-значение ячейки колонки узлов как единый `УЗЕЛ`, не полагаясь на словарь ролей.
 - **Границы:** не объединять разные cells/rows; runs и внутренние hard breaks разрешены только внутри одной ячейки; необходим валидный IP в той же строке; URL, email, filesystem path, slash-suffix и значения с обычными внутренними пробелами не превращаются в `УЗЕЛ`, dotted hostname в подтверждённой ячейке поддерживается целиком.
 - **Приоритет:** точная семантика ячейки `УЗЕЛ` должна выигрывать у broad password/secret и `СОКРАЩЕНИЯ` fallback; при отключённой категории маркер `УЗЕЛ` не создаётся.
 - **Контроли:** отключение `УЗЕЛ` оставляет значения без `УЗЕЛ`-маркеров; обычные таблицы с колонкой «Наименование», но без серверной структуры, не затрагиваются.
 - **Приёмка:** отсутствие всех synthetic-фрагментов во всём DOCX ZIP, source immutability, byte-exact restoration, полный source/package/install/CI/review gate; `v0.2.9` не создаётся.
+
+## ~~B18 — составные технические идентификаторы как единые сокращения~~ ✅
+
+- **Источник:** текущее сообщение и privacy-safe structural analysis `image_993903.png`, `image_e43aff.png`, `image_ff843e.png`, `image_2d7af8.png`; реальные значения с изображений не сохраняются.
+- **Privacy-safe класс:** bounded policy/task identifiers из нескольких дефисных сегментов, смешанного регистра, цифр, точки и внутреннего `_`, включая длинный descriptive suffix.
+- **Корневая причина для проверки:** общий detector `СОКРАЩЕНИЯ` ищет uppercase-run внутри отдельных токенов и overlap resolution допускает частичную замену; он не гарантирует один маркер на весь составной identifier.
+- **Статус:** реализовано и source-verified; ambiguous code-code-label формы активируются только как повторяющийся namespace/scope в одном столбце, high-confidence standalone forms остаются bounded; свежий package/install строится из этого commit.
+- **Требование:** распознавать весь structurally valid identifier единым `СОКРАЩЕНИЯ`, а не отдельные сегменты; не хранить literals и не ограничиваться увиденными примерами.
+- **Границы:** не захватывать email, URL, filesystem paths, dotted hostnames, обычную прозу, соседние punctuation/cells/rows; поддержать DOCX runs/hard breaks только внутри одной semantic region.
+- **Приёмка:** synthetic RED/GREEN, один marker, category disablement, precedence, ZIP leakage scan, byte-exact restoration и packaged proof.
+
+## ~~B19 — контекстные названия площадок и расширенные адресные формы~~ ✅
+
+- **Источник:** текущее сообщение и privacy-safe structural analysis `image_99b90c.png`, `image_5d080c.png`; реальные адреса и названия с изображений не сохраняются.
+- **Privacy-safe класс:** топонимические/региональные прилагательные в колонке названия площадки рядом с колонкой `Адрес`; адреса с типами `ул`, `пер`, `стр`, `д`, `пр-кт` и аналогами, включая parenthetical expansion между типом и названием.
+- **Корневая причина для проверки:** существующее address правило ориентируется на прямую последовательность типа улицы и названия и не использует семантику парных колонок; hyphenated type и вставка в скобках разрывают шаблон.
+- **Статус:** реализовано и source-verified; семантика требует парные `Название`/`Адрес` и speed/time-zone support, account identifiers сохраняют приоритет `ЛОГИН`; свежий package/install строится из этого commit.
+- **Требование:** в подтверждённой location table обезличивать название площадки как `АДРЕС` и весь bounded address-cell как один `АДРЕС`; вне таблиц поддержать contextual street-type grammar, включая дефисные сокращения и parenthetical expansion.
+- **Границы:** не считать любое прилагательное адресом без cues; не пересекать cells/rows; URL/email/path/account identifiers не захватывать; category disablement обязателен.
+- **Приёмка:** synthetic morphologic variants вместо словаря конкретных регионов, RED/GREEN, split-run/hard-break tests, negatives, ZIP leakage scan, restoration и packaged proof.
+
+## ~~B20 — стрелки у навигации словарных настроек~~ ✅
+
+- **Источник:** текущее сообщение и `image_104ff0.png`, `image_71560d.png`.
+- **Проблема:** элементы `Профиль словаря`, `Скрывать дополнительно`, `Белый список` выглядят как статические labels и не показывают, что открывают отдельные панели.
+- **Статус:** реализовано в RU/EN; browser layout-check на ширине 784 px подтвердил три `›`, active state, keyboard tabindex и отсутствие horizontal overflow; свежий package/install строится из этого commit.
+- **Требование:** у каждого пункта справа показывать chevron `›`; у активного пункта сохранять стрелку и явное active-state оформление; английский интерфейс получает тот же affordance и доступное имя.
+- **Границы:** стрелка не должна сжимать/обрезать текст, создавать горизонтальный overflow или ломать keyboard navigation/focus-visible на узкой и широкой ширине.
+- **Приёмка:** RU/EN static contract, headless layout/accessibility regression и packaged UI proof.
+
+## ~~B21 — обобщённое правило service-account с внутренним `_`~~ ✅
+
+- **Источник:** текущее сообщение и privacy-safe structural analysis `image_22c6ce.png`; реальное значение не сохраняется.
+- **Текущий статус:** structural detector из B16 повторно проверен synthetic variants, precedence и package-smoke contract; literals из документа отсутствуют; свежий package/install строится из этого commit.
+- **Требование:** схема `service-prefix + site-code + '-' + mixed-case purpose`, допускающая внутренний `_`, определяется целиком как `ЛОГИН`; одинаковые значения используют один marker.
+- **Границы:** bounded matching, category disablement, semantic precedence, DOCX runs/hard breaks внутри одной region; email/URL/path/embedded longer token исключены.
+- **Приёмка:** повторная regression/package proof; без example-specific hardcode.

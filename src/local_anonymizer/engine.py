@@ -103,6 +103,44 @@ def _is_short_abbreviation(value: str) -> bool:
     return uppercase_letters == 2
 
 
+def _compound_abbreviation_parts(value: str) -> list[str] | None:
+    logical = value.replace("\ufdd3", "")
+    parts = re.split(r"[-_]", unicodedata.normalize("NFC", logical))
+    if len(parts) < 3 or any(not part for part in parts):
+        return None
+
+    def is_code_field(part: str) -> bool:
+        letters = [char for char in part if unicodedata.category(char).startswith("L")]
+        return (
+            len(letters) >= 2
+            and all(unicodedata.category(char) == "Lu" for char in letters)
+        )
+
+    if not (is_code_field(parts[0]) and is_code_field(parts[1])):
+        return None
+    return parts
+
+
+def _is_compound_abbreviation(value: str) -> bool:
+    """Return true for a high-confidence standalone compound policy ID."""
+    parts = _compound_abbreviation_parts(value)
+    if parts is None:
+        return False
+    logical = value.replace("\ufdd3", "")
+    suffix = "-".join(parts[2:])
+    has_internal_upper = any(
+        char.isupper() and index > 0
+        for index, char in enumerate(suffix)
+    )
+    return (
+        any(char.isdigit() for char in logical)
+        or "_" in logical
+        or "." in logical
+        or logical.count("-") + logical.count("_") >= 3
+        or has_internal_upper
+    )
+
+
 @dataclass(frozen=True)
 class Detection:
     start: int
@@ -427,7 +465,7 @@ class Anonymizer:
         address_comma = rf"{address_hws}*,{address_hws}*"
         address_join = rf"(?:{address_comma}|{address_hws}+)"
         strong_street_type = (
-            r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|шоссе|"
+            r"(?i:ул(?:ица)?\.?|просп(?:ект|\.)|пр-т|пр-кт|шоссе|"
             r"пер(?:еулок)?\.?|наб(?:ережная)?\.?|б-р|бульвар|проезд|"
             r"аллея|алл\.)"
         )
@@ -442,7 +480,9 @@ class Anonymizer:
             rf"(?:{numeric_street}|[А-ЯЁ][А-Яа-яЁё0-9'’.-]*"
             rf"(?:{address_hws}+[А-ЯЁ][А-Яа-яЁё0-9'’.-]*){{0,3}})"
         )
-        type_name_join = rf"(?:{address_hws}+|(?<=\.))"
+        type_name_join = (
+            rf"(?:{address_hws}+(?:\((?i:проспект)\){address_hws}+)?|(?<=\.))"
+        )
         bounded_street_core = (
             rf"(?:{bounded_street_type}{type_name_join}{bounded_street_name}|"
             rf"{strict_street_name}{address_hws}+{bounded_street_type})"
@@ -989,6 +1029,164 @@ class Anonymizer:
                     return spans
                 spans.append((start, end, value[start:end]))
                 start = end + len(delimiter)
+
+        # Ambiguous code-code-label values become identifiers only when a DOCX
+        # table repeats the same namespace/scope pair in one column.  This
+        # covers short policy names without globally masking prose such as
+        # country-code descriptors.
+        if table_boundary in source and "СОКРАЩЕНИЯ" not in self.disabled_categories:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                grouped: dict[tuple[int, str, str], list[tuple[int, int, str, str]]] = {}
+                for row_offset, _, row_text in split_spans(block, row_boundary):
+                    for column, (cell_start, _cell_end, raw) in enumerate(
+                        split_spans(row_text, "\ufdd0")
+                    ):
+                        meaningful = [
+                            position for position, char in enumerate(raw)
+                            if char != intra_cell_boundary and not char.isspace()
+                        ]
+                        if not meaningful:
+                            continue
+                        local_start, local_end = meaningful[0], meaningful[-1] + 1
+                        physical = raw[local_start:local_end]
+                        logical = physical.replace(intra_cell_boundary, "")
+                        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{4,253}", logical) is None:
+                            continue
+                        parts = _compound_abbreviation_parts(logical)
+                        if parts is None:
+                            continue
+                        if any(
+                            not (0 < index < len(logical) - 1
+                                 and logical[index - 1].isdigit()
+                                 and logical[index + 1].isdigit())
+                            for index, char in enumerate(logical) if char == "."
+                        ):
+                            continue
+                        left = current_start + row_offset + cell_start + local_start
+                        right = current_start + row_offset + cell_start + local_end
+                        key = (column, parts[0], parts[1])
+                        grouped.setdefault(key, []).append((left, right, physical, logical))
+                for candidates in grouped.values():
+                    if len(candidates) < 2:
+                        continue
+                    for left, right, physical, logical in candidates:
+                        found.append(Detection(
+                            left, right, "СОКРАЩЕНИЯ", 47,
+                            physical.replace(intra_cell_boundary, "\n"), logical,
+                            scope_start=left, scope_end=right,
+                            case_sensitive_canonical=True,
+                        ))
+
+        # In a location inventory, the table schema proves that the dedicated
+        # name and address cells describe one site.  Redact both whole cells;
+        # this avoids maintaining a brittle dictionary of regional adjectives.
+        if table_boundary in source:
+            contextual_location_name = re.compile(
+                r"[А-ЯЁA-Z0-9][А-Яа-яЁёA-Za-z0-9'’._-]*"
+                r"(?:[ \t]+[А-Яа-яЁёA-Za-z0-9][А-Яа-яЁёA-Za-z0-9'’._-]*){0,7}"
+            )
+            contextual_location_address = re.compile(bounded_full_address)
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                header = None
+                for index, (_, _, row_text) in enumerate(rows):
+                    cells = split_spans(row_text, "\ufdd0")
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    name_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"(?:название|наименование)", heading, re.I)
+                    ), None)
+                    address_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"адрес", heading, re.I)
+                    ), None)
+                    speed_columns = sum(
+                        re.search(r"(?:скорост|пропускн)", heading, re.I) is not None
+                        for heading in headings
+                    )
+                    timezone_column = any(
+                        re.search(r"часов\w*\s+пояс", heading, re.I)
+                        for heading in headings
+                    )
+                    supporting = speed_columns >= 2 or (
+                        speed_columns >= 1 and timezone_column
+                    )
+                    if (
+                        name_index is not None
+                        and address_index is not None
+                        and name_index != address_index
+                        and supporting
+                    ):
+                        header = (index, len(cells), name_index, address_index)
+                        break
+                if header is None:
+                    continue
+                header_row, column_count, name_index, address_index = header
+                for row_offset, _, row_text in rows[header_row + 1:]:
+                    cells = split_spans(row_text, "\ufdd0")
+                    if len(cells) != column_count:
+                        continue
+                    address_raw = cells[address_index][2]
+                    address_with_break_space = re.sub(
+                        r"\s+", " ", address_raw.replace(intra_cell_boundary, " ")
+                    ).strip()
+                    address_without_break = re.sub(
+                        r"\s+", " ", address_raw.replace(intra_cell_boundary, "")
+                    ).strip()
+                    address_logical = next((
+                        candidate for candidate in (
+                            address_with_break_space, address_without_break,
+                        )
+                        if contextual_location_address.fullmatch(candidate) is not None
+                    ), None)
+                    if address_logical is None:
+                        continue
+                    for column, canonical_prefix in (
+                        (name_index, "location-name:"),
+                        (address_index, "location-address:"),
+                    ):
+                        cell_start, _cell_end, raw = cells[column]
+                        meaningful = [
+                            position for position, char in enumerate(raw)
+                            if char != intra_cell_boundary and not char.isspace()
+                        ]
+                        if not meaningful:
+                            continue
+                        local_start, local_end = meaningful[0], meaningful[-1] + 1
+                        physical = raw[local_start:local_end]
+                        logical = re.sub(
+                            r"\s+", " ", physical.replace(intra_cell_boundary, " ")
+                        ).strip()
+                        if column == address_index:
+                            logical = address_logical
+                        if (
+                            column == name_index
+                            and (
+                                contextual_location_name.fullmatch(logical) is None
+                                or re.search(r"[А-Яа-яЁё]", logical) is None
+                            )
+                        ):
+                            continue
+                        left = current_start + row_offset + cell_start + local_start
+                        right = current_start + row_offset + cell_start + local_end
+                        if "АДРЕС" in self.disabled_categories:
+                            disabled_spans.append((left, right))
+                            continue
+                        found.append(Detection(
+                            left, right, "АДРЕС", 121,
+                            physical.replace(intra_cell_boundary, "\n"),
+                            canonical_prefix + self._canon(logical),
+                            scope_start=left, scope_end=right,
+                        ))
 
         # A domain-controller inventory declares sensitive semantics in its
         # headers.  Redact every location-bearing cell as one value instead of
@@ -1553,15 +1751,63 @@ class Anonymizer:
             canonical=lambda m: _name_stem(m.group()))
 
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
+            # A DOCX run or hard break is represented by U+FDD3.  Join only a
+            # bounded compound identifier here; do not make the general token
+            # iterator cross run boundaries because that can merge prose.
+            split_compound = re.compile(
+                r"(?<![\w@./\\:])"
+                r"([A-Za-z0-9](?:[A-Za-z0-9_.-]|\ufdd3){3,253}[A-Za-z0-9])"
+                r"(?![\w@./\\:])"
+            )
+            for match in split_compound.finditer(source):
+                physical = match.group(1)
+                logical = physical.replace("\ufdd3", "")
+                numeric_dots = all(
+                    0 < index < len(logical) - 1
+                    and logical[index - 1].isdigit()
+                    and logical[index + 1].isdigit()
+                    for index, char in enumerate(logical)
+                    if char == "."
+                )
+                if (
+                    not _is_compound_abbreviation(physical)
+                    or ("\ufdd3" not in physical and "." not in physical)
+                    or not numeric_dots
+                ):
+                    continue
+                abbreviation_candidates.append(Detection(
+                    match.start(1), match.end(1), "СОКРАЩЕНИЯ", 46,
+                    physical.replace("\ufdd3", "\n"),
+                    logical,
+                    case_sensitive_canonical=True,
+                ))
             abbreviation_tokens = list(_iter_abbreviation_tokens(source))
             for start, end in abbreviation_tokens:
                 value = source[start:end]
                 normalized = unicodedata.normalize("NFC", value)
+                if (
+                    _is_compound_abbreviation(value)
+                    and (start == 0 or source[start - 1] not in "@./\\:")
+                    and (end == len(source) or source[end] not in "@./\\:")
+                ):
+                    abbreviation_candidates.append(Detection(
+                        start, end, "СОКРАЩЕНИЯ", 46,
+                        value.replace("\ufdd3", "\n"),
+                        value.replace("\ufdd3", ""),
+                        case_sensitive_canonical=True,
+                    ))
+                    continue
                 if _is_short_abbreviation(value):
                     abbreviation_candidates.append(Detection(
                         start, end, "СОКРАЩЕНИЯ", 45, value, value,
                         case_sensitive_canonical=True,
                     ))
+                    continue
+                if (
+                    value.count("-") + value.count("_") >= 2
+                    and any(unicodedata.category(char) == "Ll" for char in normalized)
+                    and not _is_compound_abbreviation(value)
+                ):
                     continue
                 uppercase_run = 0
                 for char in normalized:
