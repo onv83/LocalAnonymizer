@@ -452,7 +452,8 @@ class Anonymizer:
             rf"{strict_street_name}{address_hws}+{strong_street_type})"
         )
         house_no = (
-            rf"\d{{1,5}}{address_hws}*[А-ЯЁа-яё]?"
+            rf"\d{{1,5}}"
+            rf"(?:{address_hws}*[А-ЯЁа-яё](?![А-ЯЁа-яё]))?"
             rf"(?:[/-](?:\d{{1,5}}[А-ЯЁа-яё]?|[А-ЯЁа-яё]))?"
         )
         primary_house_designator = r"(?i:д(?:ом)?|зд(?:ание)?|вл(?:адение)?)"
@@ -538,12 +539,25 @@ class Anonymizer:
         typed_geography_evidence = re.compile(
             rf"(?:\d{{5,6}}|{bounded_country}|{bounded_region}|{bounded_explicit_city})"
         )
+        labelled_house_evidence = re.compile(
+            rf"(?<![А-Яа-яЁё]){primary_house_designator}\.?{address_hws}*"
+            rf"(?:№{address_hws}*)?\d"
+        )
+        secondary_building_evidence = re.compile(
+            rf"(?<![А-Яа-яЁё]){building_designator}\.?{address_hws}*"
+            rf"(?:№{address_hws}*)?(?:\d|[А-ЯЁа-яё](?![А-ЯЁа-яё]))"
+        )
 
         def is_bounded_address(match: re.Match) -> bool:
             value = match.group(1)
             if not ambiguous_street_token.search(value):
                 return True
             if typed_geography_evidence.search(value):
+                return True
+            if (
+                labelled_house_evidence.search(value)
+                and secondary_building_evidence.search(value)
+            ):
                 return True
             prefix = source[max(0, match.start(1) - 500):match.start(1)]
             if re.search(r"(?i)\bадрес(?:у|а|е)?\s*[:—-]?\s*$", prefix):
@@ -684,14 +698,14 @@ class Anonymizer:
         # Redact them only as one contiguous inventory row ending in a validated
         # postal address; this preserves ordinary cells such as "Рабочая область".
         federal_district = (
-            r"(?:Центральный|Северо-Западный|Южный|Северо-Кавказский|"
+            r"(?:(?:Центральный|Северо-Западный|Южный|Северо-Кавказский|"
             r"Приволжский|Уральский|Сибирский|Дальневосточный)"
-            r"(?:[ \t]+федеральный[ \t]+округ)?"
+            r"(?:[ \t]+федеральный[ \t]+округ)?|[А-ЯЁ]{2,5})"
         )
         cell_separator = r"[ \t]*\ufdd0[ \t]*"
         inventory_row = (
             rf"(?:(?<=\ufdd0)|^)({administrative_area}){cell_separator}"
-            rf"({federal_district}){cell_separator}КЦ[ \t]+({title_place})"
+            rf"({federal_district}){cell_separator}(?:КЦ[ \t]+)?({title_place})"
             rf"{cell_separator}({complete_postal_address})(?=$|\ufdd0)"
         )
         add(
@@ -1029,16 +1043,19 @@ class Anonymizer:
                         continue
                     local_start, local_end = meaningful[0], meaningful[-1] + 1
                     value = raw[local_start:local_end]
-                    if intra_cell_boundary in value or not contextual_server_name.fullmatch(value):
+                    logical_value = re.sub(r"[\s\ufdd3]+", "", value)
+                    if not contextual_server_name.fullmatch(logical_value):
                         continue
                     left = current_start + row_offset + cell_start + local_start
                     right = current_start + row_offset + cell_start + local_end
+                    mapping_value = value.replace(intra_cell_boundary, "\n")
                     found.append(Detection(
-                        left, right, "УЗЕЛ", 88, value, value,
+                        left, right, "УЗЕЛ", 88, mapping_value, logical_value,
                         scope_start=left, scope_end=right,
                         case_sensitive_canonical=True,
                     ))
-                    exact_aliases.append((value, value, "УЗЕЛ", True))
+                    if intra_cell_boundary not in value:
+                        exact_aliases.append((value, value, "УЗЕЛ", True))
 
         if "ПРОГРАММА" not in self.disabled_categories and table_boundary in source:
             block_start = 0
@@ -1318,6 +1335,12 @@ class Anonymizer:
                                            scope_start=m.start(), scope_end=m.end()))
 
         # Login/account names are reversible, unlike passwords.
+        add(
+            r"(?<![\w@./\\-])(Svc[A-Z]{2,8}-(?=[A-Za-z]{4,30}(?![\w@/\\-]|\.[A-Za-z0-9]))"
+            r"(?=[A-Za-z]*[A-Z])(?=[A-Za-z]*[a-z])[A-Za-z]{4,30})(?![\w@/\\-]|\.[A-Za-z0-9])",
+            "ЛОГИН", 86, group=1, flags=0,
+            canonical=lambda m: m.group(1), case_sensitive_canonical=True,
+        )
         add(r"\b[A-Za-z][\w.-]{1,20}\\[A-Za-z][\w.-]{1,30}\b", "ЛОГИН", 63, canonical=lambda m: m.group().casefold())
         add(r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|уч[её]тк[а-яё]+)\s*[:=—-]?\s*([A-Za-z][\w.@-]{2,30})", "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold())
         if re.search(r"\b(?:Enterprise|Schema)\s+Admins\b", source, re.I):

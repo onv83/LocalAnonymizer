@@ -103,7 +103,7 @@ def test_docx_inventory_geography_and_split_ordinal_address_do_not_leak(tmp_path
     anonymized = tmp_path / "synthetic-inventory.anonymized.docx"
     restored = tmp_path / "synthetic-inventory.restored.docx"
     document = Document()
-    table = document.add_table(rows=2, cols=4)
+    table = document.add_table(rows=3, cols=4)
     cells = table.rows[0].cells
     cells[0].text = "Республика Испытаний (Тестоградск)"
     cells[1].text = "Северо-Западный"
@@ -120,6 +120,14 @@ def test_docx_inventory_geography_and_split_ordinal_address_do_not_leak(tmp_path
     address.add_run("г. Макетинск, ").bold = True
     address.add_run("ул. 9 января ").italic = True
     address.add_run("67а").underline = True
+    cells = table.rows[2].cells
+    cells[0].text = "Проверочный край"
+    cells[1].text = "ТФО"
+    cells[2].text = "Лабораторный"
+    address = cells[3].paragraphs[0]
+    address.add_run("г. Лабораторный, ").bold = True
+    address.add_run("ул. Контрольная ").italic = True
+    address.add_run("9").underline = True
     document.save(source)
     source_bytes = source.read_bytes()
 
@@ -130,10 +138,11 @@ def test_docx_inventory_geography_and_split_ordinal_address_do_not_leak(tmp_path
         "Республика Испытаний", "Тестоградск", "Северо-Западный",
         "7го примера", "68б", "Макетинский автономный округ",
         "Макетия", "Уральский", "Макетинск", "9 января", "67а",
+        "Проверочный край", "ТФО", "Лабораторный", "Контрольная",
     )
     assert all(value not in package_xml for value in leaked)
-    assert sum(marker.startswith("[АДРЕС-") for marker in result.mapping) == 2
-    assert sum(marker.startswith("[ГОРОД-") for marker in result.mapping) == 6
+    assert sum(marker.startswith("[АДРЕС-") for marker in result.mapping) == 3
+    assert sum(marker.startswith("[ГОРОД-") for marker in result.mapping) == 9
 
     DocxProcessor().restore(
         anonymized,
@@ -291,6 +300,37 @@ def test_docx_contextual_address_list_is_sanitized_and_restores_byte_exactly(tmp
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_split_ordinal_address_is_one_marker_and_restores_exactly(tmp_path):
+    source = tmp_path / "split-ordinal-address.docx"
+    anonymized = tmp_path / "split-ordinal-address.anonymized.docx"
+    restored = tmp_path / "split-ordinal-address.restored.docx"
+    address = "3-ый Проверочный пр. д.7 стр.2"
+    document = Document()
+    paragraph = document.add_paragraph("Площадка расположена по адресу ")
+    paragraph.add_run("3-ый Проверочный ").bold = True
+    paragraph.add_run("пр. д.7 ").italic = True
+    paragraph.add_run("стр.2").underline = True
+    paragraph.add_run(", используется макет.")
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert source.read_bytes() == source_bytes
+    assert result.mapping == {"[АДРЕС-1]": address}
+    assert address.encode() not in _all_xml(anonymized)
+    assert Document(anonymized).paragraphs[0].text == (
+        "Площадка расположена по адресу [АДРЕС-1], используется макет."
+    )
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_address_like_project_prose_in_table_cells_stays_visible(tmp_path):
     source = tmp_path / "synthetic-address-controls.docx"
     anonymized = tmp_path / "synthetic-address-controls.anonymized.docx"
@@ -403,6 +443,60 @@ def test_docx_server_inventory_name_column_is_anonymized_and_restores_byte_exact
     assert set(server_names) <= set(result.mapping.values())
     output = Document(anonymized).tables[0]
     assert all(row.cells[0].text.startswith("[УЗЕЛ-") for row in output.rows[1:])
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_server_inventory_names_split_inside_one_cell_are_one_node_and_restore_exactly(tmp_path):
+    source = tmp_path / "split-server-inventory-source.docx"
+    anonymized = tmp_path / "split-server-inventory-anonymized.docx"
+    restored = tmp_path / "split-server-inventory-restored.docx"
+    server_names = ("1234-lb02-2", "q2345-qz03", "zx23")
+    document = Document()
+    table = document.add_table(rows=1, cols=4)
+    for index, value in enumerate((
+        "Наименование", "Программное обеспечение", "IP адрес", "ИТ-сервис",
+    )):
+        table.rows[0].cells[index].text = value
+
+    cells = table.add_row().cells
+    paragraph = cells[0].paragraphs[0]
+    paragraph.add_run("1234-")
+    paragraph.add_run().add_break()
+    paragraph.add_run("lb02-2")
+    cells[1].text = "Sample Linux"
+    cells[2].text = "192.0.2.41"
+    cells[3].text = "Тестовый сервис"
+
+    cells = table.add_row().cells
+    cells[0].paragraphs[0].text = "q2345-q"
+    cells[0].add_paragraph("z03")
+    cells[1].text = "Sample Linux"
+    cells[2].text = "192.0.2.42"
+    cells[3].text = "Тестовый сервис"
+
+    cells = table.add_row().cells
+    paragraph = cells[0].paragraphs[0]
+    paragraph.add_run("zx")
+    paragraph.add_run().add_break()
+    paragraph.add_run("23")
+    cells[1].text = "Sample Linux"
+    cells[2].text = "192.0.2.43"
+    cells[3].text = "Тестовый сервис"
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).tables[0]
+    assert all(row.cells[0].text.strip().startswith("[УЗЕЛ-") for row in output.rows[1:])
+    assert all(name.encode() not in _all_xml(anonymized) for name in server_names)
+    assert set(server_names) <= {value.replace("\n", "") for value in result.mapping.values()}
     DocxProcessor().restore(
         anonymized,
         restored,

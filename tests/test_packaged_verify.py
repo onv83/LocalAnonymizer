@@ -48,6 +48,8 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "address_postal_variants_ok": True,
             "address_contextual_variants_ok": True,
             "server_inventory_name_ok": True,
+            "split_server_inventory_name_ok": True,
+            "service_account_ok": True,
             "graphics_roundtrip_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
@@ -65,6 +67,27 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
         "secure_storage": True,
         "clipboard": True,
     })
+
+
+@pytest.mark.parametrize("missing", ("split_server_inventory_name_ok", "service_account_ok"))
+def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
+    required = (
+        "ok", "vm_node_ok", "abbreviation_ok", "abbreviation_unicode_ok",
+        "abbreviation_single_two_letter_ok", "domain_toc_ok", "port_ok",
+        "address_inventory_ok", "address_postal_variants_ok",
+        "address_contextual_variants_ok", "server_inventory_name_ok",
+        "split_server_inventory_name_ok", "service_account_ok",
+        "graphics_roundtrip_ok",
+    )
+    engine = {key: True for key in required if key != missing}
+    engine.update({
+        "source_snapshot_sha256": "a" * 64,
+        "git_revision": "b" * 40,
+        "git_diff_sha256": "c" * 64,
+    })
+
+    with pytest.raises(VerificationError, match=missing):
+        validate_smoke({"ok": True, "engine": engine})
 
 
 def test_packaged_smoke_rejects_stale_build_without_address_inventory_proof():
@@ -170,6 +193,8 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "address_postal_variants_ok": True,
             "address_contextual_variants_ok": True,
             "server_inventory_name_ok": True,
+            "split_server_inventory_name_ok": True,
+            "service_account_ok": True,
             "graphics_roundtrip_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,

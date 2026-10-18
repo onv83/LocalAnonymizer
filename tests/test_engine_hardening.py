@@ -571,6 +571,43 @@ def test_address_list_context_accepts_a_dotted_street_type_before_an_ambiguous_i
     assert result.text == "Площадки расположены по адресам [АДРЕС-1], [АДРЕС-2]."
 
 
+def test_ordinal_address_signals_form_one_marker_without_list_preamble():
+    address = "3-ый Проверочный пр. д.7 стр.2"
+    source = f"Схема включает {address}, затем следует несвязанный текст."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Схема включает [АДРЕС-1], затем следует несвязанный текст."
+    assert result.mapping == {"[АДРЕС-1]": address}
+
+
+def test_singular_address_label_does_not_split_building_designator():
+    address = "3-ый Проверочный пр. д.7 стр.2"
+    source = f"Площадка расположена по адресу {address}, используется макет."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Площадка расположена по адресу [АДРЕС-1], используется макет."
+    assert result.mapping == {"[АДРЕС-1]": address}
+
+
+def test_inventory_row_with_district_acronym_and_plain_city_is_redacted():
+    separator = "\ufdd0"
+    region = "Макетный край"
+    district = "ТФО"
+    city = "Испытательный"
+    address = "г. Испытательный, ул. Проверочная 9"
+    source = separator.join((region, district, city, address))
+
+    result = Anonymizer().anonymize(source)
+
+    for value in (region, district, city, address):
+        assert value not in result.text
+        assert value in result.mapping.values()
+    assert result.text.count("[ГОРОД-") == 3
+    assert result.text.count("[АДРЕС-") == 1
+
+
 def test_ambiguous_geography_stays_visible_but_two_letter_token_is_redacted():
     separator = "\ufdd0"
     source = separator.join((

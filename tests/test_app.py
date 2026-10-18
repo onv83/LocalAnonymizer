@@ -24,6 +24,18 @@ from docx.shared import Inches, Pt, RGBColor
 def test_address_inventory_self_test_requires_exact_complete_mapping():
     assert app_module._address_inventory_self_test() is True
 
+    class RecordingDetector:
+        def __init__(self):
+            self.source = ""
+
+        def anonymize(self, source):
+            self.source = source
+            return Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+
+    recording = RecordingDetector()
+    assert app_module._address_inventory_self_test(recording) is True
+    assert "ТФО\ufdd0Лабораторный\ufdd0г. Лабораторный, ул. Проверочная 9" in recording.source
+
     class PartialDetector:
         def anonymize(self, _source):
             return SimpleNamespace(
@@ -103,6 +115,26 @@ def test_server_inventory_name_self_test_requires_standalone_and_table_context_p
     assert app_module._server_inventory_name_self_test(PartialDetector()) is False
 
 
+def test_split_server_inventory_name_self_test_requires_one_marker_across_intra_cell_boundary():
+    assert app_module._split_server_inventory_name_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={})
+
+    assert app_module._split_server_inventory_name_self_test(PartialDetector()) is False
+
+
+def test_service_account_self_test_requires_one_bounded_login_marker():
+    assert app_module._service_account_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={}, counts={})
+
+    assert app_module._service_account_self_test(PartialDetector()) is False
+
+
 def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode_behavior():
     assert app_module._single_two_letter_abbreviation_self_test() is True
 
@@ -134,6 +166,8 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_postal_variants_ok"] is True
     assert summary["address_contextual_variants_ok"] is True
     assert summary["server_inventory_name_ok"] is True
+    assert summary["split_server_inventory_name_ok"] is True
+    assert summary["service_account_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert "Иванов" not in str(summary)
 
@@ -315,6 +349,24 @@ def test_manual_review_follows_both_aligned_text_preview_panes():
     assert parser.parents["warning"] == "manualReview"
     assert parser.children["columns"].index("manualReview") > parser.children["columns"].index("sourceHeading")
     assert parser.children["columns"].index("manualReview") > parser.children["columns"].index("anonymizedPreviewSurface")
+
+
+def test_manual_review_decision_buttons_are_grouped_without_visible_helper_labels():
+    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(filename).read_text(encoding="utf-8")
+        actions = re.search(
+            r'<div class="review-actions" id="reviewDecisionActions">(.*?)</div></div>',
+            html,
+        )
+        assert actions is not None
+        assert 'id="hideCandidate"' in actions.group(1)
+        assert 'id="keepCandidate"' in actions.group(1)
+        assert re.search(r'id="hideCandidate"[^>]+title="[^"]+"', actions.group(1))
+        assert re.search(r'id="keepCandidate"[^>]+title="[^"]+"', actions.group(1))
+        navigation = re.search(r'<div class="review-navigation">(.*?)</div>', html)
+        assert navigation is not None
+        assert 'id="hideCandidate"' not in navigation.group(1)
+        assert re.search(r'id="reviewFinish" class="sr-only"', html)
 
 
 def test_settings_have_one_checkbox_per_actual_replacement_class():
@@ -818,7 +870,7 @@ def test_manual_review_is_below_both_preview_panes_and_compact_without_losing_co
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
     assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row;flex-wrap:wrap}' in css
     assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;padding:6px 8px}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
 
 
 def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_panes():
@@ -830,7 +882,7 @@ def test_review_candidate_and_actions_are_the_first_row_directly_beneath_the_pan
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
 
 
-def test_review_action_buttons_use_tooltips_without_adjacent_help_and_hide_sits_after_next():
+def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
     expectations = (
         (
             "index-v1.8.18.html",
@@ -851,19 +903,19 @@ def test_review_action_buttons_use_tooltips_without_adjacent_help_and_hide_sits_
     for asset_name, hide_title, keep_title, hide_help, keep_help in expectations:
         html = asset_path(asset_name).read_text(encoding="utf-8")
         navigation = html.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
-        actions = html.split('<div class="review-actions">', 1)[1].split(
+        actions = html.split('<div class="review-actions" id="reviewDecisionActions">', 1)[1].split(
             '<div id="reviewDecision"', 1
         )[0]
 
-        assert navigation.index('id="reviewNext"') < navigation.index('id="hideCandidate"')
+        assert 'id="hideCandidate"' not in navigation
         assert (
             f'id="hideCandidate" title="{hide_title}" '
             'aria-describedby="hideCandidateHelp"'
-        ) in navigation
+        ) in actions
         assert (
             f'<span id="hideCandidateHelp" class="sr-only">{hide_help}</span>'
-        ) in navigation
-        assert 'id="hideCandidate"' not in actions
+        ) in actions
+        assert actions.index('id="hideCandidate"') < actions.index('id="keepCandidate"')
         assert (
             f'id="keepCandidate" title="{keep_title}" '
             'aria-describedby="keepCandidateHelp"'
@@ -872,6 +924,7 @@ def test_review_action_buttons_use_tooltips_without_adjacent_help_and_hide_sits_
             f'<span id="keepCandidateHelp" class="sr-only">{keep_help}</span>'
         ) in actions
         assert "<small>" not in actions
+        assert 'id="reviewFinish" class="sr-only"' in html
 
 
 def test_populated_review_keeps_heading_and_remaining_action_compact():
@@ -886,7 +939,7 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
     assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
     assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
     assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;padding:6px 8px}' in css
+    assert 'body[data-design="new"] .review-actions>div{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
     assert 'body[data-design="new"] .review-actions button{justify-self:start;' in css
     assert '@media(max-width:800px){body[data-design="new"] .review{grid-template-columns:1fr}' in css
     assert 'body[data-design="new"] .review-actions{flex-direction:column}' in css

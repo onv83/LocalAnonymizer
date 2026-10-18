@@ -782,6 +782,30 @@ def test_privileged_group_member_login_with_initial_is_redacted():
     assert "[ЛОГИН-" in result.text
 
 
+def test_service_account_with_site_code_is_one_bounded_login_marker():
+    account = "SvcQAZ-BackupTask"
+    source = f"Учётная запись: {account}. Повтор: {account}."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Учётная запись: [ЛОГИН-1]. Повтор: [ЛОГИН-1]."
+    assert result.mapping == {"[ЛОГИН-1]": account}
+    assert result.counts["ЛОГИН"] == 2
+    assert Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(account).text == account
+
+
+def test_service_account_rule_does_not_capture_embedded_or_malformed_tokens():
+    source = (
+        "xSvcQAZ-BackupTask SvcQAZ-BackupTask9 "
+        "SvcQaZ-BackupTask SvcQAZ-backuptask "
+        "user@SvcQAZ-BackupTask.example.test /SvcQAZ-BackupTask/log"
+    )
+
+    result = Anonymizer(disabled_categories={"ДОМЕН", "ССЫЛКА", "ПОЧТА", "ПУТЬ"}).anonymize(source)
+
+    assert "[ЛОГИН-" not in result.text
+
+
 def test_virtual_machine_inventory_names_with_compact_role_and_digits_are_anonymized():
     vm_names = [
         "qzx-monitor0101",

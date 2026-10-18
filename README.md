@@ -8,13 +8,13 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX. The embedded test diagram is visible in the source preview and replaced with `[СХЕМА-1]` in the anonymized preview; the verified local restore reproduces the original DOCX byte-for-byte. No real personal or confidential data is shown.*
+*Current UI from `main` in a clean empty state. The screenshot is generated locally from the bundled HTML/CSS at 1600×1000 and contains no user document, personal data, or confidential values.*
 
 ### Russian interface
 
 ![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX. Тестовый рисунок виден в исходном предпросмотре и заменён на `[СХЕМА-1]` в обезличенном; проверенное локальное восстановление побайтно воспроизводит исходный DOCX. Реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс из `main` в чистом пустом состоянии. Скриншот локально сформирован из включённых в приложение HTML/CSS при размере 1600×1000 и не содержит пользовательских документов, персональных или конфиденциальных значений.*
 
 ## Ready-to-use Windows build
 
@@ -38,8 +38,12 @@ The packaged application does not require Python, `uv`, pip, or manually install
 - Rewrote the built-in English and Russian usage guide for the current preview, review, apply, export, and portable `.larecovery` workflow.
 - Improved anonymization of explicitly labelled postal addresses and five- or six-digit postal indexes while retaining negative checks for unrelated numbers.
 - Added a separate reversible `ПОРТ` / Port category: values from 1 through 65535 are anonymized after an explicit `порт`/`port` label, in ranges, TCP/UDP forms, and network endpoints such as `IP:port`, `domain:port`, `[IPv6]:port`, and infrastructure `host:port`. Bare numbers, times, versions, invalid values, and numeric credentials are not treated as ports; a URL containing a port remains one link marker.
-- Added a separate `СОКРАЩЕНИЯ` / Abbreviations category for tokens containing at least three consecutive uppercase letters; domains concatenated by Word with table-of-contents page numbers are now fully redacted while the page number is preserved.
-- Embedded DOCX images and static diagrams are removed from the anonymized copy with a visible `[СХЕМА-N]` marker and restored exactly on the local computer; the public screenshots use only a synthetic acceptance document.
+- Added a separate `СОКРАЩЕНИЯ` / Abbreviations category: complete two-letter uppercase Unicode tokens are redacted from their first occurrence, while tokens with at least three consecutive uppercase letters remain supported. Domains concatenated by Word with table-of-contents page numbers are fully redacted while the page number is preserved.
+- Contextual and inventory addresses are grouped into one bounded `АДРЕС` marker, including postfix street types, ordinal names, building qualifiers, and DOCX split runs without consuming adjacent prose.
+- Server names split by a hard break or paragraph boundary inside one DOCX inventory cell are grouped into one `УЗЕЛ` marker; unrelated prose and neighbouring cells are not joined.
+- Bounded service-account names are emitted as one `ЛОГИН` marker, and four-column inventory rows now cover administrative area, district abbreviation, city/branch, and full address with semantic precedence over abbreviations.
+- Both manual-review decisions are grouped under the anonymized-text side, with hover help retained and the permanent completion hint removed from the visible layout.
+- Embedded DOCX images and static diagrams are removed from the anonymized copy with a visible `[СХЕМА-N]` marker and restored exactly on the local computer; the public screenshots show the current clean UI without user data.
 - Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
@@ -100,13 +104,13 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
 
-*Текущий интерфейс тестовой Windows-сборки из `main` с синтетическим демонстрационным DOCX. Тестовый рисунок виден в исходном предпросмотре и заменён на `[СХЕМА-1]` в обезличенном; проверенное локальное восстановление побайтно воспроизводит исходный DOCX. Реальные персональные и конфиденциальные данные не используются.*
+*Текущий интерфейс из `main` в чистом пустом состоянии. Скриншот локально сформирован из включённых в приложение HTML/CSS при размере 1600×1000 и не содержит пользовательских документов, персональных или конфиденциальных значений.*
 
 ### Интерфейс на английском языке
 
 ![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
 
-*Current packaged Windows development build from `main`, using a synthetic demonstration DOCX. The embedded test diagram is visible in the source preview and replaced with `[СХЕМА-1]` in the anonymized preview; the verified local restore reproduces the original DOCX byte-for-byte. No real personal or confidential data is shown.*
+*Current UI from `main` in a clean empty state. The screenshot is generated locally from the bundled HTML/CSS at 1600×1000 and contains no user document, personal data, or confidential values.*
 
 ## Запуск готовой версии — без Python и установки пакетов
 
@@ -131,7 +135,11 @@ Python, `uv`, pip и установка зависимостей для гото
 - Улучшено обезличивание явно подписанных почтовых адресов и пяти- или шестизначных индексов; посторонние числа по-прежнему не считаются индексами.
 - Добавлена отдельная обратимая категория `ПОРТ`: номера от 1 до 65535 обезличиваются после явной подписи `порт`/`port`, в диапазонах, обозначениях `TCP`/`UDP` и сетевых конечных точках `IP:порт`, `домен:порт`, `[IPv6]:порт` и инфраструктурный `узел:порт`. Голые числа, время, версии, недопустимые номера и цифровые учётные данные не считаются портами; ссылка с портом остаётся одним маркером ссылки.
 - Добавлена отдельная категория `СОКРАЩЕНИЯ`: полные двухбуквенные токены из заглавных Unicode-букв скрываются уже при первом вхождении, а токены минимум с тремя подряд заглавными буквами остаются поддержанными; домены, склеенные Word с номерами страниц оглавления, заменяются целиком с сохранением номера страницы.
-- Встроенные рисунки и статические схемы DOCX удаляются из обезличенной копии с видимым маркером `[СХЕМА-N]` и точно восстанавливаются локально; публичные скриншоты используют только синтетический проверочный документ.
+- Контекстные и инвентарные адреса объединяются в один ограниченный маркер `АДРЕС`, включая тип улицы после названия, порядковые названия, реквизиты строения и разрывы runs DOCX без захвата соседнего текста.
+- Серверное имя с жёстким переносом или границей абзаца внутри одной инвентарной ячейки DOCX объединяется в один маркер `УЗЕЛ`; обычный текст и соседние ячейки не склеиваются.
+- Ограниченные имена сервисных учётных записей заменяются одним маркером `ЛОГИН`, а четырёхколоночные инвентарные строки покрывают регион, сокращение округа, город/филиал и полный адрес с приоритетом точных сущностей над сокращениями.
+- Обе кнопки решения ручной проверки собраны под правой панелью обезличенного текста; hover-подсказки сохранены, постоянная инструкция по завершению скрыта из видимой компоновки.
+- Встроенные рисунки и статические схемы DOCX удаляются из обезличенной копии с видимым маркером `[СХЕМА-N]` и точно восстанавливаются локально; публичные скриншоты показывают актуальный чистый интерфейс без пользовательских данных.
 - Расширены регрессионные проверки компоновки, эквивалентности локализаций, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и нативных platform smoke checks.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).

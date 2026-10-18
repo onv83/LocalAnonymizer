@@ -69,11 +69,16 @@ def _address_inventory_self_test(anonymizer=None) -> bool:
         "Уральский",
         "КЦ Макетинск",
         "г. Макетинск, ул. 9 января 67а",
+        "Проверочный край",
+        "ТФО",
+        "Лабораторный",
+        "г. Лабораторный, ул. Проверочная 9",
     )
     result = detector.anonymize(separator.join(values))
     expected_text = separator.join((
         "[ГОРОД-1]", "[ГОРОД-2]", "КЦ [ГОРОД-3]", "[АДРЕС-1]",
         "[ГОРОД-4]", "[ГОРОД-5]", "КЦ [ГОРОД-6]", "[АДРЕС-2]",
+        "[ГОРОД-7]", "[ГОРОД-8]", "[ГОРОД-9]", "[АДРЕС-3]",
     ))
     expected_mapping = {
         "[ГОРОД-1]": values[0],
@@ -84,6 +89,10 @@ def _address_inventory_self_test(anonymizer=None) -> bool:
         "[ГОРОД-5]": values[5],
         "[ГОРОД-6]": "Макетинск",
         "[АДРЕС-2]": values[7],
+        "[ГОРОД-7]": values[8],
+        "[ГОРОД-8]": values[9],
+        "[ГОРОД-9]": values[10],
+        "[АДРЕС-3]": values[11],
     }
     return result.text == expected_text and result.mapping == expected_mapping
 
@@ -191,6 +200,45 @@ def _server_inventory_name_self_test(anonymizer=None) -> bool:
         and set(node_values) == set(names)
         and all(name not in result.text for name in names)
         and restored == source
+    )
+
+
+def _split_server_inventory_name_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    intra = "\ufdd3"
+    split_name = f"q1234-{intra}qz01"
+    rows = (
+        cell.join(("Наименование", "Программное обеспечение", "IP адрес", "ИТ-сервис")),
+        cell.join((split_name, "Sample Linux", "192.0.2.41", "Тестовый сервис")),
+    )
+    source = table + row.join(rows) + table
+    result = detector.anonymize(source)
+    node_values = {
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-")
+    }
+    return (
+        "q1234-" not in result.text
+        and "qz01" not in result.text
+        and result.text.count("[УЗЕЛ-") == 1
+        and result.text.count(intra) == source.count(intra)
+        and node_values == {"q1234-\nqz01"}
+    )
+
+
+def _service_account_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    account = "SvcQAZ-BackupTask"
+    source = f"{account} {account}"
+    result = detector.anonymize(source)
+    return (
+        result.text == "[ЛОГИН-1] [ЛОГИН-1]"
+        and result.mapping == {"[ЛОГИН-1]": account}
+        and result.counts.get("ЛОГИН") == 2
     )
 
 
@@ -663,6 +711,8 @@ class AppApi:
         address_postal_variants_ok = _complete_postal_address_self_test()
         address_contextual_variants_ok = _contextual_address_self_test()
         server_inventory_name_ok = _server_inventory_name_self_test()
+        split_server_inventory_name_ok = _split_server_inventory_name_self_test()
+        service_account_ok = _service_account_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -679,6 +729,8 @@ class AppApi:
                 and address_postal_variants_ok
                 and address_contextual_variants_ok
                 and server_inventory_name_ok
+                and split_server_inventory_name_ok
+                and service_account_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
@@ -691,6 +743,8 @@ class AppApi:
             "address_postal_variants_ok": address_postal_variants_ok,
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "server_inventory_name_ok": server_inventory_name_ok,
+            "split_server_inventory_name_ok": split_server_inventory_name_ok,
+            "service_account_ok": service_account_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,
             "git_revision": BUILD_GIT_REVISION,
