@@ -1124,6 +1124,7 @@ def test_compound_policy_identifiers_are_replaced_as_one_abbreviation():
         "QA-IT-info_previous_events",
         "51LM-NW-Policy07",
         "QA-IT-CM_5.0.8692_ClientInstall",
+        "QA-IT-Core.5.8.2-Deploy",
     )
     source = " ".join(values)
 
@@ -1149,6 +1150,8 @@ def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_em
         "IF-then-ELSE DO_not_DO QA-is-IT-policy "
         "QA-is-\ufdd3IT-policy QA-IT-host.example "
         "EU-UK-market IF-THEN-else AB-CD-example"
+        " QA-IT-Core.alpha-Deploy QA-IT-host.12.34 "
+        "QA-IT-host.12.34-Deploy QA-IT-file.12.34-Report"
     )
 
     result = Anonymizer().anonymize(source)
@@ -1164,11 +1167,28 @@ def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_em
     assert "EU-UK-market" in result.text
     assert "IF-THEN-else" in result.text
     assert "AB-CD-example" in result.text
+    assert "QA-IT-Core.alpha-Deploy" in result.text
+    assert "QA-IT-host.12.34" in result.text
+    assert "QA-IT-host.12.34-Deploy" in result.text
+    assert "QA-IT-file.12.34-Report" in result.text
     assert not any(
         marker.startswith("[СОКРАЩЕНИЯ-")
-        and original in {"QA-IT-host", "QA-IT-host.example"}
+        and original in {
+            "QA-IT-host",
+            "QA-IT-host.example",
+            "QA-IT-host.12.34-Deploy",
+            "QA-IT-file.12.34-Report",
+        }
         for marker, original in result.mapping.items()
     )
+
+
+def test_dotted_version_compound_allows_terminal_sentence_punctuation():
+    value = "QA-IT-Core.5.8.2-Deploy"
+    for punctuation in (".", ":", ",", ";", ")", "!"):
+        result = Anonymizer().anonymize(value + punctuation)
+        assert result.text == f"[СОКРАЩЕНИЯ-1]{punctuation}"
+        assert result.mapping == {"[СОКРАЩЕНИЯ-1]": value}
 
 
 def test_repeated_short_compound_policy_names_in_one_table_column_are_abbreviations():

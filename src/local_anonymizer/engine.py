@@ -1181,10 +1181,23 @@ class Anonymizer:
                         if "АДРЕС" in self.disabled_categories:
                             disabled_spans.append((left, right))
                             continue
+                        canonical = canonical_prefix + self._canon(logical)
+                        if intra_cell_boundary in physical:
+                            break_offsets = (
+                                sum(
+                                    char != intra_cell_boundary
+                                    for char in physical[:position]
+                                )
+                                for position, char in enumerate(physical)
+                                if char == intra_cell_boundary
+                            )
+                            canonical += "|intra:" + ",".join(
+                                str(offset) for offset in break_offsets
+                            )
                         found.append(Detection(
                             left, right, "АДРЕС", 121,
                             physical.replace(intra_cell_boundary, "\n"),
-                            canonical_prefix + self._canon(logical),
+                            canonical,
                             scope_start=left, scope_end=right,
                         ))
 
@@ -1757,22 +1770,27 @@ class Anonymizer:
             split_compound = re.compile(
                 r"(?<![\w@./\\:])"
                 r"([A-Za-z0-9](?:[A-Za-z0-9_.-]|\ufdd3){3,253}[A-Za-z0-9])"
-                r"(?![\w@./\\:])"
+                r"(?![\w@/\\]|[.:][\w])"
             )
             for match in split_compound.finditer(source):
                 physical = match.group(1)
                 logical = physical.replace("\ufdd3", "")
-                numeric_dots = all(
-                    0 < index < len(logical) - 1
-                    and logical[index - 1].isdigit()
-                    and logical[index + 1].isdigit()
-                    for index, char in enumerate(logical)
-                    if char == "."
-                )
+                # Dots are permitted only in numeric versions with at least
+                # three components.  Two-component numeric labels are still
+                # indistinguishable from bounded DNS-like host segments and
+                # therefore fail closed.
+                without_versions = re.sub(r"(?:\.)?\d+(?:\.\d+){2,}", "", logical)
+                numeric_dots = "." not in without_versions
+                compound_parts = _compound_abbreviation_parts(physical)
                 if (
                     not _is_compound_abbreviation(physical)
                     or ("\ufdd3" not in physical and "." not in physical)
                     or not numeric_dots
+                    or (
+                        "." in physical
+                        and "_" not in physical
+                        and (compound_parts is None or len(compound_parts) < 4)
+                    )
                 ):
                     continue
                 abbreviation_candidates.append(Detection(

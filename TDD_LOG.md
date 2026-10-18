@@ -1,6 +1,6 @@
 # TDD log
 
-Commands were executed in `C:\Users\Lenovo\Documents\LocalAnonymizer`.
+Commands were executed from the repository root (`$REPO`).
 
 ## Slice 1 — detector/checksums/acceptance sample
 
@@ -49,7 +49,7 @@ GREEN:
 
 `run.bat --smoke`:
 ```json
-{"ok": true, "asset": "C:\\Users\\Lenovo\\Documents\\LocalAnonymizer\\src\\local_anonymizer\\assets\\index.html", "engine": {"ok": true, "replacement_count": 2, "secret_count": 1, "warnings": []}}
+{"ok": true, "asset": "$REPO/src/local_anonymizer/assets/index.html", "engine": {"ok": true, "replacement_count": 2, "secret_count": 1, "warnings": []}}
 ```
 
 ## Slice 3 — DPAPI storage, DOCX and XLSX/text processors
@@ -632,4 +632,4 @@ Verification: all 6 focused release-verifier tests passed; normal and optimized 
 
 **BOUNDARIES:** Compound IDs are excluded in email, URL, dotted-domain and filesystem contexts; ordinary mixed-case hyphenation is unchanged. Location semantics never cross a DOCX cell or row, require a valid bounded address in the paired cell, and do not activate in an ordinary name/description table. Category disablement remains authoritative. DOCX package tests scan split fragments and verify byte-exact restoration.
 
-**VERIFY (source):** Focused engine, DOCX, UI, application-smoke and packaged-verifier tests passed (`33 passed`). The complete suite passed (`646 passed`, three expected duplicate-ZIP fixture warnings). Category controls passed all `92` DOCX/XLSX checks under normal and optimized Python. Source E2E, release verification, application smoke under normal and optimized Python, compilation and `git diff --check` passed. Fresh review, package/install and exact-head CI gates remain pending at this entry.
+**VERIFY (source):** Focused engine, DOCX, UI, application-smoke and packaged-verifier tests passed. After the independent audit exposed a missed numeric dotted-version following an alphanumeric segment, a new synthetic RED reproduced it. The scanner now accepts only numeric dotted-version fragments in sufficiently structured identifiers, while numeric/alphabetic dotted-hostname controls remain visible. A second RED proved that sentence-final `.` and `:` were rejected and the legacy proof key could not distinguish a stale executable; terminal punctuation is now bounded by continuation-aware lookahead and the required fail-closed `dotted_version_compound_abbreviation_ok` proof covers positive, punctuation and negative cases. Adversarial follow-up also fixed split/unsplit semantic restoration and mobile library overflow. The complete suite passed (`651 passed`, three expected duplicate-ZIP fixture warnings). Category controls passed all `92` DOCX/XLSX checks under normal and optimized Python. Source E2E, release verification, application smoke under normal and optimized Python, compilation, real-browser 305 px layout verification, and `git diff --check` passed. Fresh package/install and exact-head CI gates remain pending at this entry.

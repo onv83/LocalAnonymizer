@@ -196,6 +196,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_postal_variants_ok"] is True
     assert summary["address_contextual_variants_ok"] is True
     assert summary["compound_policy_abbreviation_ok"] is True
+    assert summary["dotted_version_compound_abbreviation_ok"] is True
     assert summary["contextual_location_table_ok"] is True
     assert summary["server_inventory_name_ok"] is True
     assert summary["split_server_inventory_name_ok"] is True
@@ -434,6 +435,13 @@ def test_settings_navigation_chevrons_are_right_facing_and_do_not_steal_accessib
     for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         assert html.count('aria-hidden="true">›</span>') == 3
+
+
+def test_mobile_library_controls_collapse_to_one_bounded_column():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    mobile = css[css.index("@media(max-width:800px)") :]
+    assert ".source-library>.compact-library{grid-template-columns:minmax(0,1fr)}" in mobile
+    assert ".source-library>.compact-library>*{min-width:0;max-width:100%;width:100%}" in mobile
 
 
 def test_manual_review_decision_buttons_are_grouped_without_visible_helper_labels():

@@ -1112,6 +1112,34 @@ def test_docx_compound_policy_identifier_across_runs_and_hard_break_restores_exa
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_compound_policy_dotted_version_across_hard_break_restores_exactly(tmp_path):
+    source = tmp_path / "compound-version-source.docx"
+    anonymized = tmp_path / "compound-version-anonymized.docx"
+    restored = tmp_path / "compound-version-restored.docx"
+    parts = ("QA-IT-Core.", "5.8.2-Deploy")
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run(parts[0]).bold = True
+    paragraph.add_run().add_break()
+    paragraph.add_run(parts[1]).italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    payload = _all_xml(anonymized)
+    assert Document(anonymized).paragraphs[0].text.count("[СОКРАЩЕНИЯ-") == 1
+    assert all(part.encode() not in payload for part in parts)
+    assert list(result.mapping.values()) == [parts[0] + "\n" + parts[1]]
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_contextual_location_table_redacts_name_and_address_and_restores_exactly(tmp_path):
     source = tmp_path / "location-table-source.docx"
     anonymized = tmp_path / "location-table-anonymized.docx"
@@ -1165,6 +1193,48 @@ def test_docx_contextual_location_table_redacts_name_and_address_and_restores_ex
         package_archive=result.package_archive,
     )
     assert restored.read_bytes() == source_bytes
+
+
+def test_docx_location_names_with_different_break_topology_restore_without_archive(tmp_path):
+    source = tmp_path / "location-duplicate-source.docx"
+    anonymized = tmp_path / "location-duplicate-anonymized.docx"
+    restored = tmp_path / "location-duplicate-restored.docx"
+    document = Document()
+    table = document.add_table(rows=3, cols=5)
+    for cell, value in zip(
+        table.rows[0].cells,
+        (
+            "Название", "Оператор A скорость", "Оператор B скорость",
+            "Часовой пояс", "Адрес",
+        ),
+    ):
+        cell.text = value
+    first = table.rows[1].cells
+    first_name = first[0].paragraphs[0]
+    first_name.add_run("Тестовая")
+    first_name.add_run().add_break()
+    first_name.add_run("площадка")
+    first[1].text, first[2].text, first[3].text = "30", "10", "+3"
+    first[4].text = "ул. Проверочная, д. 1, г. Тестоградск, 344002"
+    second = table.rows[2].cells
+    second[0].text = "Тестовая площадка"
+    second[1].text, second[2].text, second[3].text = "40", "20", "+3"
+    second[4].text = "ул. Макетная, д. 2, г. Тестоградск, 344003"
+    document.save(source)
+
+    result = DocxProcessor().anonymize(source, anonymized)
+    anonymized_names = [
+        row.cells[0].text for row in Document(anonymized).tables[0].rows[1:]
+    ]
+    assert anonymized_names[0].startswith("[АДРЕС-")
+    assert anonymized_names[1].startswith("[АДРЕС-")
+
+    DocxProcessor().restore(anonymized, restored, result.mapping)
+
+    restored_names = [
+        row.cells[0].text for row in Document(restored).tables[0].rows[1:]
+    ]
+    assert restored_names == ["Тестовая\nплощадка", "Тестовая площадка"]
 
 
 def test_docx_toc_domains_with_attached_page_numbers_restore_byte_exactly(tmp_path):
