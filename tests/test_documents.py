@@ -201,6 +201,106 @@ def test_docx_ten_column_domain_inventory_subjects_do_not_leak(tmp_path):
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_domain_inventory_redacts_all_location_columns_with_runs_and_hard_breaks(tmp_path):
+    source = tmp_path / "synthetic-domain-inventory-all-columns.docx"
+    anonymized = tmp_path / "synthetic-domain-inventory-all-columns.anonymized.docx"
+    restored = tmp_path / "synthetic-domain-inventory-all-columns.restored.docx"
+    document = Document()
+    table = document.add_table(rows=2, cols=10)
+    headers = (
+        ("Субъект Российской", "Федерации"),
+        ("Федеральный округ",),
+        ("Наименование филиала",),
+        ("Местонахождение", "филиалов"),
+        ("Порядковый номер",),
+        ("Имя сервера",),
+        ("Сокращение сервера",),
+        ("Платформа сервера",),
+        ("Перечень сетей",),
+        ("Количество объектов",),
+    )
+    for cell, parts in zip(table.rows[0].cells, headers):
+        paragraph = cell.paragraphs[0]
+        paragraph.add_run(parts[0]).bold = True
+        for part in parts[1:]:
+            paragraph.add_run().add_break()
+            paragraph.add_run(part).italic = True
+
+    sensitive = (
+        ("Испытательная", "область"),
+        ("Тестовый", "федеральный округ"),
+        ("Испытательский", "региональный"),
+        ("123456, г. Тестоградск,", "ул. Проверочная, д. 12"),
+    )
+    for cell, parts in zip(table.rows[1].cells[:4], sensitive):
+        paragraph = cell.paragraphs[0]
+        paragraph.add_run(parts[0]).bold = True
+        paragraph.add_run().add_break()
+        paragraph.add_run(parts[1]).italic = True
+    for cell, value in zip(
+        table.rows[1].cells[4:],
+        ("18", "srv-test-01", "srv", "Sample OS", "192.0.2.0/24", "2000"),
+    ):
+        cell.text = value
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    anonymized_text = "\n".join(
+        cell.text
+        for output_table in Document(anonymized).tables
+        for output_row in output_table.rows
+        for cell in output_row.cells
+    )
+    for token in (
+        "Испытательная", "область", "Тестовый", "федеральный округ",
+        "Испытательский", "региональный", "123456", "Тестоградск", "Проверочная",
+    ):
+        assert token not in anonymized_text
+    assert sum(marker.startswith("[ГОРОД-") for marker in result.mapping) == 3
+    assert sum(marker.startswith("[АДРЕС-") for marker in result.mapping) == 1
+    assert source.read_bytes() == source_bytes
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
+def test_docx_device_inventory_identifier_across_runs_does_not_leak_and_restores(tmp_path):
+    source = tmp_path / "synthetic-device-identifier.docx"
+    anonymized = tmp_path / "synthetic-device-identifier.anonymized.docx"
+    restored = tmp_path / "synthetic-device-identifier.restored.docx"
+    identifier = "Q2048ZX0000042"
+    document = Document()
+    document.add_paragraph("Идентификатор устройства должен быть изменен.")
+    document.add_paragraph("Имя принтера или устройства должно быть не длиннее 15 символов.")
+    paragraph = document.add_paragraph("Пример: ")
+    paragraph.add_run(identifier[:7]).bold = True
+    paragraph.add_run(identifier[7:]).italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    anonymized_xml = _all_xml(anonymized).decode("utf-8", errors="ignore")
+    assert identifier not in anonymized_xml
+    assert identifier in result.mapping.values()
+    assert any(marker.startswith("[УЗЕЛ-") for marker in result.mapping)
+    assert source.read_bytes() == source_bytes
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_underscored_dns_fqdn_does_not_leak_and_restores_exactly(tmp_path):
     source = tmp_path / "synthetic-dns-inventory.docx"
     anonymized = tmp_path / "synthetic-dns-inventory.anonymized.docx"

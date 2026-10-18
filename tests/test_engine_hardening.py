@@ -465,6 +465,105 @@ def test_ten_column_domain_inventory_redacts_full_and_abbreviated_subject_cells(
     assert "Респ. Примерия" in result.mapping.values()
 
 
+def test_ten_column_domain_inventory_redacts_every_semantic_location_cell_across_hard_breaks():
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    br = "\ufdd3"
+    header = cell.join((
+        f"Субъект Российской{br}Федерации", "Федеральный округ", "Наименование филиала",
+        f"Местонахождение{br}филиалов", "Порядковый номер", "Имя сервера",
+        "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
+    ))
+    subject = f"Испытательная{br}область"
+    district = f"Тестовый{br}федеральный округ"
+    branch = f"Испытательский{br}региональный"
+    address = f"123456, г. Тестоградск,{br}ул. Qwerty123, д. 12"
+    data = cell.join((
+        subject, district, branch, address, "18", "srv-test-01", "srv",
+        "Sample OS", "192.0.2.0/24", "2000",
+    ))
+
+    result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(
+        table + header + row + data + table
+    )
+
+    for physical in (subject, district, branch, address):
+        assert physical not in result.text
+        assert physical.replace(br, "\n") in result.mapping.values()
+    assert sum(marker.startswith("[ГОРОД-") for marker in result.mapping) == 3
+    assert sum(marker.startswith("[АДРЕС-") for marker in result.mapping) == 1
+
+
+def test_domain_inventory_semantic_columns_obey_category_disable_controls():
+    cell = "\ufdd0"
+    table = "\ufdd0\ufdd1\ufdd0"
+    row = "\ufdd0\ufdd2\ufdd0"
+    header = cell.join((
+        "Субъект Российской Федерации", "Федеральный округ", "Наименование филиала",
+        "Местонахождение филиалов", "Порядковый номер", "Имя сервера",
+        "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
+    ))
+    values = (
+        "Испытательная область", "Тестовый федеральный округ", "Испытательский региональный",
+        "123456, г. Тестоградск, ул. Проверочная, д. 12", "18", "srv-test-01", "srv",
+        "Sample OS", "192.0.2.0/24", "2000",
+    )
+    source = table + header + row + cell.join(values) + table
+
+    result = Anonymizer(disabled_categories={"ГОРОД", "АДРЕС", "СОКРАЩЕНИЯ"}).anonymize(source)
+
+    assert all(value in result.text for value in values[:4])
+
+
+def test_location_adjective_before_regional_branch_is_redacted():
+    source = "Испытательский региональный филиал ПАО «Банк-пример»."
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Испытательский" not in result.text
+    assert "Испытательский" in result.mapping.values()
+    assert any(marker.startswith("[ГОРОД-") for marker in result.mapping)
+
+
+def test_device_inventory_identifiers_are_redacted_only_in_device_documentation_context():
+    identifiers = ("Q2048ZX0000042", "R4096LM0000007")
+    source = (
+        "Идентификатор устройства должен быть изменен. "
+        "Имя принтера или устройства должно быть не длиннее 15 символов.\n"
+        "Пример:\n"
+        f"{identifiers[0]}\n"
+        "Филиал и описание.\n"
+        f"{identifiers[1]}"
+    )
+
+    result = Anonymizer().anonymize(source)
+
+    for identifier in identifiers:
+        assert identifier not in result.text
+        assert identifier in result.mapping.values()
+    assert sum(marker.startswith("[УЗЕЛ-") for marker in result.mapping) == 2
+
+
+def test_device_inventory_identifier_rule_is_bounded_and_category_controlled():
+    identifier = "Q2048ZX0000042"
+    ordinary = f"Документ {identifier} остаётся обычным текстом."
+    embedded = f"Идентификатор устройства: pre{identifier}post"
+    later_section = (
+        f"Идентификатор устройства: {identifier}\n"
+        "Именование групп\n"
+        "Z8192RT0000009"
+    )
+
+    assert Anonymizer().anonymize(ordinary).text == ordinary
+    assert Anonymizer().anonymize(embedded).text == embedded
+    bounded = Anonymizer().anonymize(later_section)
+    assert identifier not in bounded.text
+    assert "Z8192RT0000009" in bounded.text
+    labelled = f"Идентификатор устройства: {identifier}"
+    assert Anonymizer(disabled_categories={"УЗЕЛ"}).anonymize(labelled).text == labelled
+
+
 def test_russian_official_region_forms_are_consumed_with_full_addresses():
     sources = (
         "Тестовая автономная область, г. Тестоградск, ул. Испытателей 12",

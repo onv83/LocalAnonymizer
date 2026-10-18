@@ -990,11 +990,17 @@ class Anonymizer:
                 spans.append((start, end, value[start:end]))
                 start = end + len(delimiter)
 
-        # A domain-controller inventory identifies its administrative-region
-        # column by the table header.  Treat every non-empty data cell in that
-        # column as one geography value, including abbreviated forms such as
-        # "Респ.", instead of guessing from a short list of region spellings.
-        if "ГОРОД" not in self.disabled_categories and table_boundary in source:
+        # A domain-controller inventory declares sensitive semantics in its
+        # headers.  Redact every location-bearing cell as one value instead of
+        # guessing from regional dictionaries.  This covers visual wrapping,
+        # split DOCX runs and hard breaks while never joining different cells.
+        if table_boundary in source:
+            semantic_headers = (
+                (r"Субъект\s+Российской\s+Федерации", "ГОРОД", "subject:"),
+                (r"Федеральный\s+округ", "ГОРОД", "district:"),
+                (r"Наименование\s+филиала", "ГОРОД", "branch:"),
+                (r"Местонахождение\s+филиалов?", "АДРЕС", "address:"),
+            )
             block_start = 0
             for block in source.split(table_boundary):
                 current_start = block_start
@@ -1007,47 +1013,106 @@ class Anonymizer:
                         re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
                         for cell in cells
                     ]
-                    subject_index = next((
-                        position for position, heading in enumerate(headings)
-                        if re.fullmatch(r"Субъект\s+Российской\s+Федерации", heading, re.I)
-                    ), None)
+                    semantic_columns: list[tuple[int, str, str]] = []
+                    for pattern, category, canonical_prefix in semantic_headers:
+                        column = next((
+                            position for position, heading in enumerate(headings)
+                            if re.fullmatch(pattern, heading, re.I)
+                        ), None)
+                        if column is not None:
+                            semantic_columns.append((column, category, canonical_prefix))
                     has_domain_inventory_shape = (
-                        any(re.fullmatch(r"Федеральный\s+округ", heading, re.I) for heading in headings)
+                        len(semantic_columns) == len(semantic_headers)
                         and any(re.fullmatch(r"Имя\s+сервера", heading, re.I) for heading in headings)
                     )
-                    if subject_index is not None and has_domain_inventory_shape:
-                        header = (index, len(cells), subject_index)
+                    if has_domain_inventory_shape:
+                        header = (index, len(cells), semantic_columns)
                         break
                 if header is None:
                     continue
-                header_row, column_count, subject_index = header
+                header_row, column_count, semantic_columns = header
                 for row_offset, _, row_text in rows[header_row + 1:]:
                     cells = split_spans(row_text, "\ufdd0")
                     if len(cells) != column_count:
                         continue
-                    cell_start, _cell_end, raw = cells[subject_index]
-                    meaningful = [
-                        position for position, char in enumerate(raw)
-                        if char != intra_cell_boundary and not char.isspace()
-                    ]
-                    if not meaningful:
-                        continue
-                    local_start, local_end = meaningful[0], meaningful[-1] + 1
-                    physical_value = raw[local_start:local_end]
-                    logical_value = re.sub(
-                        r"[\s\ufdd3]+", " ", physical_value
-                    ).strip()
-                    if logical_value.startswith("[") or not re.search(r"[А-Яа-яЁё]", logical_value):
-                        continue
-                    left = current_start + row_offset + cell_start + local_start
-                    right = current_start + row_offset + cell_start + local_end
-                    mapping_value = physical_value.replace(intra_cell_boundary, "\n")
-                    found.append(Detection(
-                        left, right, "ГОРОД", 94, mapping_value, self._canon(logical_value),
-                        scope_start=left, scope_end=right,
-                    ))
-                    if intra_cell_boundary not in physical_value:
-                        exact_aliases.append((physical_value, self._canon(logical_value), "ГОРОД", False))
+                    for column, category, canonical_prefix in semantic_columns:
+                        if category in self.disabled_categories:
+                            continue
+                        cell_start, _cell_end, raw = cells[column]
+                        meaningful = [
+                            position for position, char in enumerate(raw)
+                            if char != intra_cell_boundary and not char.isspace()
+                        ]
+                        if not meaningful:
+                            continue
+                        local_start, local_end = meaningful[0], meaningful[-1] + 1
+                        physical_value = raw[local_start:local_end]
+                        logical_value = re.sub(
+                            r"[\s\ufdd3]+", " ", physical_value
+                        ).strip()
+                        if MARKER_RE.fullmatch(logical_value) or not re.search(
+                            r"[А-Яа-яЁёA-Za-z0-9]", logical_value
+                        ):
+                            continue
+                        left = current_start + row_offset + cell_start + local_start
+                        right = current_start + row_offset + cell_start + local_end
+                        mapping_value = physical_value.replace(intra_cell_boundary, "\n")
+                        canonical_value = canonical_prefix + self._canon(logical_value)
+                        found.append(Detection(
+                            left, right, category, 120, mapping_value, canonical_value,
+                            scope_start=left, scope_end=right,
+                        ))
+                        if intra_cell_boundary not in physical_value:
+                            exact_aliases.append((
+                                physical_value, canonical_value, category, False,
+                            ))
+
+        # A geographic adjective directly naming a regional branch is itself
+        # identifying even when the following legal entity is separately
+        # redacted as an organization.
+        add(
+            r"(?<![А-Яа-яЁё-])([А-ЯЁ][А-Яа-яЁё-]{2,})(?=[ \t\ufdd3]+региональн[а-яё]*[ \t\ufdd3]+филиал)",
+            "ГОРОД", 112, group=1, flags=re.I,
+            canonical=lambda m: "branch-location:" + self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+
+        # Device/printer naming guides use compact alphanumeric inventory IDs
+        # that are not safe to detect globally.  Once the document explicitly
+        # declares device-identifier semantics, redact every bounded example in
+        # the nearby guide block and reuse exact aliases elsewhere in the file.
+        device_context_anchor = re.compile(
+            r"(?i)(?:идентификатор[ \t\ufdd3]+устройства|"
+            r"имя[ \t\ufdd3]+(?:принтера|устройства))"
+        )
+        device_context_stop = re.compile(
+            r"(?im)^[ \t]*(?:именовани[ея]|наименование)[ \t]+групп\b"
+        )
+        device_identifier = re.compile(
+            r"(?<![\w@/\\.-])"
+            r"(?=[A-Z0-9]{9,15}(?![A-Z0-9]))"
+            r"(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)"
+            r"[A-Z0-9]{9,15}(?![\w@/\\.-])"
+        )
+        device_candidates: dict[tuple[int, int], re.Match] = {}
+        for anchor in device_context_anchor.finditer(source):
+            context_end = min(len(source), anchor.start() + 1600)
+            stop = device_context_stop.search(source, anchor.end(), context_end)
+            if stop is not None:
+                context_end = stop.start()
+            for match in device_identifier.finditer(source, anchor.start(), context_end):
+                device_candidates[match.span()] = match
+        for match in device_candidates.values():
+            if "УЗЕЛ" in self.disabled_categories:
+                disabled_spans.append(match.span())
+                continue
+            value = match.group()
+            found.append(Detection(
+                match.start(), match.end(), "УЗЕЛ", 112, value, value,
+                scope_start=match.start(), scope_end=match.end(),
+                case_sensitive_canonical=True,
+            ))
+            exact_aliases.append((value, value, "УЗЕЛ", True))
 
         if "УЗЕЛ" not in self.disabled_categories and table_boundary in source:
             contextual_server_name = re.compile(

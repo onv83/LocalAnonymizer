@@ -256,32 +256,52 @@ def _domain_inventory_subject_self_test(anonymizer=None) -> bool:
     cell = "\ufdd0"
     table = "\ufdd0\ufdd1\ufdd0"
     row = "\ufdd0\ufdd2\ufdd0"
+    intra = "\ufdd3"
     headers = (
-        "Субъект Российской Федерации", "Федеральный округ", "Наименование филиала",
-        "Местонахождение филиалов", "Порядковый номер", "Имя сервера",
+        f"Субъект Российской{intra}Федерации", "Федеральный округ", "Наименование филиала",
+        f"Местонахождение{intra}филиалов", "Порядковый номер", "Имя сервера",
         "Сокращение сервера", "Платформа сервера", "Перечень сетей", "Количество объектов",
     )
-    subjects = ("Испытательный край", "Респ. Примерия")
-    rows = [cell.join(headers)]
-    for index, subject in enumerate(subjects, start=1):
-        rows.append(cell.join((
-            subject, "ТФО", "Макетный", "г. Тестоградск, ул. Проверочная, д. 1",
-            str(index), f"srv-test-0{index}", "srv", "Sample OS", "192.0.2.0/24", "1",
-        )))
-    source = table + row.join(rows) + table
+    sensitive = (
+        f"Испытательная{intra}область",
+        f"Тестовый{intra}федеральный округ",
+        f"Испытательский{intra}региональный",
+        f"123456, г. Тестоградск,{intra}ул. Проверочная, д. 1",
+    )
+    data = cell.join((*sensitive, "18", "srv-test-01", "srv", "Sample OS", "192.0.2.0/24", "1"))
+    source = table + cell.join(headers) + row + data + table
     result = detector.anonymize(source)
-    subject_mapping = {
-        marker: original
+    expected_values = {value.replace(intra, "\n") for value in sensitive}
+    semantic_mapping = {
+        original
         for marker, original in result.mapping.items()
-        if marker.startswith("[ГОРОД-") and original in subjects
+        if marker.startswith(("[ГОРОД-", "[АДРЕС-")) and original in expected_values
     }
-    restored = result.text
-    for marker, original in sorted(result.mapping.items(), key=lambda item: len(item[0]), reverse=True):
-        restored = restored.replace(marker, original)
     return (
-        set(subject_mapping.values()) == set(subjects)
-        and all(subject not in result.text for subject in subjects)
-        and restored == source
+        semantic_mapping == expected_values
+        and all(value not in result.text for value in sensitive)
+        and result.text.count(intra) == source.count(intra)
+    )
+
+
+def _device_inventory_identifier_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    identifiers = ("Q2048ZX0000042", "R4096LM0000007")
+    source = (
+        "Идентификатор устройства должен быть изменен. "
+        "Имя принтера или устройства должно быть не длиннее 15 символов.\n"
+        f"Пример:\n{identifiers[0]}\nФилиал и описание.\n{identifiers[1]}"
+    )
+    result = detector.anonymize(source)
+    mapped = {
+        original
+        for marker, original in result.mapping.items()
+        if marker.startswith("[УЗЕЛ-") and original in identifiers
+    }
+    return (
+        mapped == set(identifiers)
+        and all(value not in result.text for value in identifiers)
+        and result.text.count("[УЗЕЛ-") == 2
     )
 
 
@@ -769,6 +789,8 @@ class AppApi:
         split_server_inventory_name_ok = _split_server_inventory_name_self_test()
         underscored_dns_fqdn_ok = _underscored_dns_fqdn_self_test()
         domain_inventory_subject_ok = _domain_inventory_subject_self_test()
+        domain_inventory_row_ok = domain_inventory_subject_ok
+        device_inventory_identifier_ok = _device_inventory_identifier_self_test()
         service_account_ok = _service_account_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
@@ -789,6 +811,8 @@ class AppApi:
                 and split_server_inventory_name_ok
                 and underscored_dns_fqdn_ok
                 and domain_inventory_subject_ok
+                and domain_inventory_row_ok
+                and device_inventory_identifier_ok
                 and service_account_ok
                 and graphics_roundtrip_ok
             ),
@@ -805,6 +829,8 @@ class AppApi:
             "split_server_inventory_name_ok": split_server_inventory_name_ok,
             "underscored_dns_fqdn_ok": underscored_dns_fqdn_ok,
             "domain_inventory_subject_ok": domain_inventory_subject_ok,
+            "domain_inventory_row_ok": domain_inventory_row_ok,
+            "device_inventory_identifier_ok": device_inventory_identifier_ok,
             "service_account_ok": service_account_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,

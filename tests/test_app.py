@@ -135,6 +135,26 @@ def test_underscored_dns_fqdn_self_test_requires_bounded_node_detection():
     assert app_module._underscored_dns_fqdn_self_test(PartialDetector()) is False
 
 
+def test_domain_inventory_self_test_requires_all_location_columns_and_boundaries():
+    assert app_module._domain_inventory_subject_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={})
+
+    assert app_module._domain_inventory_subject_self_test(PartialDetector()) is False
+
+
+def test_device_inventory_identifier_self_test_requires_contextual_node_detection():
+    assert app_module._device_inventory_identifier_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={})
+
+    assert app_module._device_inventory_identifier_self_test(PartialDetector()) is False
+
+
 def test_service_account_self_test_requires_one_bounded_login_marker():
     assert app_module._service_account_self_test() is True
 
@@ -178,6 +198,8 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["server_inventory_name_ok"] is True
     assert summary["split_server_inventory_name_ok"] is True
     assert summary["underscored_dns_fqdn_ok"] is True
+    assert summary["domain_inventory_row_ok"] is True
+    assert summary["device_inventory_identifier_ok"] is True
     assert summary["service_account_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert summary["domain_inventory_subject_ok"] is True
