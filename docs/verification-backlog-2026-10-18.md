@@ -170,6 +170,8 @@
 
 - **Источник:** независимый security review текущей structural-abbreviation реализации.
 - **Дефект:** некоторые позиции `U+FDD3` рядом с `-`/`_` приводят к частичной маскировке; точные email/URL/path и специализированные semantic spans не всегда реконструируются до broad abbreviation fallback; mapping/rendering могут учитывать одну physical boundary дважды.
-- **Статус:** source реализован и проверен; package/CI/install pending.
+- **Статус:** закрыто 2026-10-19.
 - **Требование:** классифицировать и заменять полный логический span независимо от позиции `U+FDD3` внутри одной semantic region; точные semantic detectors всегда имеют приоритет; disabled/whitelist защищают полный structural token; mapping хранит newline-layout ровно один раз; `U+FDD0` остаётся непроходимым.
 - **Приёмка:** parameterized RED/GREEN для structural split positions, normal/paranoid/disabled/whitelist; email/URL/Windows path split positions; precise semantic precedence; exact sentinel-count and restoration round-trip; full source/package/CI/install gates и независимый blocker review.
+- **Проверено:** `670 passed`; focused `35 passed`; independent exhaustive review passed (`968` + `472` probes, `301` focused tests); package verifier normal/`python -O`; Defender no threats; CI `39204146050` success; safe install copied `407` byte-identical files; installed smoke has `intra_boundary_semantic_precedence_ok=true`.
+- **Артефакты:** source commit `502313ebf26abd0eacf8e5e2c7863c25218e1151`; Windows EXE SHA-256 `6f0dae6e29bc0a8841ff400f7e96b6631d68957b65faaaa6dd329084beefe882`.
