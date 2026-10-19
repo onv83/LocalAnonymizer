@@ -89,6 +89,41 @@ def _iter_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]]:
         yield start, index
 
 
+def _iter_structural_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]]:
+    """Join only U+FDD3-delimited fragments for structural-token probing."""
+    index = 0
+    while index < len(value):
+        if not _is_abbreviation_continuation(value[index]):
+            index += 1
+            continue
+        start = index
+        index += 1
+        while index < len(value):
+            char = value[index]
+            if _is_abbreviation_continuation(char):
+                index += 1
+                continue
+            if char == "-" and index + 1 < len(value) and _is_abbreviation_continuation(value[index + 1]):
+                index += 1
+                continue
+            if (
+                char == "\ufdd3"
+                and index + 1 < len(value)
+                and (
+                    _is_abbreviation_continuation(value[index + 1])
+                    or (
+                        value[index + 1] in {"-", "_"}
+                        and index + 2 < len(value)
+                        and _is_abbreviation_continuation(value[index + 2])
+                    )
+                )
+            ):
+                index += 1
+                continue
+            break
+        yield start, index
+
+
 def _is_short_abbreviation(value: str) -> bool:
     normalized = unicodedata.normalize("NFC", value)
     uppercase_letters = 0
@@ -139,6 +174,100 @@ def _is_compound_abbreviation(value: str) -> bool:
         or logical.count("-") + logical.count("_") >= 3
         or has_internal_upper
     )
+
+
+def _is_hyphenated_initialism_compound(value: str) -> bool:
+    """Recognize an acronym-like prefix joined to a lexical suffix."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+    prefix, separator, suffix = normalized.partition("-")
+    prefix_letters = [
+        char for char in prefix
+        if unicodedata.category(char).startswith("L")
+    ]
+    if not separator or not (2 <= len(prefix_letters) <= 8):
+        return False
+    if any(
+        unicodedata.category(char) != "Lu"
+        and not unicodedata.category(char).startswith("M")
+        for char in prefix
+    ):
+        return False
+    if not suffix or unicodedata.category(suffix[0]) != "Lu":
+        return False
+    return any(unicodedata.category(char) == "Ll" for char in suffix[1:]) and all(
+        unicodedata.category(char) == "Ll"
+        or unicodedata.category(char).startswith("M")
+        for char in suffix[1:]
+    )
+
+
+def _is_prefixed_lowercase_compound(value: str) -> bool:
+    """Recognize ``UPPER_lower-lower`` technical compound names."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+    if normalized.count("_") != 1:
+        return False
+    prefix, tail = normalized.split("_", 1)
+    prefix_letters = [
+        char for char in prefix
+        if unicodedata.category(char).startswith("L")
+    ]
+    if not (2 <= len(prefix_letters) <= 8) or any(
+        unicodedata.category(char) != "Lu"
+        and not unicodedata.category(char).startswith("M")
+        for char in prefix
+    ):
+        return False
+    if tail.count("-") != 1:
+        return False
+    components = tail.split("-")
+    return all(
+        component
+        and any(unicodedata.category(char) == "Ll" for char in component)
+        and all(
+            unicodedata.category(char) == "Ll"
+            or unicodedata.category(char).startswith("M")
+            for char in component
+        )
+        for component in components
+    )
+
+
+def _has_free_standing_abbreviation_boundaries(
+    source: str,
+    start: int,
+    end: int,
+) -> bool:
+    previous = start - 1
+    while previous >= 0 and source[previous] == "\ufdd3":
+        previous -= 1
+    following = end
+    while following < len(source) and source[following] == "\ufdd3":
+        following += 1
+    blocked = "@./\\:"
+    return (
+        (previous < 0 or source[previous] not in blocked)
+        and (following == len(source) or source[following] not in blocked)
+    )
+
+
+def _is_fragmented_abbreviation_token(source: str, start: int, end: int) -> bool:
+    fragmented_left = (
+        start >= 2
+        and source[start - 1] == "\ufdd3"
+        and (
+            _is_abbreviation_continuation(source[start - 2])
+            or source[start - 2] == "-"
+        )
+    )
+    fragmented_right = (
+        end + 1 < len(source)
+        and source[end] == "\ufdd3"
+        and (
+            _is_abbreviation_continuation(source[end + 1])
+            or source[end + 1] == "-"
+        )
+    )
+    return fragmented_left or fragmented_right
 
 
 @dataclass(frozen=True)
@@ -306,7 +435,14 @@ class Anonymizer:
             phrase: normalize_label(label)
             for phrase, label in (user_dictionary or {}).items()
         }
-        self.whitelist = {x.casefold() for x in (whitelist or ())}
+        self.whitelist = {
+            normalized
+            for value in (whitelist or ())
+            for normalized in {
+                value.casefold(),
+                unicodedata.normalize("NFC", value).casefold(),
+            }
+        }
         self.paranoid = paranoid
         self.disabled_categories = set(disabled_categories or ())
         self.compact_markers = bool(compact_markers)
@@ -328,6 +464,7 @@ class Anonymizer:
         aliases: list[tuple[str, str, str]] = []
         exact_aliases: list[tuple[str, str, str, bool]] = []
         disabled_spans: list[tuple[int, int]] = []
+        disabled_abbreviation_spans: list[tuple[int, int]] = []
 
         def add(pattern: str, category: str, priority: int, *, flags: int = re.I,
                 group: int = 0, validate: Callable[[re.Match], bool] | None = None,
@@ -1763,6 +1900,21 @@ class Anonymizer:
             validate=lambda m: _name_stem(m.group()) not in whitelist_stems,
             canonical=lambda m: _name_stem(m.group()))
 
+        if "СОКРАЩЕНИЯ" in self.disabled_categories:
+            # Disabling a category is authoritative even in paranoid mode:
+            # protect the complete token from nested review hints.
+            for start, end in _iter_structural_abbreviation_tokens(source):
+                value = source[start:end]
+                if (
+                    (
+                        _is_hyphenated_initialism_compound(value)
+                        or _is_prefixed_lowercase_compound(value)
+                    )
+                    and not _is_fragmented_abbreviation_token(source, start, end)
+                    and _has_free_standing_abbreviation_boundaries(source, start, end)
+                ):
+                    disabled_abbreviation_spans.append((start, end))
+
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
             # A DOCX run or hard break is represented by U+FDD3.  Join only a
             # bounded compound identifier here; do not make the general token
@@ -1799,14 +1951,35 @@ class Anonymizer:
                     logical,
                     case_sensitive_canonical=True,
                 ))
-            abbreviation_tokens = list(_iter_abbreviation_tokens(source))
+            structural_tokens = [
+                (start, end)
+                for start, end in _iter_structural_abbreviation_tokens(source)
+                if (
+                    _is_hyphenated_initialism_compound(source[start:end])
+                    or _is_prefixed_lowercase_compound(source[start:end])
+                )
+            ]
+            abbreviation_tokens = [
+                *structural_tokens,
+                *(
+                    (start, end)
+                    for start, end in _iter_abbreviation_tokens(source)
+                    if not any(
+                        start < structural_end and end > structural_start
+                        for structural_start, structural_end in structural_tokens
+                    )
+                ),
+            ]
             for start, end in abbreviation_tokens:
                 value = source[start:end]
-                normalized = unicodedata.normalize("NFC", value)
+                logical_value = value.replace("\ufdd3", "")
+                normalized = unicodedata.normalize("NFC", logical_value)
+                if normalized.casefold() in self.whitelist:
+                    disabled_spans.append((start, end))
+                    continue
                 if (
                     _is_compound_abbreviation(value)
-                    and (start == 0 or source[start - 1] not in "@./\\:")
-                    and (end == len(source) or source[end] not in "@./\\:")
+                    and _has_free_standing_abbreviation_boundaries(source, start, end)
                 ):
                     abbreviation_candidates.append(Detection(
                         start, end, "СОКРАЩЕНИЯ", 46,
@@ -1825,7 +1998,24 @@ class Anonymizer:
                     value.count("-") + value.count("_") >= 2
                     and any(unicodedata.category(char) == "Ll" for char in normalized)
                     and not _is_compound_abbreviation(value)
+                    and not _is_prefixed_lowercase_compound(value)
                 ):
+                    continue
+                structural_compound = (
+                    _is_hyphenated_initialism_compound(value)
+                    or _is_prefixed_lowercase_compound(value)
+                )
+                if structural_compound and (
+                    _is_fragmented_abbreviation_token(source, start, end)
+                    or not _has_free_standing_abbreviation_boundaries(source, start, end)
+                ):
+                    continue
+                if structural_compound:
+                    abbreviation_candidates.append(Detection(
+                        start, end, "СОКРАЩЕНИЯ", 45,
+                        value.replace("\ufdd3", "\n"), logical_value,
+                        case_sensitive_canonical=True,
+                    ))
                     continue
                 uppercase_run = 0
                 for char in normalized:
@@ -1986,6 +2176,14 @@ class Anonymizer:
                 if validate and not validate(m):
                     continue
                 span = m.span(group)
+                if (
+                    kind in {"возможное имя собственное", "возможная фамилия"}
+                    and any(
+                        span[0] < end and span[1] > start
+                        for start, end in disabled_abbreviation_spans
+                    )
+                ):
+                    continue
                 if any(span[0] < e and span[1] > s for s, e in occupied):
                     continue
                 value = m.group(group)
@@ -2002,20 +2200,47 @@ class Anonymizer:
         hint(r"\b[А-ЯЁ][а-яё-]{3,}\b", "возможное имя собственное", flags=0,
              validate=lambda m: _name_stem(m.group()) not in lower_stems and m.group().casefold() not in STOP_PROPER and m.start() > 0 and source[m.start()-1] not in ".!?\n")
 
+        # Abbreviations are the broad fail-closed fallback. Apply them only
+        # after validated entities and exact aliases. Optional review hints are
+        # weaker than a complete abbreviation token: drop only nested/overlapping
+        # hints, while confirmed entities, protected markers and disabled spans
+        # continue to block the fallback.
+        for item in abbreviation_candidates:
+            hard_spans = [*protected, *disabled_spans, *((x.start, x.end) for x in accepted)]
+            if any(item.start < end and item.end > start for start, end in hard_spans):
+                continue
+            overlaps_occupied = any(
+                item.start < end and item.end > start for start, end in occupied
+            )
+            if overlaps_occupied:
+                overlapping_hints = [
+                    hint_item for hint_item in hints
+                    if item.start < hint_item.end and item.end > hint_item.start
+                ]
+                if (
+                    not _is_hyphenated_initialism_compound(item.value)
+                    or not overlapping_hints
+                    or any(
+                        hint_item.kind not in {
+                            "возможное имя собственное",
+                            "возможная фамилия",
+                        }
+                        for hint_item in overlapping_hints
+                    )
+                ):
+                    continue
+                hints = [
+                    hint_item for hint_item in hints
+                    if hint_item not in overlapping_hints
+                ]
+            accepted.append(item)
+            occupied.append((item.start, item.end))
+
         if self.paranoid:
             for h in hints:
                 label = hint_categories.get(h.kind, "СКРЫТО")
                 accepted.append(Detection(h.start, h.end, label, 10, h.value, self._canon(h.value)))
             hints = []
-
-        # Abbreviations are the broad fail-closed fallback. Apply them only
-        # after validated entities, exact aliases and semantic review spans, so
-        # an uppercase run cannot split a known structured or contextual value.
-        for item in abbreviation_candidates:
-            if any(item.start < end and item.end > start for start, end in occupied):
-                continue
-            accepted.append(item)
-            occupied.append((item.start, item.end))
         accepted.sort(key=lambda x: (x.start, x.end))
 
         warnings = self._warnings(source)

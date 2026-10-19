@@ -64,6 +64,8 @@ def validate_smoke(payload: dict) -> None:
         "address_postal_variants_ok",
         "address_contextual_variants_ok",
         "compound_policy_abbreviation_ok",
+        "hyphenated_abbreviation_hint_precedence_ok",
+        "prefixed_lowercase_compound_abbreviation_ok",
         "dotted_version_compound_abbreviation_ok",
         "contextual_location_table_ok",
         "server_inventory_name_ok",

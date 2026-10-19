@@ -193,6 +193,74 @@ def _compound_policy_abbreviation_self_test(anonymizer=None) -> bool:
     )
 
 
+def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    values = (
+        "ЖФКТ-Навигация",
+        "ИТ-Навигация",
+        "АЭ-Навигация",
+        "АЭК-Навигация",
+        "ЖФ-На\u0483вигация",
+        "IT-Cafe\u0301",
+    )
+    source = " ".join(values)
+    expected_text = (
+        "[СОКРАЩЕНИЯ-1] [СОКРАЩЕНИЯ-2] [СОКРАЩЕНИЯ-3] "
+        "[СОКРАЩЕНИЯ-4] [СОКРАЩЕНИЯ-5] [СОКРАЩЕНИЯ-6]"
+    )
+    expected_mapping = {
+        f"[СОКРАЩЕНИЯ-{index}]": value
+        for index, value in enumerate(values, start=1)
+    }
+    result = detector.anonymize(source)
+    paranoid = Anonymizer(paranoid=True).anonymize(source)
+    disabled = Anonymizer(
+        paranoid=True,
+        disabled_categories={"СОКРАЩЕНИЯ"},
+    ).anonymize(source)
+    whitelisted = Anonymizer(paranoid=True, whitelist=set(values)).anonymize(source)
+    return (
+        result.text == expected_text
+        and result.mapping == expected_mapping
+        and paranoid.text == expected_text
+        and paranoid.mapping == expected_mapping
+        and disabled.text == source
+        and disabled.mapping == {}
+        and whitelisted.text == source
+        and whitelisted.mapping == {}
+        and not whitelisted.candidates
+    )
+
+
+def _prefixed_lowercase_compound_abbreviation_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    values = ("QWER_delta-node", "IT_alpha-beta")
+    source = " ".join(values)
+    expected_mapping = {
+        "[СОКРАЩЕНИЯ-1]": values[0],
+        "[СОКРАЩЕНИЯ-2]": values[1],
+    }
+    expected_text = "[СОКРАЩЕНИЯ-1] [СОКРАЩЕНИЯ-2]"
+    result = detector.anonymize(source)
+    paranoid = Anonymizer(paranoid=True).anonymize(source)
+    disabled = Anonymizer(
+        paranoid=True,
+        disabled_categories={"СОКРАЩЕНИЯ"},
+    ).anonymize(source)
+    whitelisted = Anonymizer(paranoid=True, whitelist=set(values)).anonymize(source)
+    return (
+        result.text == expected_text
+        and result.mapping == expected_mapping
+        and paranoid.text == expected_text
+        and paranoid.mapping == expected_mapping
+        and disabled.text == source
+        and disabled.mapping == {}
+        and whitelisted.text == source
+        and whitelisted.mapping == {}
+        and not whitelisted.candidates
+    )
+
+
 def _dotted_version_compound_abbreviation_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     value = "QA-IT-Core.5.8.2-Deploy"
@@ -919,6 +987,12 @@ class AppApi:
         address_postal_variants_ok = _complete_postal_address_self_test()
         address_contextual_variants_ok = _contextual_address_self_test()
         compound_policy_abbreviation_ok = _compound_policy_abbreviation_self_test()
+        hyphenated_abbreviation_hint_precedence_ok = (
+            _hyphenated_abbreviation_hint_precedence_self_test()
+        )
+        prefixed_lowercase_compound_abbreviation_ok = (
+            _prefixed_lowercase_compound_abbreviation_self_test()
+        )
         dotted_version_compound_abbreviation_ok = (
             _dotted_version_compound_abbreviation_self_test()
         )
@@ -948,6 +1022,8 @@ class AppApi:
                 and address_postal_variants_ok
                 and address_contextual_variants_ok
                 and compound_policy_abbreviation_ok
+                and hyphenated_abbreviation_hint_precedence_ok
+                and prefixed_lowercase_compound_abbreviation_ok
                 and dotted_version_compound_abbreviation_ok
                 and contextual_location_table_ok
                 and server_inventory_name_ok
@@ -971,6 +1047,12 @@ class AppApi:
             "address_postal_variants_ok": address_postal_variants_ok,
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "compound_policy_abbreviation_ok": compound_policy_abbreviation_ok,
+            "hyphenated_abbreviation_hint_precedence_ok": (
+                hyphenated_abbreviation_hint_precedence_ok
+            ),
+            "prefixed_lowercase_compound_abbreviation_ok": (
+                prefixed_lowercase_compound_abbreviation_ok
+            ),
             "dotted_version_compound_abbreviation_ok": dotted_version_compound_abbreviation_ok,
             "contextual_location_table_ok": contextual_location_table_ok,
             "server_inventory_name_ok": server_inventory_name_ok,

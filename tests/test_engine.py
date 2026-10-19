@@ -1142,6 +1142,176 @@ def test_compound_policy_identifiers_are_replaced_as_one_abbreviation():
     assert disabled.mapping == {}
 
 
+def test_hyphenated_token_with_uppercase_prefix_outranks_nested_review_hint():
+    for value in (
+        "ЖФКТ-Навигация",
+        "ИТ-Навигация",
+        "АЭ-Навигация",
+        "АЭК-Навигация",
+        "ЖФ-На\u0483вигация",
+        "IT-Cafe\u0301",
+        "ИТ-Иванов",
+    ):
+        source = f"Объект {value} используется."
+
+        for paranoid in (False, True):
+            result = Anonymizer(paranoid=paranoid).anonymize(source)
+            assert result.text == "Объект [СОКРАЩЕНИЯ-1] используется."
+            assert result.mapping == {"[СОКРАЩЕНИЯ-1]": value}
+            assert not result.candidates
+
+        for paranoid in (False, True):
+            disabled = Anonymizer(
+                paranoid=paranoid,
+                disabled_categories={"СОКРАЩЕНИЯ"},
+            ).anonymize(source)
+            assert disabled.text == source
+            assert disabled.mapping == {}
+            assert not disabled.candidates
+
+        for paranoid in (False, True):
+            whitelisted = Anonymizer(
+                paranoid=paranoid,
+                whitelist={value},
+            ).anonymize(source)
+            assert whitelisted.text == source
+            assert whitelisted.mapping == {}
+            assert not whitelisted.candidates
+
+    excluded = (
+        "ИТ-навигация ИТ-НаВигация ИТ-Навигация2 中文-Навигация "
+        "user@ИТ-Навигация.example.test https://example.test/ИТ-Навигация "
+        "C:\\Temp\\ИТ-Навигация"
+    )
+    unchanged = Anonymizer().anonymize(excluded)
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-")
+        for marker in unchanged.mapping
+    )
+
+
+def test_split_structural_abbreviations_join_only_inside_one_cell():
+    for physical, logical in (
+        ("IT-Na\ufdd3vigation", "IT-Na\nvigation"),
+        ("QWER_delta\ufdd3-node", "QWER_delta\n-node"),
+    ):
+        result = Anonymizer().anonymize(physical)
+        assert result.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+        assert result.mapping == {"[СОКРАЩЕНИЯ-1]": logical}
+
+        disabled = Anonymizer(
+            paranoid=True,
+            disabled_categories={"СОКРАЩЕНИЯ"},
+        ).anonymize(physical)
+        assert disabled.text == physical
+        assert disabled.mapping == {}
+        assert not disabled.candidates
+
+        whitelisted = Anonymizer(
+            paranoid=True,
+            whitelist={logical.replace("\n", "")},
+        ).anonymize(physical)
+        assert whitelisted.text == physical
+        assert whitelisted.mapping == {}
+        assert not whitelisted.candidates
+
+    for separated in (
+        "IT-Na\ufdd0vigation",
+        "QWER_delta\ufdd0-node",
+    ):
+        result = Anonymizer().anonymize(separated)
+        assert separated not in result.mapping.values()
+        assert "\ufdd0" in result.text
+
+    protected_structures = (
+        "user@\ufdd3QWER_delta-node.example.test",
+        "https://example.test/\ufdd3QWER_delta-node",
+        "C:\ufdd3\\Temp\\QWER_delta-node",
+    )
+    for source in protected_structures:
+        result = Anonymizer().anonymize(source)
+        assert not any(
+            marker.startswith("[СОКРАЩЕНИЯ-")
+            for marker in result.mapping
+        )
+
+
+def test_precise_semantic_hint_outranks_hyphenated_abbreviation_fallback():
+    source = "Объект IT-Диагноз используется."
+    for disabled_categories in (set(), {"СОКРАЩЕНИЯ"}):
+        ordinary = Anonymizer(
+            disabled_categories=disabled_categories,
+        ).anonymize(source)
+        assert ordinary.text == source
+        assert ordinary.mapping == {}
+        assert ordinary.candidates == ["Диагноз"]
+
+        paranoid = Anonymizer(
+            paranoid=True,
+            disabled_categories=disabled_categories,
+        ).anonymize(source)
+        assert paranoid.text == "Объект IT-[СПЕЦКАТЕГОРИЯ-1] используется."
+        assert paranoid.mapping == {"[СПЕЦКАТЕГОРИЯ-1]": "Диагноз"}
+        assert not paranoid.candidates
+
+
+def test_uppercase_prefix_with_lowercase_underscore_hyphen_tail_is_abbreviation():
+    for value in (
+        "QWER_delta-node",
+        "IT_alpha-beta",
+        "Q\u0307A_cafe\u0301-node",
+    ):
+        source = f"Компонент {value} включён."
+
+        for paranoid in (False, True):
+            result = Anonymizer(paranoid=paranoid).anonymize(source)
+            assert result.text == "Компонент [СОКРАЩЕНИЯ-1] включён."
+            assert result.mapping == {"[СОКРАЩЕНИЯ-1]": value}
+            assert not result.candidates
+
+        for paranoid in (False, True):
+            disabled = Anonymizer(
+                paranoid=paranoid,
+                disabled_categories={"СОКРАЩЕНИЯ"},
+            ).anonymize(source)
+            assert disabled.text == source
+            assert disabled.mapping == {}
+            assert not disabled.candidates
+
+            whitelisted = Anonymizer(
+                paranoid=paranoid,
+                whitelist={value},
+            ).anonymize(source)
+            assert whitelisted.text == source
+            assert whitelisted.mapping == {}
+            assert not whitelisted.candidates
+
+    excluded = "alpha_delta-node"
+    unchanged = Anonymizer().anonymize(excluded)
+    assert unchanged.text == excluded
+    assert unchanged.mapping == {}
+
+    protected_values = (
+        "user@QWER_delta-node.example.test",
+        "https://example.test/QWER_delta-node",
+        "C:\\Temp\\QWER_delta-node",
+    )
+    protected = Anonymizer().anonymize(" ".join(protected_values))
+    assert set(protected.mapping.values()) == set(protected_values)
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-")
+        for marker in protected.mapping
+    )
+
+    semantic_source = "Компонент IT_alpha-диагноз включён."
+    semantic = Anonymizer(
+        paranoid=True,
+        disabled_categories={"СОКРАЩЕНИЯ"},
+    ).anonymize(semantic_source)
+    assert semantic.mapping == {"[СПЕЦКАТЕГОРИЯ-1]": "диагноз"}
+    assert semantic.text == "Компонент IT_alpha-[СПЕЦКАТЕГОРИЯ-1] включён."
+
+
 def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_email():
     value = "QA-IT-RefreshCache"
     source = (
