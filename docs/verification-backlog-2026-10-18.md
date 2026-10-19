@@ -148,7 +148,9 @@
 ## B30 — mixed adjacent separator внутри technical compound
 
 - **Источник:** screenshot focus `2026-10-19`; реальный identifier не переносится в repository.
-- **Дефект:** compound technical ID с единственной смешанной парой соседних разделителей (`-_` или `_-`) не проходит существующую compound policy, хотя эквивалент с одним разделителем классифицируется как `СОКРАЩЕНИЯ`.
-- **Статус:** в работе.
-- **Требование:** одна mixed adjacent separator pair должна трактоваться как единая граница сегментов только внутри уже валидного compound abbreviation; повторные одинаковые разделители, URL/email/path и prose не расширяются.
-- **Приёмка:** synthetic normal/paranoid, whitelist, disabled category, precise URL/email/path, duplicate-separator negatives, fail-closed package proof, full gates, review, package/install и CI.
+- **Дефект:** compound technical ID с единственной смешанной парой соседних разделителей (`-_` или `_-`) не проходил существующую compound policy, хотя эквивалент с одним разделителем классифицировался как `СОКРАЩЕНИЯ`.
+- **Статус:** реализация, source/package/CI завершены; безопасная установка отложена, потому что PID `37236` держит открытый документ с неприменённым предпросмотром и 76 нерешёнными ручными проверками.
+- **Требование:** одна mixed adjacent separator pair трактуется как единая граница сегментов только внутри уже валидного compound abbreviation; повторные одинаковые разделители и несколько mixed-пар отклоняются без частичной маскировки.
+- **Границы:** exact whitelist и disabled `СОКРАЩЕНИЯ` защищают standalone token в paranoid mode; URL/email/path и более точные semantic entities имеют приоритет; `U+FDD3` допустим только внутри qualifying token, `U+FDD0` непроходим; dotted versions сохраняют numeric-version policy.
+- **Проверка:** synthetic normal/paranoid, whitelist, disabled category, precise URL/email/path, malformed separators, DOCX boundaries и fail-closed package proof; focused `31 passed`; full suite `662 passed`; final review `passed=true` (`33 passed`); package verifier normal/optimized прошёл; Defender — `found no threats`; exact-head CI `39196302540` успешно прошёл Linux/macOS.
+- **Артефакты:** source commit `98493e7a1c54f6d9a63b46ce09b87a215352b2ad`; Windows EXE SHA-256 `5fb8992a5d0e5ddefc4de16a1ca7e40e0d3baabe1624b39f71c7ba02609e37de`.
