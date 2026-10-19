@@ -141,6 +141,6 @@
 
 - **Источник:** поздний независимый review после B27/B28.
 - **Дефект:** generic uppercase fallback мог целиком скрыть structural lookalike с префиксом длиннее 8 `Lu`; exact-whitelisted вложенный abbreviation span мог блокировать enclosing URL/email/path detector.
-- **Статус:** в работе; source fix и regressions прошли, fresh package/install/CI ожидаются.
+- **Статус:** ~~выполнено~~ — source/full gates, independent review, fresh Windows package/install и exact-head CI `39191251807` подтверждены для commit `3bbf929ddf7bbfa44566e636d7005946e2838be6`.
 - **Требование:** structural shape с 9+ uppercase letters не должен обходить границу 2–8 через fallback; whitelist применяется к самостоятельному токену, но не отменяет более точную enclosing-семантику.
 - **Приёмка:** negatives для обеих structural форм с 9-буквенным prefix, whitelist-inside-email/URL/path regressions, расширенный fail-closed smoke proof, full gates, independent review, fresh Windows package/install и exact-head CI.
