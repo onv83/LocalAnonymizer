@@ -232,6 +232,58 @@ def _is_prefixed_lowercase_compound(value: str) -> bool:
     )
 
 
+def _has_overlong_structural_prefix(value: str) -> bool:
+    """Reject structural lookalikes that exceed the eight-letter bound."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+
+    def overlong_upper_prefix(prefix: str) -> bool:
+        letters = [
+            char for char in prefix
+            if unicodedata.category(char).startswith("L")
+        ]
+        return len(letters) > 8 and all(
+            unicodedata.category(char) == "Lu"
+            or unicodedata.category(char).startswith("M")
+            for char in prefix
+        )
+
+    if normalized.count("-") == 1:
+        prefix, suffix = normalized.split("-", 1)
+        if (
+            overlong_upper_prefix(prefix)
+            and suffix
+            and unicodedata.category(suffix[0]) == "Lu"
+            and any(unicodedata.category(char) == "Ll" for char in suffix[1:])
+            and all(
+                unicodedata.category(char) == "Ll"
+                or unicodedata.category(char).startswith("M")
+                for char in suffix[1:]
+            )
+        ):
+            return True
+
+    if normalized.count("_") == 1:
+        prefix, tail = normalized.split("_", 1)
+        components = tail.split("-")
+        if (
+            overlong_upper_prefix(prefix)
+            and len(components) == 2
+            and all(
+                component
+                and any(unicodedata.category(char) == "Ll" for char in component)
+                and all(
+                    unicodedata.category(char) == "Ll"
+                    or unicodedata.category(char).startswith("M")
+                    for char in component
+                )
+                for component in components
+            )
+        ):
+            return True
+
+    return False
+
+
 def _has_free_standing_abbreviation_boundaries(
     source: str,
     start: int,
@@ -1975,7 +2027,12 @@ class Anonymizer:
                 logical_value = value.replace("\ufdd3", "")
                 normalized = unicodedata.normalize("NFC", logical_value)
                 if normalized.casefold() in self.whitelist:
-                    disabled_spans.append((start, end))
+                    if _has_free_standing_abbreviation_boundaries(
+                        source, start, end,
+                    ):
+                        disabled_spans.append((start, end))
+                    continue
+                if _has_overlong_structural_prefix(value):
                     continue
                 if (
                     _is_compound_abbreviation(value)

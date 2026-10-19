@@ -1189,6 +1189,29 @@ def test_hyphenated_token_with_uppercase_prefix_outranks_nested_review_hint():
         for marker in unchanged.mapping
     )
 
+    for overlong in ("ABCDEFGHI-Title", "ABCDEFGHI_delta-node"):
+        overlong_result = Anonymizer().anonymize(overlong)
+        assert overlong not in overlong_result.mapping.values()
+
+
+def test_exact_whitelist_does_not_block_enclosing_precise_structure():
+    whitelisted = "IT-Cafe"
+    for source in (
+        f"user@{whitelisted}.example.test",
+        f"https://example.test/{whitelisted}",
+        f"C:\\Temp\\{whitelisted}",
+    ):
+        for paranoid in (False, True):
+            result = Anonymizer(
+                paranoid=paranoid,
+                whitelist={whitelisted},
+            ).anonymize(source)
+            assert source in result.mapping.values()
+            assert not any(
+                marker.startswith("[СОКРАЩЕНИЯ-")
+                for marker in result.mapping
+            )
+
 
 def test_split_structural_abbreviations_join_only_inside_one_cell():
     for physical, logical in (

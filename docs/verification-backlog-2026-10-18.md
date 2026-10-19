@@ -136,3 +136,11 @@
 - **Статус:** ~~выполнено~~ — generalized synthetic regressions, fail-closed package proof, fresh package/install и exact-head CI `39189849080` подтверждены для commit `093abfe5b86aade4693f25e0c2ef1ed929b6ca7f`.
 - **Требование:** целиком классифицировать структурный шаблон `UPPER_lower-lower` как `СОКРАЩЕНИЯ`, не захватывая prose, URL, email, path, DNS/hostname и разорванные соседние токены; whitelist и отключение категории обязательны.
 - **Приёмка:** synthetic positive/negative regressions в обычном и paranoid-режиме, category/whitelist controls, fail-closed package proof и отсутствие screenshot literals в repository.
+
+## B29 — граница длины structural prefix и приоритет enclosing semantic detector
+
+- **Источник:** поздний независимый review после B27/B28.
+- **Дефект:** generic uppercase fallback мог целиком скрыть structural lookalike с префиксом длиннее 8 `Lu`; exact-whitelisted вложенный abbreviation span мог блокировать enclosing URL/email/path detector.
+- **Статус:** в работе; source fix и regressions прошли, fresh package/install/CI ожидаются.
+- **Требование:** structural shape с 9+ uppercase letters не должен обходить границу 2–8 через fallback; whitelist применяется к самостоятельному токену, но не отменяет более точную enclosing-семантику.
+- **Приёмка:** negatives для обеих structural форм с 9-буквенным prefix, whitelist-inside-email/URL/path regressions, расширенный fail-closed smoke proof, full gates, independent review, fresh Windows package/install и exact-head CI.

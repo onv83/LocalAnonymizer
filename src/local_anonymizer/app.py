@@ -219,6 +219,26 @@ def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
         disabled_categories={"СОКРАЩЕНИЯ"},
     ).anonymize(source)
     whitelisted = Anonymizer(paranoid=True, whitelist=set(values)).anonymize(source)
+    overlong_values = ("ABCDEFGHI-Title", "ABCDEFGHI_delta-node")
+    overlong_results = tuple(
+        detector.anonymize(overlong) for overlong in overlong_values
+    )
+    embedded_sources = (
+        "user@IT-Cafe.example.test",
+        "https://example.test/IT-Cafe",
+        "C:\\Temp\\IT-Cafe",
+    )
+    embedded_whitelist_results = tuple(
+        (
+            embedded,
+            Anonymizer(
+                paranoid=paranoid,
+                whitelist={"IT-Cafe"},
+            ).anonymize(embedded),
+        )
+        for embedded in embedded_sources
+        for paranoid in (False, True)
+    )
     return (
         result.text == expected_text
         and result.mapping == expected_mapping
@@ -229,6 +249,14 @@ def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
         and whitelisted.text == source
         and whitelisted.mapping == {}
         and not whitelisted.candidates
+        and all(
+            overlong not in result.mapping.values()
+            for overlong, result in zip(overlong_values, overlong_results)
+        )
+        and all(
+            source_value in embedded.mapping.values()
+            for source_value, embedded in embedded_whitelist_results
+        )
     )
 
 
