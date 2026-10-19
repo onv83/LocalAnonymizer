@@ -154,3 +154,12 @@
 - **Границы:** exact whitelist и disabled `СОКРАЩЕНИЯ` защищают standalone token в paranoid mode; URL/email/path и более точные semantic entities имеют приоритет; `U+FDD3` допустим только внутри qualifying token, `U+FDD0` непроходим; dotted versions сохраняют numeric-version policy.
 - **Проверка:** synthetic normal/paranoid, whitelist, disabled category, precise URL/email/path, malformed separators, DOCX boundaries и fail-closed package proof; focused `31 passed`; full suite `662 passed`; final review `passed=true` (`33 passed`); package verifier normal/optimized прошёл; Defender — `found no threats`; exact-head CI `39196302540` успешно прошёл Linux/macOS.
 - **Артефакты:** source commit `98493e7a1c54f6d9a63b46ce09b87a215352b2ad`; Windows EXE SHA-256 `5fb8992a5d0e5ddefc4de16a1ca7e40e0d3baabe1624b39f71c7ba02609e37de`.
+
+## B31 — digit-led inventory compounds и compact mixed-case abbreviation
+
+- **Источник:** screenshot focus `2026-10-19`; реальные identifiers и screenshot metadata не переносятся в repository.
+- **Дефект:** связанные inventory/policy identifiers с ведущим числовым сегментом и буквенными `-`/`_`-сегментами не классифицируются целиком как `СОКРАЩЕНИЯ`; отдельно пропускается короткий compact mixed-case acronym-like token. Letter-led structural compound того же списка уже классифицируется, что создаёт непоследовательный результат.
+- **Статус:** source реализован и проверен; package/CI/install pending.
+- **Требование:** generalized structural policy должна целиком классифицировать digit-led multi-segment inventory identifiers и узко определённые compact mixed-case abbreviations, включая identifier после нейтрального prose prefix; без screenshot literals и без lexical hardcode.
+- **Границы:** не расширять правило на обычные числа, естественную речь, даты/версии, URL, email, filesystem path, DNS/hostname или malformed separator sequences; точные semantic detectors сохраняют приоритет; exact whitelist и disabled `СОКРАЩЕНИЯ` защищают standalone qualifying token; `U+FDD3` допустим только внутри одной semantic region, `U+FDD0` непроходим.
+- **Приёмка:** synthetic RED/GREEN normal/paranoid regressions для обеих структурных семей, negative boundary corpus, whitelist/disabled controls, enclosing URL/email/path precedence, DOCX boundary coverage, fail-closed package proof, full suite, independent blocker review, fresh Windows package, Defender, exact-head CI и safe install.

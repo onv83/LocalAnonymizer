@@ -197,6 +197,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["address_contextual_variants_ok"] is True
     assert summary["compound_policy_abbreviation_ok"] is True
     assert summary["mixed_separator_compound_abbreviation_ok"] is True
+    assert summary["inventory_style_abbreviation_ok"] is True
     assert summary["hyphenated_abbreviation_hint_precedence_ok"] is True
     assert summary["prefixed_lowercase_compound_abbreviation_ok"] is True
     assert summary["dotted_version_compound_abbreviation_ok"] is True

@@ -205,6 +205,101 @@ def _is_mixed_separator_compound_abbreviation(value: str) -> bool:
     return _is_compound_abbreviation(collapsed)
 
 
+def _is_digit_led_inventory_compound(value: str) -> bool:
+    """Recognize bounded numeric-prefix inventory/policy identifiers."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+    if "--" in normalized or "__" in normalized or "-_" in normalized or "_-" in normalized:
+        return False
+    parts = re.split(r"[-_]", normalized)
+    if len(parts) < 3 or any(not part for part in parts):
+        return False
+    if not (2 <= len(parts[0]) <= 8 and parts[0].isdigit()):
+        return False
+
+    code_letters = [
+        char for char in parts[1]
+        if unicodedata.category(char).startswith("L")
+    ]
+    if not (2 <= len(code_letters) <= 8) or any(
+        unicodedata.category(char) != "Lu"
+        and not unicodedata.category(char).startswith("M")
+        and not char.isdigit()
+        for char in parts[1]
+    ):
+        return False
+
+    def valid_tail_part(part: str) -> bool:
+        return all(
+            unicodedata.category(char).startswith(("L", "N", "M"))
+            for char in part
+        )
+
+    def has_internal_upper(part: str) -> bool:
+        seen_lower = False
+        for char in part:
+            category = unicodedata.category(char)
+            if category == "Ll":
+                seen_lower = True
+            elif category == "Lu" and seen_lower:
+                return True
+        return False
+
+    def is_titlecase_word(part: str) -> bool:
+        letters = [
+            char for char in part
+            if unicodedata.category(char).startswith("L")
+        ]
+        return (
+            len(letters) >= 2
+            and unicodedata.category(letters[0]) == "Lu"
+            and all(unicodedata.category(char) == "Ll" for char in letters[1:])
+        )
+
+    tail = parts[2:]
+    tail_source = re.split(r"[-_]", normalized, maxsplit=2)[2]
+    return (
+        all(valid_tail_part(part) for part in tail)
+        and (
+            any(has_internal_upper(part) for part in tail)
+            or (
+                "_" in tail_source
+                and len(tail) >= 2
+                and all(is_titlecase_word(part) for part in tail)
+            )
+        )
+    )
+
+
+def _is_compact_mixed_case_abbreviation(value: str) -> bool:
+    """Recognize a Titlecase stem ending in a short uppercase initialism."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+    if not (4 <= len(normalized) <= 20):
+        return False
+    categories = [unicodedata.category(char) for char in normalized]
+    if categories[0] != "Lu":
+        return False
+    index = 1
+    lowercase_letters = 0
+    while index < len(normalized) and (
+        categories[index] == "Ll" or categories[index].startswith("M")
+    ):
+        if categories[index] == "Ll":
+            lowercase_letters += 1
+        index += 1
+    uppercase_letters = 0
+    while index < len(normalized) and (
+        categories[index] == "Lu" or categories[index].startswith("M")
+    ):
+        if categories[index] == "Lu":
+            uppercase_letters += 1
+        index += 1
+    return (
+        index == len(normalized)
+        and 1 <= lowercase_letters <= 12
+        and 2 <= uppercase_letters <= 6
+    )
+
+
 def _is_split_compound_abbreviation(value: str) -> bool:
     """Validate a structural compound containing a DOCX break or version dots."""
     logical = value.replace("\ufdd3", "")
@@ -2050,6 +2145,8 @@ class Anonymizer:
                         _is_hyphenated_initialism_compound(value)
                         or _is_prefixed_lowercase_compound(value)
                         or _is_mixed_separator_compound_abbreviation(value)
+                        or _is_digit_led_inventory_compound(value)
+                        or _is_compact_mixed_case_abbreviation(value)
                     )
                     and not _is_fragmented_abbreviation_token(source, start, end)
                     and _has_free_standing_abbreviation_boundaries(source, start, end)
@@ -2085,6 +2182,8 @@ class Anonymizer:
                     _is_hyphenated_initialism_compound(source[start:end])
                     or _is_prefixed_lowercase_compound(source[start:end])
                     or _is_mixed_separator_compound_abbreviation(source[start:end])
+                    or _is_digit_led_inventory_compound(source[start:end])
+                    or _is_compact_mixed_case_abbreviation(source[start:end])
                 )
             ]
             abbreviation_tokens = [
@@ -2119,6 +2218,8 @@ class Anonymizer:
                     (
                         _is_compound_abbreviation(value)
                         or _is_mixed_separator_compound_abbreviation(value)
+                        or _is_digit_led_inventory_compound(value)
+                        or _is_compact_mixed_case_abbreviation(value)
                     )
                     and _has_free_standing_abbreviation_boundaries(
                         source, start, end,

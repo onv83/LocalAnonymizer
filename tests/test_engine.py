@@ -1374,6 +1374,21 @@ def test_compound_abbreviation_accepts_one_mixed_adjacent_separator_pair():
         assert rejected.mapping == {}
         assert rejected.candidates == []
 
+        multiple_mixed = Anonymizer(paranoid=paranoid).anonymize(
+            "QA-_IT-Portal_-ActiveX"
+        )
+        assert multiple_mixed.text == "QA-_IT-Portal_-ActiveX"
+        assert multiple_mixed.mapping == {}
+        assert multiple_mixed.candidates == []
+
+        fragmented_reverse = Anonymizer(paranoid=paranoid).anonymize(
+            "QA_IT_\ufdd3-Portal"
+        )
+        assert fragmented_reverse.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+        assert fragmented_reverse.mapping == {
+            "[СОКРАЩЕНИЯ-1]": "QA_IT_\n-Portal"
+        }
+
     compound = values[0]
     precise_values = (
         f"user@{compound}.example.test",
@@ -1386,6 +1401,114 @@ def test_compound_abbreviation_accepts_one_mixed_adjacent_separator_pair():
         marker.startswith("[СОКРАЩЕНИЯ-")
         for marker in precise.mapping
     )
+
+
+def test_digit_led_inventory_compounds_are_abbreviations():
+    values = (
+        "8300-QA-ClientInstall",
+        "8300-QA-DeviceLock",
+        "8300-QA-DefaultPolicy",
+        "8300-QA-ScreenSaver_and_Wallpaper",
+    )
+    source = " ".join(values)
+
+    for paranoid in (False, True):
+        result = Anonymizer(paranoid=paranoid).anonymize(source)
+        assert set(result.mapping.values()) == set(values)
+        assert result.text.count("[СОКРАЩЕНИЯ-") == len(values)
+        assert not result.candidates
+
+    prefixed = Anonymizer().anonymize("Copy of 5500-ZX-Proxy_Spark")
+    assert prefixed.text == "Copy of [СОКРАЩЕНИЯ-1]"
+    assert prefixed.mapping == {
+        "[СОКРАЩЕНИЯ-1]": "5500-ZX-Proxy_Spark",
+    }
+
+    fragmented = Anonymizer().anonymize("8300-QA-\ufdd3ClientInstall")
+    assert fragmented.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+    assert fragmented.mapping == {
+        "[СОКРАЩЕНИЯ-1]": "8300-QA-\nClientInstall",
+    }
+    hard_boundary = Anonymizer().anonymize("8300-QA-\ufdd0ClientInstall")
+    assert "8300-QA-\nClientInstall" not in hard_boundary.mapping.values()
+
+    value = values[0]
+    for anonymizer in (
+        Anonymizer(paranoid=True, whitelist={value}),
+        Anonymizer(paranoid=True, disabled_categories={"СОКРАЩЕНИЯ"}),
+    ):
+        protected = anonymizer.anonymize(value)
+        assert protected.text == value
+        assert protected.mapping == {}
+        assert protected.candidates == []
+
+    precise_values = (
+        f"user@{value}.example.test",
+        f"https://example.test/{value}",
+        f"C:\\Temp\\{value}",
+    )
+    precise = Anonymizer().anonymize(" ".join(precise_values))
+    assert set(precise.mapping.values()) == set(precise_values)
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-") for marker in precise.mapping
+    )
+
+    for rejected in (
+        "8-QA-ClientInstall",
+        "8300-qA-ClientInstall",
+        "8300-QA-Client",
+        "2026-US-October-Report",
+        "20-US-New-York",
+        "8300--QA-ClientInstall",
+        "8300-QA__ClientInstall",
+    ):
+        result = Anonymizer(paranoid=True).anonymize(rejected)
+        assert result.text == rejected
+        assert result.mapping == {}
+        assert result.candidates == []
+
+
+def test_compact_mixed_case_acronym_like_token_is_abbreviation():
+    value = "MixPC"
+    for paranoid in (False, True):
+        result = Anonymizer(paranoid=paranoid).anonymize(value)
+        assert result.text == "[СОКРАЩЕНИЯ-1]"
+        assert result.mapping == {"[СОКРАЩЕНИЯ-1]": value}
+        assert not result.candidates
+
+    for anonymizer in (
+        Anonymizer(paranoid=True, whitelist={value}),
+        Anonymizer(paranoid=True, disabled_categories={"СОКРАЩЕНИЯ"}),
+    ):
+        protected = anonymizer.anonymize(value)
+        assert protected.text == value
+        assert protected.mapping == {}
+        assert protected.candidates == []
+
+    fragmented = Anonymizer().anonymize("Mix\ufdd3PC")
+    assert fragmented.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+    assert fragmented.mapping == {"[СОКРАЩЕНИЯ-1]": "Mix\nPC"}
+    hard_boundary = Anonymizer().anonymize("Mix\ufdd0PC")
+    assert "Mix\nPC" not in hard_boundary.mapping.values()
+
+    precise_values = (
+        f"user@{value}.example.test",
+        f"https://example.test/{value}",
+        f"C:\\Temp\\{value}",
+    )
+    precise = Anonymizer().anonymize(" ".join(precise_values))
+    assert set(precise.mapping.values()) == set(precise_values)
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-") for marker in precise.mapping
+    )
+
+    for rejected in ("Mixed", "TitleX", "ABc", "mixPC"):
+        result = Anonymizer().anonymize(rejected)
+        assert rejected not in {
+            original
+            for marker, original in result.mapping.items()
+            if marker.startswith("[СОКРАЩЕНИЯ-")
+        }
 
 
 def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_email():

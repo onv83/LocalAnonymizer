@@ -255,6 +255,72 @@ def _mixed_separator_compound_abbreviation_self_test() -> bool:
     )
 
 
+def _inventory_style_abbreviation_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    values = (
+        "8300-QA-ClientInstall",
+        "8300-QA-ScreenSaver_and_Wallpaper",
+        "MixPC",
+    )
+    source = " ".join(values)
+    expected_text = " ".join(
+        f"[СОКРАЩЕНИЯ-{index}]" for index in range(1, len(values) + 1)
+    )
+    expected_mapping = {
+        f"[СОКРАЩЕНИЯ-{index}]": value
+        for index, value in enumerate(values, start=1)
+    }
+    ordinary = detector.anonymize(source)
+    paranoid = Anonymizer(paranoid=True).anonymize(source)
+    disabled = Anonymizer(
+        paranoid=True,
+        disabled_categories={"СОКРАЩЕНИЯ"},
+    ).anonymize(source)
+    whitelisted = Anonymizer(paranoid=True, whitelist=set(values)).anonymize(source)
+    embedded_values = (
+        f"user@{values[0]}.example.test",
+        f"https://example.test/{values[0]}",
+        f"C:\\Temp\\{values[0]}",
+    )
+    embedded = detector.anonymize(" ".join(embedded_values))
+    fragmented_numeric = detector.anonymize("8300-QA-\ufdd3ClientInstall")
+    fragmented_compact = detector.anonymize("Mix\ufdd3PC")
+    hard_boundary_numeric = detector.anonymize("8300-QA-\ufdd0ClientInstall")
+    hard_boundary_compact = detector.anonymize("Mix\ufdd0PC")
+    malformed_source = (
+        "8300--QA-ClientInstall 8300-QA__ClientInstall "
+        "2026-US-October-Report 20-US-New-York"
+    )
+    malformed = detector.anonymize(malformed_source)
+    return (
+        ordinary.text == expected_text
+        and ordinary.mapping == expected_mapping
+        and paranoid.text == expected_text
+        and paranoid.mapping == expected_mapping
+        and disabled.text == source
+        and not disabled.mapping
+        and not disabled.candidates
+        and whitelisted.text == source
+        and not whitelisted.mapping
+        and not whitelisted.candidates
+        and set(embedded.mapping.values()) == set(embedded_values)
+        and not any(
+            marker.startswith("[СОКРАЩЕНИЯ-") for marker in embedded.mapping
+        )
+        and fragmented_numeric.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+        and fragmented_numeric.mapping == {
+            "[СОКРАЩЕНИЯ-1]": "8300-QA-\nClientInstall"
+        }
+        and fragmented_compact.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+        and fragmented_compact.mapping == {"[СОКРАЩЕНИЯ-1]": "Mix\nPC"}
+        and "8300-QA-\nClientInstall" not in hard_boundary_numeric.mapping.values()
+        and "Mix\nPC" not in hard_boundary_compact.mapping.values()
+        and malformed.text == malformed_source
+        and not malformed.mapping
+        and not malformed.candidates
+    )
+
+
 def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     values = (
@@ -1080,6 +1146,7 @@ class AppApi:
         mixed_separator_compound_abbreviation_ok = (
             _mixed_separator_compound_abbreviation_self_test()
         )
+        inventory_style_abbreviation_ok = _inventory_style_abbreviation_self_test()
         hyphenated_abbreviation_hint_precedence_ok = (
             _hyphenated_abbreviation_hint_precedence_self_test()
         )
@@ -1116,6 +1183,7 @@ class AppApi:
                 and address_contextual_variants_ok
                 and compound_policy_abbreviation_ok
                 and mixed_separator_compound_abbreviation_ok
+                and inventory_style_abbreviation_ok
                 and hyphenated_abbreviation_hint_precedence_ok
                 and prefixed_lowercase_compound_abbreviation_ok
                 and dotted_version_compound_abbreviation_ok
@@ -1144,6 +1212,7 @@ class AppApi:
             "mixed_separator_compound_abbreviation_ok": (
                 mixed_separator_compound_abbreviation_ok
             ),
+            "inventory_style_abbreviation_ok": inventory_style_abbreviation_ok,
             "hyphenated_abbreviation_hint_precedence_ok": (
                 hyphenated_abbreviation_hint_precedence_ok
             ),
