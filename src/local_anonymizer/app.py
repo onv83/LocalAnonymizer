@@ -321,6 +321,67 @@ def _inventory_style_abbreviation_self_test(anonymizer=None) -> bool:
     )
 
 
+def _intra_boundary_semantic_precedence_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    structural_values = ("IT-Navigation", "QWER_delta-node")
+    for value in structural_values:
+        for split_at in range(1, len(value)):
+            physical = value[:split_at] + "\ufdd3" + value[split_at:]
+            result = detector.anonymize(physical)
+            if (
+                result.text != "[СОКРАЩЕНИЯ-1]\ufdd3"
+                or result.mapping != {
+                    "[СОКРАЩЕНИЯ-1]": physical.replace("\ufdd3", "\n")
+                }
+            ):
+                return False
+
+    precise_values = (
+        ("user@QWER_delta-node.example.test", "ПОЧТА"),
+        ("https://example.test/QWER_delta-node", "ССЫЛКА"),
+        (r"C:\Temp\QWER_delta-node", "ПУТЬ"),
+    )
+    for value, category in precise_values:
+        for split_at in range(1, len(value)):
+            physical = value[:split_at] + "\ufdd3" + value[split_at:]
+            result = detector.anonymize(physical)
+            placeholder = f"[{category}-1]"
+            if (
+                result.text != placeholder + "\ufdd3"
+                or result.mapping != {
+                    placeholder: physical.replace("\ufdd3", "\n")
+                }
+            ):
+                return False
+            whitelisted = Anonymizer(whitelist=[value]).anonymize(physical)
+            if (
+                whitelisted.text != physical
+                or whitelisted.mapping
+                or whitelisted.candidates
+            ):
+                return False
+
+    semantic = Anonymizer(
+        paranoid=True,
+        disabled_categories={"СОКРАЩЕНИЯ"},
+    ).anonymize("IT-Диа\ufdd3гноз")
+    if semantic.mapping != {"[СПЕЦКАТЕГОРИЯ-1]": "Диа\nгноз"}:
+        return False
+
+    semantic_whitelisted = Anonymizer(
+        paranoid=True,
+        whitelist=["Диагноз"],
+    ).anonymize("IT-Диа\ufdd3гноз")
+    if semantic_whitelisted.mapping or semantic_whitelisted.candidates:
+        return False
+
+    hard_boundary = detector.anonymize("QWER_delta\ufdd0-node")
+    return (
+        "\ufdd0" in hard_boundary.text
+        and "QWER_delta-node" not in hard_boundary.mapping.values()
+    )
+
+
 def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     values = (
@@ -1147,6 +1208,9 @@ class AppApi:
             _mixed_separator_compound_abbreviation_self_test()
         )
         inventory_style_abbreviation_ok = _inventory_style_abbreviation_self_test()
+        intra_boundary_semantic_precedence_ok = (
+            _intra_boundary_semantic_precedence_self_test()
+        )
         hyphenated_abbreviation_hint_precedence_ok = (
             _hyphenated_abbreviation_hint_precedence_self_test()
         )
@@ -1184,6 +1248,7 @@ class AppApi:
                 and compound_policy_abbreviation_ok
                 and mixed_separator_compound_abbreviation_ok
                 and inventory_style_abbreviation_ok
+                and intra_boundary_semantic_precedence_ok
                 and hyphenated_abbreviation_hint_precedence_ok
                 and prefixed_lowercase_compound_abbreviation_ok
                 and dotted_version_compound_abbreviation_ok
@@ -1213,6 +1278,9 @@ class AppApi:
                 mixed_separator_compound_abbreviation_ok
             ),
             "inventory_style_abbreviation_ok": inventory_style_abbreviation_ok,
+            "intra_boundary_semantic_precedence_ok": (
+                intra_boundary_semantic_precedence_ok
+            ),
             "hyphenated_abbreviation_hint_precedence_ok": (
                 hyphenated_abbreviation_hint_precedence_ok
             ),

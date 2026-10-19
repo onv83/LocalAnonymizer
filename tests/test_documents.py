@@ -1140,6 +1140,43 @@ def test_docx_compound_policy_dotted_version_across_hard_break_restores_exactly(
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_precise_structures_across_hard_break_restore_exactly(tmp_path):
+    source = tmp_path / "precise-boundary-source.docx"
+    anonymized = tmp_path / "precise-boundary-anonymized.docx"
+    restored = tmp_path / "precise-boundary-restored.docx"
+    values = (
+        ("user@", "QWER_delta-node.example.test", "ПОЧТА"),
+        ("https:", "//example.test/QWER_delta-node", "ССЫЛКА"),
+        ("C:", r"\Temp\QWER_delta-node", "ПУТЬ"),
+    )
+    document = Document()
+    for prefix, suffix, _category in values:
+        paragraph = document.add_paragraph()
+        paragraph.add_run(prefix).bold = True
+        paragraph.add_run().add_break()
+        paragraph.add_run(suffix).italic = True
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = [paragraph.text for paragraph in Document(anonymized).paragraphs]
+    payload = _all_xml(anonymized)
+    for index, (prefix, suffix, category) in enumerate(values):
+        assert output[index].count(f"[{category}-") == 1
+        assert prefix.encode() not in payload
+        assert suffix.encode() not in payload
+        assert prefix + "\n" + suffix in result.mapping.values()
+
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_contextual_location_table_redacts_name_and_address_and_restores_exactly(tmp_path):
     source = tmp_path / "location-table-source.docx"
     anonymized = tmp_path / "location-table-anonymized.docx"

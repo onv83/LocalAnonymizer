@@ -694,6 +694,7 @@ class Anonymizer:
         exact_aliases: list[tuple[str, str, str, bool]] = []
         disabled_spans: list[tuple[int, int]] = []
         disabled_abbreviation_spans: list[tuple[int, int]] = []
+        logical_whitelist_spans: list[tuple[int, int]] = []
 
         def add(pattern: str, category: str, priority: int, *, flags: int = re.I,
                 group: int = 0, validate: Callable[[re.Match], bool] | None = None,
@@ -705,21 +706,78 @@ class Anonymizer:
             if category in self.disabled_categories and category != "SECRET":
                 for m in matches:
                     value = m.group(group)
-                    if value.casefold() in self.whitelist or (validate and not validate(m)):
+                    logical_value = value.replace("\ufdd3", "")
+                    if logical_value.casefold() in self.whitelist or (validate and not validate(m)):
                         continue
                     disabled_spans.append(m.span(group))
                 return matches
             for m in matches:
                 value = m.group(group)
-                if (category != "SECRET" and value.casefold() in self.whitelist) or (validate and not validate(m)):
+                logical_value = value.replace("\ufdd3", "")
+                if (category != "SECRET" and logical_value.casefold() in self.whitelist) or (validate and not validate(m)):
                     continue
+                canonical_value = canonical(m) if canonical else None
+                if canonical_value is not None:
+                    canonical_value = canonical_value.replace("\ufdd3", "").replace("\n", "")
                 found.append(Detection(
-                    *m.span(group), category, priority, value,
-                    canonical(m) if canonical else None, irreversible, fixed,
+                    *m.span(group), category, priority,
+                    value.replace("\ufdd3", "\n"),
+                    canonical_value, irreversible, fixed,
                     *(m.span(group) if allow_boundary_context else m.span()),
                     case_sensitive_canonical=case_sensitive_canonical,
                 ))
             return matches
+
+        def add_logical_intra_boundary(
+            pattern: str,
+            category: str,
+            priority: int,
+            *,
+            flags: int = re.I,
+            group: int = 0,
+            canonical: Callable[[str], str] | None = None,
+            case_sensitive_canonical: bool = False,
+        ) -> None:
+            """Match one logical entity across U+FDD3 without crossing U+FDD0."""
+            region_start = 0
+            for region in source.split("\ufdd0"):
+                logical_chars: list[str] = []
+                physical_positions: list[int] = []
+                for offset, char in enumerate(region):
+                    if char == "\ufdd3":
+                        continue
+                    logical_chars.append(char)
+                    physical_positions.append(region_start + offset)
+                logical_region = "".join(logical_chars)
+                for match in re.finditer(pattern, logical_region, flags):
+                    logical_start, logical_end = match.span(group)
+                    if logical_start == logical_end:
+                        continue
+                    start = physical_positions[logical_start]
+                    end = physical_positions[logical_end - 1] + 1
+                    physical_value = source[start:end]
+                    if "\ufdd3" not in physical_value:
+                        continue
+                    logical_value = match.group(group)
+                    if logical_value.casefold() in self.whitelist:
+                        disabled_spans.append((start, end))
+                        logical_whitelist_spans.append((start, end))
+                        continue
+                    if category in self.disabled_categories:
+                        disabled_spans.append((start, end))
+                        continue
+                    found.append(Detection(
+                        start,
+                        end,
+                        category,
+                        priority,
+                        physical_value.replace("\ufdd3", "\n"),
+                        canonical(logical_value) if canonical else logical_value,
+                        scope_start=start,
+                        scope_end=end,
+                        case_sensitive_canonical=case_sensitive_canonical,
+                    ))
+                region_start += len(region) + 1
 
         def remember_exact(matches: Iterable[re.Match], category: str, *, group: int = 1,
                            minimum_length: int = 2, case_sensitive: bool = True) -> None:
@@ -1154,8 +1212,22 @@ class Anonymizer:
         )
 
         # Network and contacts.
-        url_matches = add(r"(?:@url:\s*)?`?(?:https?|ftp|sftp|ssh|rdp|smb|ldaps?)://[^\s`<>\"'«»()\ufdd0]+`?", "ССЫЛКА", 90)
-        add(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "ПОЧТА", 89, canonical=lambda m: m.group().casefold())
+        url_pattern = r"(?:@url:\s*)?`?(?:https?|ftp|sftp|ssh|rdp|smb|ldaps?)://[^\s`<>\"'«»()\ufdd0]+`?"
+        email_pattern = r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
+        url_matches = add(url_pattern, "ССЫЛКА", 90)
+        add(email_pattern, "ПОЧТА", 89, canonical=lambda m: m.group().casefold())
+        add_logical_intra_boundary(
+            url_pattern,
+            "ССЫЛКА",
+            90,
+            case_sensitive_canonical=True,
+        )
+        add_logical_intra_boundary(
+            email_pattern,
+            "ПОЧТА",
+            89,
+            canonical=str.casefold,
+        )
         add(r"[a-z0-9._-]{2,}\s*(?:[([]\s*(?:at|собака|эт)\s*[)\]]|\s(?:at|собака)\s)\s*[a-z0-9а-яё._-]{2,}(?:\s*(?:\.|точка|dot)\s*[a-zа-яё]{2,})+", "ПОЧТА", 88, canonical=lambda m: re.sub(r"\s+", "", m.group().casefold()))
         add(r"(?<![\w:])(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}(?![\w:])", "MAC", 89,
             canonical=lambda m: m.group().casefold().replace("-", ":"))
@@ -1890,9 +1962,20 @@ class Anonymizer:
 
         # Explicit storage identifiers and local/UNC paths can expose a
         # customer's naming conventions even when no hostname is present.
+        path_pattern = (
+            r"(?<![\w])(?:[A-Za-z]:\\|\\\\[^\s\\/:*?\"<>|\r\n\ufdd0]+\\)"
+            r"(?:[^\s\\/:*?\"<>|\r\n\ufdd0]+\\)*"
+            r"[^\s\\/:*?\"<>|\r\n\ufdd0.,;:!?]+"
+        )
         add(
-            r"(?<![\w])(?:[A-Za-z]:\\|\\\\[^\s\\/:*?\"<>|\r\n\ufdd0]+\\)(?:[^\s\\/:*?\"<>|\r\n\ufdd0]+\\)*[^\s\\/:*?\"<>|\r\n\ufdd0.,;:!?]+",
+            path_pattern,
             "ПУТЬ", 92, canonical=lambda m: m.group(),
+            case_sensitive_canonical=True,
+        )
+        add_logical_intra_boundary(
+            path_pattern,
+            "ПУТЬ",
+            92,
             case_sensitive_canonical=True,
         )
         disk_matches = add(
@@ -2416,13 +2499,19 @@ class Anonymizer:
             "возможное имя собственное": "СКРЫТО",
         }
         def hint(pattern: str, kind: str, flags: int = re.I, group: int = 0,
-                 validate: Callable[[re.Match], bool] | None = None):
+                 validate: Callable[[re.Match], bool] | None = None,
+                 logical_intra_boundary: bool = False):
             if "HINTS" in self.disabled_categories or hint_categories.get(kind, "СКРЫТО") in self.disabled_categories:
                 return
             for m in re.finditer(pattern, source, flags):
                 if validate and not validate(m):
                     continue
                 span = m.span(group)
+                if any(
+                    span[0] < protected_end and span[1] > protected_start
+                    for protected_start, protected_end in logical_whitelist_spans
+                ):
+                    continue
                 if (
                     kind in {"возможное имя собственное", "возможная фамилия"}
                     and any(
@@ -2437,9 +2526,55 @@ class Anonymizer:
                 if value.casefold() in self.whitelist:
                     continue
                 hints.append(Hint(*span, value, kind)); occupied.append(span)
+            if not logical_intra_boundary:
+                return
+            region_start = 0
+            for region in source.split("\ufdd0"):
+                logical_chars: list[str] = []
+                physical_positions: list[int] = []
+                for offset, char in enumerate(region):
+                    if char == "\ufdd3":
+                        continue
+                    logical_chars.append(char)
+                    physical_positions.append(region_start + offset)
+                logical_region = "".join(logical_chars)
+                for match in re.finditer(pattern, logical_region, flags):
+                    logical_start, logical_end = match.span(group)
+                    if logical_start == logical_end:
+                        continue
+                    start = physical_positions[logical_start]
+                    end = physical_positions[logical_end - 1] + 1
+                    physical_value = source[start:end]
+                    if "\ufdd3" not in physical_value:
+                        continue
+                    span = (start, end)
+                    if any(start < occupied_end and end > occupied_start
+                           for occupied_start, occupied_end in occupied):
+                        continue
+                    logical_value = match.group(group)
+                    if logical_value.casefold() in self.whitelist:
+                        disabled_spans.append((start, end))
+                        logical_whitelist_spans.append((start, end))
+                        hints[:] = [
+                            item for item in hints
+                            if not (item.start < end and item.end > start)
+                        ]
+                        continue
+                    hints.append(Hint(
+                        start,
+                        end,
+                        physical_value.replace("\ufdd3", "\n"),
+                        kind,
+                    ))
+                    occupied.append(span)
+                region_start += len(region) + 1
         hint(r"\b(?:начальник[а-яё]*|заместител[а-яё]+|руководител[а-яё]+|директор[а-яё]*|куратор[а-яё]*|главн[а-яё]+\s+(?:инженер|бухгалтер|специалист)|ведущ[а-яё]+\s+(?:инженер|специалист)|администратор[а-яё]*|архитектор[а-яё]*)\s+(?:(?:отдел[а-яё]*|управлени[а-яё]+|департамент[а-яё]*|служб[а-яё]+|направлени[а-яё]+|групп[а-яё]+|центр[а-яё]*)(?:\s+(?!(?:[а-яё]+(?:ет|ют|ит|ят|ут|л|ла|ли))\b)[а-яё]+){0,2}|по\s+[а-яё]+(?:\s+[а-яё]+){0,2})\b", "должность")
         hint(rf"(?<![А-Яа-яЁё-])(?:{city_pattern})(?![А-Яа-яЁё-])", "город")
-        hint(r"\b(?:диагноз[а-яё]*|инвалидн[а-яё]+|судимост[а-яё]+|вероисповедан[а-яё]+|национальност[а-яё]+|беременн[а-яё]+|болезн[а-яё]+)\b", "спецкатегория ПДн")
+        hint(
+            r"\b(?:диагноз[а-яё]*|инвалидн[а-яё]+|судимост[а-яё]+|вероисповедан[а-яё]+|национальност[а-яё]+|беременн[а-яё]+|болезн[а-яё]+)\b",
+            "спецкатегория ПДн",
+            logical_intra_boundary=True,
+        )
         hint(r"\b[А-ЯЁ][а-яё-]{3,}\b", "возможная фамилия", flags=0,
              validate=lambda m: _stem_surname(m.group()) in {_stem_surname(x) for x in COMMON_SURNAMES})
         # Capitalized-only proper nouns in the middle of a sentence.
@@ -2465,7 +2600,9 @@ class Anonymizer:
                     if item.start < hint_item.end and item.end > hint_item.start
                 ]
                 if (
-                    not _is_hyphenated_initialism_compound(item.value)
+                    not _is_hyphenated_initialism_compound(
+                        item.value.replace("\n", "")
+                    )
                     or not overlapping_hints
                     or any(
                         hint_item.kind not in {

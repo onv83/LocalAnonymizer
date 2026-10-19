@@ -165,3 +165,11 @@
 - **Приёмка:** synthetic RED/GREEN normal/paranoid regressions для обеих структурных семей, negative boundary corpus, whitelist/disabled controls, enclosing URL/email/path precedence, DOCX boundary coverage, fail-closed package proof, full suite, independent blocker review, fresh Windows package, Defender, exact-head CI и safe install.
 - **Проверка:** focused `32 passed`; full suite `665 passed`; category controls `92`; source smoke/release verifier normal/optimized, E2E, compilation, privacy scan и `git diff --check` прошли; independent review `passed=true` после устранения over-broad date/location формы; package verifier normal/optimized прошёл; Defender — `found no threats`; exact-head CI `39200058928` прошёл; installed smoke подтвердил `inventory_style_abbreviation_ok=true`.
 - **Артефакты:** source commit `3313d2f5d610a72cd09b49f3c7b49dca7c05e8b2`; Windows EXE SHA-256 `bbb14b687eb1441a35a0d192a5921d452cc3bd88d1a7ed5a2eff17c5379faa7f`; safe install скопировал `407` byte-identical files.
+
+## B32 — симметричные intra-token `U+FDD3` boundaries и semantic precedence
+
+- **Источник:** независимый security review текущей structural-abbreviation реализации.
+- **Дефект:** некоторые позиции `U+FDD3` рядом с `-`/`_` приводят к частичной маскировке; точные email/URL/path и специализированные semantic spans не всегда реконструируются до broad abbreviation fallback; mapping/rendering могут учитывать одну physical boundary дважды.
+- **Статус:** source реализован и проверен; package/CI/install pending.
+- **Требование:** классифицировать и заменять полный логический span независимо от позиции `U+FDD3` внутри одной semantic region; точные semantic detectors всегда имеют приоритет; disabled/whitelist защищают полный structural token; mapping хранит newline-layout ровно один раз; `U+FDD0` остаётся непроходимым.
+- **Приёмка:** parameterized RED/GREEN для structural split positions, normal/paranoid/disabled/whitelist; email/URL/Windows path split positions; precise semantic precedence; exact sentinel-count and restoration round-trip; full source/package/CI/install gates и независимый blocker review.

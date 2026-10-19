@@ -1261,6 +1261,111 @@ def test_split_structural_abbreviations_join_only_inside_one_cell():
         )
 
 
+def test_structural_abbreviations_support_every_intra_token_boundary():
+    for value in ("IT-Navigation", "QWER_delta-node"):
+        for split_at in range(1, len(value)):
+            physical = value[:split_at] + "\ufdd3" + value[split_at:]
+            expected_mapping = physical.replace("\ufdd3", "\n")
+
+            for paranoid in (False, True):
+                result = Anonymizer(paranoid=paranoid).anonymize(physical)
+                assert result.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+                assert result.mapping == {
+                    "[СОКРАЩЕНИЯ-1]": expected_mapping,
+                }
+
+                disabled = Anonymizer(
+                    paranoid=paranoid,
+                    disabled_categories={"СОКРАЩЕНИЯ"},
+                ).anonymize(physical)
+                assert disabled.text == physical
+                assert disabled.mapping == {}
+                assert disabled.candidates == []
+
+                whitelisted = Anonymizer(
+                    paranoid=paranoid,
+                    whitelist={value},
+                ).anonymize(physical)
+                assert whitelisted.text == physical
+                assert whitelisted.mapping == {}
+                assert whitelisted.candidates == []
+
+            hard_boundary = value[:split_at] + "\ufdd0" + value[split_at:]
+            separated = Anonymizer(paranoid=True).anonymize(hard_boundary)
+            assert expected_mapping not in separated.mapping.values()
+            assert "\ufdd0" in separated.text
+
+
+def test_precise_semantic_hint_outranks_split_abbreviation_fallback():
+    physical = "IT-Диа\ufdd3гноз"
+    for disabled_categories in (set(), {"СОКРАЩЕНИЯ"}):
+        ordinary = Anonymizer(
+            disabled_categories=disabled_categories,
+        ).anonymize(physical)
+        assert ordinary.text == physical.replace("\ufdd3", "\n")
+        assert ordinary.mapping == {}
+        assert ordinary.candidates == ["Диа\nгноз"]
+
+        paranoid = Anonymizer(
+            paranoid=True,
+            disabled_categories=disabled_categories,
+        ).anonymize(physical)
+        assert paranoid.text == "IT-[СПЕЦКАТЕГОРИЯ-1]\ufdd3"
+        assert paranoid.mapping == {
+            "[СПЕЦКАТЕГОРИЯ-1]": "Диа\nгноз",
+        }
+        assert paranoid.candidates == []
+
+    word = "Диагноз"
+    for split_at in range(1, len(word)):
+        whitelisted_physical = (
+            "IT-" + word[:split_at] + "\ufdd3" + word[split_at:]
+        )
+        for paranoid in (False, True):
+            whitelisted = Anonymizer(
+                paranoid=paranoid,
+                whitelist=[word],
+            ).anonymize(whitelisted_physical)
+            assert whitelisted.text == whitelisted_physical
+            assert whitelisted.mapping == {}
+            assert whitelisted.candidates == []
+
+
+def test_precise_structures_support_every_intra_token_boundary():
+    values = (
+        ("user@QWER_delta-node.example.test", "ПОЧТА"),
+        ("https://example.test/QWER_delta-node", "ССЫЛКА"),
+        ("C:\\Temp\\QWER_delta-node", "ПУТЬ"),
+    )
+    for value, category in values:
+        for split_at in range(1, len(value)):
+            physical = value[:split_at] + "\ufdd3" + value[split_at:]
+            result = Anonymizer(paranoid=True).anonymize(physical)
+            assert result.text == f"[{category}-1]\ufdd3"
+            assert result.mapping == {
+                f"[{category}-1]": physical.replace("\ufdd3", "\n"),
+            }
+            assert result.text.count("\ufdd3") == physical.count("\ufdd3")
+            assert not any(
+                marker.startswith("[СОКРАЩЕНИЯ-")
+                for marker in result.mapping
+            )
+
+            for paranoid in (False, True):
+                whitelisted = Anonymizer(
+                    paranoid=paranoid,
+                    whitelist=[value],
+                ).anonymize(physical)
+                assert whitelisted.text == physical
+                assert whitelisted.mapping == {}
+                assert whitelisted.candidates == []
+
+            hard_boundary = value[:split_at] + "\ufdd0" + value[split_at:]
+            separated = Anonymizer(paranoid=True).anonymize(hard_boundary)
+            assert value not in separated.mapping.values()
+            assert "\ufdd0" in separated.text
+
+
 def test_precise_semantic_hint_outranks_hyphenated_abbreviation_fallback():
     source = "Объект IT-Диагноз используется."
     for disabled_categories in (set(), {"СОКРАЩЕНИЯ"}):
