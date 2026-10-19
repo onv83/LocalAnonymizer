@@ -103,7 +103,25 @@ def _iter_structural_abbreviation_tokens(value: str) -> Iterable[tuple[int, int]
             if _is_abbreviation_continuation(char):
                 index += 1
                 continue
-            if char == "-" and index + 1 < len(value) and _is_abbreviation_continuation(value[index + 1]):
+            if (
+                char == "-"
+                and index + 1 < len(value)
+                and (
+                    _is_abbreviation_continuation(value[index + 1])
+                    or (
+                        value[index + 1] == "\ufdd3"
+                        and index + 2 < len(value)
+                        and (
+                            _is_abbreviation_continuation(value[index + 2])
+                            or (
+                                value[index + 2] in {"-", "_"}
+                                and index + 3 < len(value)
+                                and _is_abbreviation_continuation(value[index + 3])
+                            )
+                        )
+                    )
+                )
+            ):
                 index += 1
                 continue
             if (
@@ -173,6 +191,37 @@ def _is_compound_abbreviation(value: str) -> bool:
         or "." in logical
         or logical.count("-") + logical.count("_") >= 3
         or has_internal_upper
+    )
+
+
+def _is_mixed_separator_compound_abbreviation(value: str) -> bool:
+    """Accept one mixed adjacent separator in an otherwise valid compound ID."""
+    normalized = unicodedata.normalize("NFC", value.replace("\ufdd3", ""))
+    if "--" in normalized or "__" in normalized:
+        return False
+    if normalized.count("-_") + normalized.count("_-") != 1:
+        return False
+    collapsed = normalized.replace("-_", "-").replace("_-", "-")
+    return _is_compound_abbreviation(collapsed)
+
+
+def _is_split_compound_abbreviation(value: str) -> bool:
+    """Validate a structural compound containing a DOCX break or version dots."""
+    logical = value.replace("\ufdd3", "")
+    without_versions = re.sub(r"(?:\.)?\d+(?:\.\d+){2,}", "", logical)
+    compound_parts = _compound_abbreviation_parts(value)
+    return (
+        (
+            _is_compound_abbreviation(value)
+            or _is_mixed_separator_compound_abbreviation(value)
+        )
+        and ("\ufdd3" in value or "." in value)
+        and "." not in without_versions
+        and (
+            "." not in value
+            or "_" in value
+            or (compound_parts is not None and len(compound_parts) >= 4)
+        )
     )
 
 
@@ -284,6 +333,38 @@ def _has_overlong_structural_prefix(value: str) -> bool:
     return False
 
 
+def _has_unattached_separator_boundaries(
+    source: str,
+    start: int,
+    end: int,
+) -> bool:
+    previous = start - 1
+    while previous >= 0 and source[previous] == "\ufdd3":
+        previous -= 1
+    following = end
+    while following < len(source) and source[following] == "\ufdd3":
+        following += 1
+
+    def separator_attaches(index: int, step: int) -> bool:
+        if not (0 <= index < len(source)) or source[index] not in "-_":
+            return False
+        neighbor = index + step
+        while 0 <= neighbor < len(source) and source[neighbor] == "\ufdd3":
+            neighbor += step
+        return (
+            0 <= neighbor < len(source)
+            and (
+                _is_abbreviation_continuation(source[neighbor])
+                or source[neighbor] in "-_"
+            )
+        )
+
+    return (
+        not separator_attaches(previous, -1)
+        and not separator_attaches(following, 1)
+    )
+
+
 def _has_free_standing_abbreviation_boundaries(
     source: str,
     start: int,
@@ -299,6 +380,7 @@ def _has_free_standing_abbreviation_boundaries(
     return (
         (previous < 0 or source[previous] not in blocked)
         and (following == len(source) or source[following] not in blocked)
+        and _has_unattached_separator_boundaries(source, start, end)
     )
 
 
@@ -1952,6 +2034,12 @@ class Anonymizer:
             validate=lambda m: _name_stem(m.group()) not in whitelist_stems,
             canonical=lambda m: _name_stem(m.group()))
 
+        split_compound = re.compile(
+            r"(?<![\w@./\\:])"
+            r"([A-Za-z0-9](?:[A-Za-z0-9_.-]|\ufdd3){3,253}[A-Za-z0-9])"
+            r"(?![\w@/\\]|[.:][\w])"
+        )
+
         if "СОКРАЩЕНИЯ" in self.disabled_categories:
             # Disabling a category is authoritative even in paranoid mode:
             # protect the complete token from nested review hints.
@@ -1961,41 +2049,28 @@ class Anonymizer:
                     (
                         _is_hyphenated_initialism_compound(value)
                         or _is_prefixed_lowercase_compound(value)
+                        or _is_mixed_separator_compound_abbreviation(value)
                     )
                     and not _is_fragmented_abbreviation_token(source, start, end)
                     and _has_free_standing_abbreviation_boundaries(source, start, end)
                 ):
                     disabled_abbreviation_spans.append((start, end))
+            for match in split_compound.finditer(source):
+                physical = match.group(1)
+                if _is_split_compound_abbreviation(physical):
+                    disabled_abbreviation_spans.append(match.span(1))
 
         if "СОКРАЩЕНИЯ" not in self.disabled_categories:
             # A DOCX run or hard break is represented by U+FDD3.  Join only a
             # bounded compound identifier here; do not make the general token
             # iterator cross run boundaries because that can merge prose.
-            split_compound = re.compile(
-                r"(?<![\w@./\\:])"
-                r"([A-Za-z0-9](?:[A-Za-z0-9_.-]|\ufdd3){3,253}[A-Za-z0-9])"
-                r"(?![\w@/\\]|[.:][\w])"
-            )
             for match in split_compound.finditer(source):
                 physical = match.group(1)
                 logical = physical.replace("\ufdd3", "")
-                # Dots are permitted only in numeric versions with at least
-                # three components.  Two-component numeric labels are still
-                # indistinguishable from bounded DNS-like host segments and
-                # therefore fail closed.
-                without_versions = re.sub(r"(?:\.)?\d+(?:\.\d+){2,}", "", logical)
-                numeric_dots = "." not in without_versions
-                compound_parts = _compound_abbreviation_parts(physical)
-                if (
-                    not _is_compound_abbreviation(physical)
-                    or ("\ufdd3" not in physical and "." not in physical)
-                    or not numeric_dots
-                    or (
-                        "." in physical
-                        and "_" not in physical
-                        and (compound_parts is None or len(compound_parts) < 4)
-                    )
-                ):
+                if not _is_split_compound_abbreviation(physical):
+                    continue
+                if unicodedata.normalize("NFC", logical).casefold() in self.whitelist:
+                    disabled_spans.append(match.span(1))
                     continue
                 abbreviation_candidates.append(Detection(
                     match.start(1), match.end(1), "СОКРАЩЕНИЯ", 46,
@@ -2009,6 +2084,7 @@ class Anonymizer:
                 if (
                     _is_hyphenated_initialism_compound(source[start:end])
                     or _is_prefixed_lowercase_compound(source[start:end])
+                    or _is_mixed_separator_compound_abbreviation(source[start:end])
                 )
             ]
             abbreviation_tokens = [
@@ -2034,9 +2110,19 @@ class Anonymizer:
                     continue
                 if _has_overlong_structural_prefix(value):
                     continue
+                unattached = _has_unattached_separator_boundaries(
+                    source, start, end,
+                )
+                if not unattached:
+                    continue
                 if (
-                    _is_compound_abbreviation(value)
-                    and _has_free_standing_abbreviation_boundaries(source, start, end)
+                    (
+                        _is_compound_abbreviation(value)
+                        or _is_mixed_separator_compound_abbreviation(value)
+                    )
+                    and _has_free_standing_abbreviation_boundaries(
+                        source, start, end,
+                    )
                 ):
                     abbreviation_candidates.append(Detection(
                         start, end, "СОКРАЩЕНИЯ", 46,
@@ -2056,6 +2142,7 @@ class Anonymizer:
                     and any(unicodedata.category(char) == "Ll" for char in normalized)
                     and not _is_compound_abbreviation(value)
                     and not _is_prefixed_lowercase_compound(value)
+                    and not _is_mixed_separator_compound_abbreviation(value)
                 ):
                     continue
                 structural_compound = (
@@ -2064,7 +2151,9 @@ class Anonymizer:
                 )
                 if structural_compound and (
                     _is_fragmented_abbreviation_token(source, start, end)
-                    or not _has_free_standing_abbreviation_boundaries(source, start, end)
+                    or not _has_free_standing_abbreviation_boundaries(
+                        source, start, end,
+                    )
                 ):
                     continue
                 if structural_compound:

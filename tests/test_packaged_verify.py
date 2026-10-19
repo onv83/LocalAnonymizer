@@ -48,6 +48,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "address_postal_variants_ok": True,
             "address_contextual_variants_ok": True,
             "compound_policy_abbreviation_ok": True,
+            "mixed_separator_compound_abbreviation_ok": True,
             "hyphenated_abbreviation_hint_precedence_ok": True,
             "prefixed_lowercase_compound_abbreviation_ok": True,
             "dotted_version_compound_abbreviation_ok": True,
@@ -81,7 +82,8 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
 
 
 @pytest.mark.parametrize("missing", (
-    "compound_policy_abbreviation_ok", "hyphenated_abbreviation_hint_precedence_ok",
+    "compound_policy_abbreviation_ok", "mixed_separator_compound_abbreviation_ok",
+    "hyphenated_abbreviation_hint_precedence_ok",
     "prefixed_lowercase_compound_abbreviation_ok",
     "dotted_version_compound_abbreviation_ok",
     "contextual_location_table_ok",
@@ -96,6 +98,7 @@ def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
         "abbreviation_single_two_letter_ok", "domain_toc_ok", "port_ok",
         "address_inventory_ok", "address_postal_variants_ok",
         "address_contextual_variants_ok", "compound_policy_abbreviation_ok",
+        "mixed_separator_compound_abbreviation_ok",
         "hyphenated_abbreviation_hint_precedence_ok",
         "prefixed_lowercase_compound_abbreviation_ok",
         "dotted_version_compound_abbreviation_ok",
@@ -196,6 +199,7 @@ def test_packaged_smoke_rejects_stale_build_without_server_inventory_name_proof(
             "address_postal_variants_ok": True,
             "address_contextual_variants_ok": True,
             "compound_policy_abbreviation_ok": True,
+            "mixed_separator_compound_abbreviation_ok": True,
             "hyphenated_abbreviation_hint_precedence_ok": True,
             "prefixed_lowercase_compound_abbreviation_ok": True,
             "dotted_version_compound_abbreviation_ok": True,
@@ -225,6 +229,7 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "address_postal_variants_ok": True,
             "address_contextual_variants_ok": True,
             "compound_policy_abbreviation_ok": True,
+            "mixed_separator_compound_abbreviation_ok": True,
             "hyphenated_abbreviation_hint_precedence_ok": True,
             "prefixed_lowercase_compound_abbreviation_ok": True,
             "dotted_version_compound_abbreviation_ok": True,

@@ -144,3 +144,11 @@
 - **Статус:** ~~выполнено~~ — source/full gates, independent review, fresh Windows package/install и exact-head CI `39191251807` подтверждены для commit `3bbf929ddf7bbfa44566e636d7005946e2838be6`.
 - **Требование:** structural shape с 9+ uppercase letters не должен обходить границу 2–8 через fallback; whitelist применяется к самостоятельному токену, но не отменяет более точную enclosing-семантику.
 - **Приёмка:** negatives для обеих structural форм с 9-буквенным prefix, whitelist-inside-email/URL/path regressions, расширенный fail-closed smoke proof, full gates, independent review, fresh Windows package/install и exact-head CI.
+
+## B30 — mixed adjacent separator внутри technical compound
+
+- **Источник:** screenshot focus `2026-10-19`; реальный identifier не переносится в repository.
+- **Дефект:** compound technical ID с единственной смешанной парой соседних разделителей (`-_` или `_-`) не проходит существующую compound policy, хотя эквивалент с одним разделителем классифицируется как `СОКРАЩЕНИЯ`.
+- **Статус:** в работе.
+- **Требование:** одна mixed adjacent separator pair должна трактоваться как единая граница сегментов только внутри уже валидного compound abbreviation; повторные одинаковые разделители, URL/email/path и prose не расширяются.
+- **Приёмка:** synthetic normal/paranoid, whitelist, disabled category, precise URL/email/path, duplicate-separator negatives, fail-closed package proof, full gates, review, package/install и CI.

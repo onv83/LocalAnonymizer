@@ -193,6 +193,68 @@ def _compound_policy_abbreviation_self_test(anonymizer=None) -> bool:
     )
 
 
+def _mixed_separator_compound_abbreviation_self_test() -> bool:
+    values = (
+        "QA-IT-Portal-_ActiveX",
+        "QA_IT_Portal_-ActiveX",
+        "QA-IT-Portal-_v1.2.3",
+        "QA_IT_Portal_-v1.2.3",
+    )
+    expected_mapping = {
+        f"[СОКРАЩЕНИЯ-{index}]": value
+        for index, value in enumerate(values, start=1)
+    }
+    source = " ".join(values)
+    ordinary = Anonymizer().anonymize(source)
+    paranoid = Anonymizer(paranoid=True).anonymize(source)
+    malformed = tuple(
+        (
+            Anonymizer(paranoid=paranoid).anonymize("QA--IT-Portal-_ActiveX"),
+            Anonymizer(paranoid=paranoid).anonymize("QA__IT_Portal"),
+        )
+        for paranoid in (False, True)
+    )
+    precise_values = (
+        f"user@{values[0]}.example.test",
+        f"https://example.test/{values[0]}",
+        f"C:\\Temp\\{values[0]}",
+    )
+    precise = Anonymizer().anonymize(" ".join(precise_values))
+    fragmented = Anonymizer().anonymize("QA-IT-Portal-\ufdd3_ActiveX")
+    return (
+        ordinary.mapping == expected_mapping
+        and paranoid.mapping == expected_mapping
+        and all(
+            result.text == value
+            and not result.mapping
+            and not result.candidates
+            for value in values
+            for result in (
+                Anonymizer(paranoid=True, whitelist={value}).anonymize(value),
+                Anonymizer(
+                    paranoid=True,
+                    disabled_categories={"СОКРАЩЕНИЯ"},
+                ).anonymize(value),
+            )
+        )
+        and all(
+            split.text == "QA--IT-Portal-_ActiveX"
+            and not split.mapping
+            and not split.candidates
+            and rejected.text == "QA__IT_Portal"
+            and not rejected.mapping
+            and not rejected.candidates
+            for split, rejected in malformed
+        )
+        and precise.text == "[ПОЧТА-1] [ССЫЛКА-1] [ПУТЬ-1]"
+        and set(precise.mapping.values()) == set(precise_values)
+        and fragmented.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
+        and fragmented.mapping == {
+            "[СОКРАЩЕНИЯ-1]": "QA-IT-Portal-\n_ActiveX"
+        }
+    )
+
+
 def _hyphenated_abbreviation_hint_precedence_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     values = (
@@ -1015,6 +1077,9 @@ class AppApi:
         address_postal_variants_ok = _complete_postal_address_self_test()
         address_contextual_variants_ok = _contextual_address_self_test()
         compound_policy_abbreviation_ok = _compound_policy_abbreviation_self_test()
+        mixed_separator_compound_abbreviation_ok = (
+            _mixed_separator_compound_abbreviation_self_test()
+        )
         hyphenated_abbreviation_hint_precedence_ok = (
             _hyphenated_abbreviation_hint_precedence_self_test()
         )
@@ -1050,6 +1115,7 @@ class AppApi:
                 and address_postal_variants_ok
                 and address_contextual_variants_ok
                 and compound_policy_abbreviation_ok
+                and mixed_separator_compound_abbreviation_ok
                 and hyphenated_abbreviation_hint_precedence_ok
                 and prefixed_lowercase_compound_abbreviation_ok
                 and dotted_version_compound_abbreviation_ok
@@ -1075,6 +1141,9 @@ class AppApi:
             "address_postal_variants_ok": address_postal_variants_ok,
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "compound_policy_abbreviation_ok": compound_policy_abbreviation_ok,
+            "mixed_separator_compound_abbreviation_ok": (
+                mixed_separator_compound_abbreviation_ok
+            ),
             "hyphenated_abbreviation_hint_precedence_ok": (
                 hyphenated_abbreviation_hint_precedence_ok
             ),

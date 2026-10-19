@@ -1217,6 +1217,7 @@ def test_split_structural_abbreviations_join_only_inside_one_cell():
     for physical, logical in (
         ("IT-Na\ufdd3vigation", "IT-Na\nvigation"),
         ("QWER_delta\ufdd3-node", "QWER_delta\n-node"),
+        ("QA-IT-Portal-\ufdd3_ActiveX", "QA-IT-Portal-\n_ActiveX"),
     ):
         result = Anonymizer().anonymize(physical)
         assert result.text == "[СОКРАЩЕНИЯ-1]\ufdd3"
@@ -1241,6 +1242,7 @@ def test_split_structural_abbreviations_join_only_inside_one_cell():
     for separated in (
         "IT-Na\ufdd0vigation",
         "QWER_delta\ufdd0-node",
+        "QA-IT-Portal-\ufdd0_ActiveX",
     ):
         result = Anonymizer().anonymize(separated)
         assert separated not in result.mapping.values()
@@ -1333,6 +1335,57 @@ def test_uppercase_prefix_with_lowercase_underscore_hyphen_tail_is_abbreviation(
     ).anonymize(semantic_source)
     assert semantic.mapping == {"[СПЕЦКАТЕГОРИЯ-1]": "диагноз"}
     assert semantic.text == "Компонент IT_alpha-[СПЕЦКАТЕГОРИЯ-1] включён."
+
+
+def test_compound_abbreviation_accepts_one_mixed_adjacent_separator_pair():
+    values = (
+        "QA-IT-Portal-_ActiveX",
+        "QA_IT_Portal_-ActiveX",
+        "QA-IT-Portal-_v1.2.3",
+        "QA_IT_Portal_-v1.2.3",
+    )
+
+    for value in values:
+        for paranoid in (False, True):
+            result = Anonymizer(paranoid=paranoid).anonymize(value)
+            assert result.text == "[СОКРАЩЕНИЯ-1]"
+            assert result.mapping == {"[СОКРАЩЕНИЯ-1]": value}
+
+        for anonymizer in (
+            Anonymizer(paranoid=True, whitelist={value}),
+            Anonymizer(
+                paranoid=True,
+                disabled_categories={"СОКРАЩЕНИЯ"},
+            ),
+        ):
+            protected = anonymizer.anonymize(value)
+            assert protected.text == value
+            assert protected.mapping == {}
+            assert protected.candidates == []
+
+    for paranoid in (False, True):
+        split = Anonymizer(paranoid=paranoid).anonymize("QA--IT-Portal-_ActiveX")
+        assert split.text == "QA--IT-Portal-_ActiveX"
+        assert split.mapping == {}
+        assert split.candidates == []
+
+        rejected = Anonymizer(paranoid=paranoid).anonymize("QA__IT_Portal")
+        assert rejected.text == "QA__IT_Portal"
+        assert rejected.mapping == {}
+        assert rejected.candidates == []
+
+    compound = values[0]
+    precise_values = (
+        f"user@{compound}.example.test",
+        f"https://example.test/{compound}",
+        f"C:\\Temp\\{compound}",
+    )
+    precise = Anonymizer().anonymize(" ".join(precise_values))
+    assert set(precise.mapping.values()) == set(precise_values)
+    assert not any(
+        marker.startswith("[СОКРАЩЕНИЯ-")
+        for marker in precise.mapping
+    )
 
 
 def test_compound_policy_identifier_rule_is_bounded_and_avoids_paths_urls_and_email():
