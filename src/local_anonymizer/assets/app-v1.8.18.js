@@ -279,8 +279,10 @@ async function loadDocumentPreview(){
 }
 function renderWarnings(){
   const items=(last.warnings||[]).map(warningText);
-  $('#warning').textContent=items.length?items.join('\n'):(last.hintCount?`Жёлтых подсказок: ${last.hintCount}. Просмотрите каждую.`:'Финальная ручная проверка обязательна.');
-  $('#warning').classList.toggle('stop',(last.warnings||[]).some(w=>typeof w==='object'&&w.level==='stop'));
+  const warning=$('#warning'),hasWarnings=items.length>0;
+  warning.textContent=hasWarnings?items.join('\n'):'';
+  warning.classList.toggle('sr-only',!hasWarnings);
+  warning.classList.toggle('stop',(last.warnings||[]).some(w=>typeof w==='object'&&w.level==='stop'));
 }
 function renderStats(){
   const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length;

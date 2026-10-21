@@ -175,3 +175,11 @@
 - **Приёмка:** parameterized RED/GREEN для structural split positions, normal/paranoid/disabled/whitelist; email/URL/Windows path split positions; precise semantic precedence; exact sentinel-count and restoration round-trip; full source/package/CI/install gates и независимый blocker review.
 - **Проверено:** `670 passed`; focused `35 passed`; independent exhaustive review passed (`968` + `472` probes, `301` focused tests); package verifier normal/`python -O`; Defender no threats; CI `39204146050` success; safe install copied `407` byte-identical files; installed smoke has `intra_boundary_semantic_precedence_ok=true`.
 - **Артефакты:** source commit `502313ebf26abd0eacf8e5e2c7863c25218e1151`; Windows EXE SHA-256 `6f0dae6e29bc0a8841ff400f7e96b6631d68957b65faaaa6dd329084beefe882`.
+
+## B33 — компактная горизонтальная панель ручной проверки
+
+- **Источник:** пользовательское сообщение и приложенный снимок интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
+- **Статус:** в работе.
+- **Требование:** растянуть карточку «Что проверяется» на всю ширину колонки «Обезличенный текст» и уменьшить её высоту горизонтальной компоновкой; расположить «Предыдущий», «Следующее», «Скрыть и запомнить правило» и «Оставить и добавить в исключения» на одном визуальном уровне с единым стилем; убрать из видимого интерфейса повторяющиеся подсказки о количестве жёлтых элементов и выборе одного из двух решений.
+- **Границы:** сохранить RU/EN, доступные скрытые описания действий, keyboard focus, порядок действий и адаптацию по ширине workspace-контейнера; не допускать horizontal overflow, overlap или ухода содержимого под соседнюю панель при `390/700/900 px`.
+- **Приёмка:** privacy-safe RED/GREEN contracts и executable browser geometry RU/EN `390/700/900`; полный source suite, JS/compile/diff gates; independent review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke и installed-artifact geometry; exact-head CI; Release/tag `v0.2.9` не создавать.

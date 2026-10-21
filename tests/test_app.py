@@ -449,22 +449,68 @@ def test_mobile_library_controls_collapse_to_one_bounded_column():
     assert ".source-library>.compact-library>*{min-width:0;max-width:100%;width:100%}" in mobile
 
 
-def test_manual_review_decision_buttons_are_grouped_without_visible_helper_labels():
+def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
     for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
-        actions = re.search(
-            r'<div class="review-actions" id="reviewDecisionActions">(.*?)</div></div>',
-            html,
+        toolbar = re.search(r'<div class="review-toolbar">(.*?)</div><div id="reviewDecision"', html)
+        assert toolbar is not None
+        controls = toolbar.group(1)
+        ordered_ids = ("reviewPrev", "reviewNext", "hideCandidate", "keepCandidate")
+        assert [controls.index(f'id="{control_id}"') for control_id in ordered_ids] == sorted(
+            controls.index(f'id="{control_id}"') for control_id in ordered_ids
         )
-        assert actions is not None
-        assert 'id="hideCandidate"' in actions.group(1)
-        assert 'id="keepCandidate"' in actions.group(1)
-        assert re.search(r'id="hideCandidate"[^>]+title="[^"]+"', actions.group(1))
-        assert re.search(r'id="keepCandidate"[^>]+title="[^"]+"', actions.group(1))
-        navigation = re.search(r'<div class="review-navigation">(.*?)</div>', html)
-        assert navigation is not None
-        assert 'id="hideCandidate"' not in navigation.group(1)
+        assert re.search(r'id="hideCandidate"[^>]+title="[^"]+"', controls)
+        assert re.search(r'id="keepCandidate"[^>]+title="[^"]+"', controls)
+        assert not re.search(r'<button class="primary"[^>]+id="hideCandidate"', controls)
+        assert 'class="warning sr-only" id="warning"' in html
+        assert 'id="reviewDecision" class="review-decision sr-only"' in html
         assert re.search(r'id="reviewFinish" class="sr-only"', html)
+
+    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(script_name).read_text(encoding="utf-8")
+        assert "const warning=$('#warning'),hasWarnings=items.length>0" in javascript
+        assert "warning.classList.toggle('sr-only',!hasWarnings)" in javascript
+        assert "warning.textContent=hasWarnings?items.join('\\n'):''" in javascript
+
+
+def test_manual_review_warning_runtime_hides_only_empty_guidance(tmp_path):
+    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(script_name).read_text(encoding="utf-8")
+        render_warnings = re.search(r"function renderWarnings\(\)\{.*?\n\}", javascript, re.S)
+        assert render_warnings is not None
+        harness = f"""
+const assert = require('assert');
+const classes = new Set();
+const warning = {{
+  textContent: 'seed',
+  classList: {{
+    toggle(name, enabled) {{ if (enabled) classes.add(name); else classes.delete(name); }},
+    contains(name) {{ return classes.has(name); }}
+  }}
+}};
+const $ = selector => {{ assert.strictEqual(selector, '#warning'); return warning; }};
+const warningText = item => typeof item === 'object' ? item.message : String(item);
+let last = {{warnings: [], hintCount: 7}};
+{render_warnings.group(0)}
+renderWarnings();
+assert.strictEqual(warning.textContent, '');
+assert.strictEqual(warning.classList.contains('sr-only'), true);
+assert.strictEqual(warning.classList.contains('stop'), false);
+last = {{warnings: [{{message: 'Synthetic warning', level: 'warning'}}], hintCount: 7}};
+renderWarnings();
+assert.strictEqual(warning.textContent, 'Synthetic warning');
+assert.strictEqual(warning.classList.contains('sr-only'), false);
+assert.strictEqual(warning.classList.contains('stop'), false);
+last = {{warnings: [{{message: 'Synthetic blocker', level: 'stop'}}], hintCount: 7}};
+renderWarnings();
+assert.strictEqual(warning.textContent, 'Synthetic blocker');
+assert.strictEqual(warning.classList.contains('sr-only'), false);
+assert.strictEqual(warning.classList.contains('stop'), true);
+"""
+        script = tmp_path / f"{script_name}.warning-runtime.js"
+        script.write_text(harness, encoding="utf-8")
+        completed = subprocess.run(["node", str(script)], capture_output=True, text=True)
+        assert completed.returncode == 0, completed.stderr
 
 
 def test_settings_have_one_checkbox_per_actual_replacement_class():
@@ -942,8 +988,8 @@ def test_new_design_current_review_text_has_explicit_readable_color():
 def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
-    assert 'body[data-design="new"] .review-candidate,body[data-design="new"] .review-actions>div{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
+    assert 'body[data-design="new"] .review-candidate{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) auto;gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
 
 
@@ -968,22 +1014,23 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
     assert 'body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspace-column>.review,body[data-design="new"] .workspace-column>.settings-panel{width:100%;min-width:0;margin-bottom:0}' in css
-    assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:1fr;gap:6px;min-width:0}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
+    assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
     assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
     assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:52px;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-content:start}' in css
-    assert 'body[data-design="new"] .review-navigation{display:flex;margin:0;gap:6px;flex-direction:row;flex-wrap:wrap}' in css
-    assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) auto;gap:4px 10px;align-items:center}' in css
+    assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
+    assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
+    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
 
 
-def test_review_candidate_and_actions_are_first_inside_the_output_review_block():
+def test_review_candidate_and_toolbar_span_the_output_review_width():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
-    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{order:-3}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
 def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
@@ -1006,8 +1053,11 @@ def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
 
     for asset_name, hide_title, keep_title, hide_help, keep_help in expectations:
         html = asset_path(asset_name).read_text(encoding="utf-8")
-        navigation = html.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
-        actions = html.split('<div class="review-actions" id="reviewDecisionActions">', 1)[1].split(
+        toolbar = html.split('<div class="review-toolbar">', 1)[1].split(
+            '<div id="reviewDecision"', 1
+        )[0]
+        navigation = toolbar.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
+        actions = toolbar.split('<div class="review-actions" id="reviewDecisionActions">', 1)[1].split(
             '<div id="reviewDecision"', 1
         )[0]
 
@@ -1019,7 +1069,9 @@ def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
         assert (
             f'<span id="hideCandidateHelp" class="sr-only">{hide_help}</span>'
         ) in actions
-        assert actions.index('id="hideCandidate"') < actions.index('id="keepCandidate"')
+        assert toolbar.index('id="reviewPrev"') < toolbar.index('id="reviewNext"')
+        assert toolbar.index('id="reviewNext"') < toolbar.index('id="hideCandidate"')
+        assert toolbar.index('id="hideCandidate"') < toolbar.index('id="keepCandidate"')
         assert (
             f'id="keepCandidate" title="{keep_title}" '
             'aria-describedby="keepCandidateHelp"'
@@ -1042,11 +1094,11 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
     assert 'body[data-design="new"] .review-heading,body[data-design="new"] .review-controls-disclosure{grid-column:1/-1}' in css
     assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
     assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
-    assert 'body[data-design="new"] .review-actions{display:flex;gap:6px;margin:0;align-items:flex-start}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;align-items:flex-start;gap:6px;flex-wrap:wrap;padding:6px 8px}' in css
-    assert 'body[data-design="new"] .review-actions button{justify-self:start;' in css
+    assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
+    assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
+    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;' in css
     assert '@media(max-width:800px){body[data-design="new"] .review{grid-template-columns:1fr}' in css
-    assert 'body[data-design="new"] .review-actions{flex-direction:column}' in css
+    assert '@container(max-width:519px){body[data-design="new"] .review-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}' in css
 
 
 def test_restore_steps_stack_on_narrow_screens_in_both_languages():
@@ -1107,19 +1159,20 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     assert "`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`" in en_js
 
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
-    assert 'body[data-design="new"] .review-candidate .review-help{grid-column:1/-1;grid-row:2' in css
-    assert 'body[data-design="new"] .review-candidate small{grid-column:1/-1;grid-row:3' in css
-    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-actions{min-width:0}' in css
+    assert 'body[data-design="new"] .review-candidate .review-help{grid-column:3;margin:0}' in css
+    assert 'body[data-design="new"] .review-candidate small{grid-column:4;margin:0}' in css
+    assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
 def test_manual_review_layout_is_bound_to_workspace_width_and_contains_long_copy():
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;' in css
-    assert 'body[data-design="new"] .review-actions>div{min-width:0;width:100%;max-width:100%;box-sizing:border-box}' in css
-    assert 'body[data-design="new"] .review-actions>div{display:flex;flex-direction:row;' in css
-    assert 'body[data-design="new"] .review-actions button{flex:1 1 180px;margin:0;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.25}' in css
+    assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
+    assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
+    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
     assert '@container(max-width:719px)' in css
+    assert '@container(max-width:519px)' in css
     assert 'body[data-design="new"] .review{grid-template-columns:minmax(0,1fr)}' in css
 
 
@@ -1149,15 +1202,16 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
                 '<section class="review">'
                 '<div class="review-heading"><div><b>Manual review</b><p>Choose one action for the synthetic fragment.</p></div><span class="review-progress">2 remaining</span></div>'
                 '<details class="review-controls-disclosure"><summary>Additional modes</summary></details>'
-                '<div class="warning">Review every synthetic highlight.</div>'
+                '<div class="warning sr-only">Review every synthetic highlight.</div>'
                 '<div class="review-context"><div class="review-candidate">'
-                f'<b class="review-label">{label}</b><span class="review-value">{value}</span>'
+                f'<b class="review-label">{label}</b><span id="reviewCurrent">{value}</span>'
                 f'<span class="review-help">{help_text}</span><small>3 matches · Documentation profile</small>'
-                '</div><div class="review-navigation"><button>Previous</button><button>Next</button></div></div>'
-                '<div class="review-actions"><div>'
+                '</div></div>'
+                '<div class="review-toolbar"><div class="review-navigation"><button>Previous</button><button>Next</button></div>'
+                '<div class="review-actions">'
                 f'<button>{hide_text}</button><button>{keep_text}</button>'
                 '</div></div>'
-                '<p class="review-decision">The current choice applies only to the selected synthetic fragment.</p>'
+                '<p class="review-decision sr-only">The current choice applies only to the selected synthetic fragment.</p>'
                 '<p class="review-finish">Resolve every fragment before continuing.</p>'
                 '<p id="resultStatus" class="review-decision">Synthetic result status.</p>'
                 '</section></div>'
@@ -1171,7 +1225,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             + "const box=e=>e.getBoundingClientRect();"
             + "const inside=(child,parent)=>{const c=box(child),p=box(parent);return c.left>=p.left-1&&c.right<=p.right+1&&c.top>=p.top-1&&c.bottom<=p.bottom+1};"
             + "const overlaps=(a,b)=>{const x=box(a),y=box(b);return Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1};"
-            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),actions=root.querySelector('.review-actions'),decision=root.querySelector('.review-decision'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-actions button')],direct=[...review.children].filter(e=>getComputedStyle(e).display!=='none');const compact=root.clientWidth<=719;const descendants=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-navigation,.review-actions,.review-actions>div,.review-actions button,.review-decision,.review-finish,.review-controls-disclosure,.warning')];return {language:root.dataset.language,width:root.clientWidth,compact,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:descendants.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),actionHeight:box(actions).height,maxButtonHeight:Math.max(...buttons.map(e=>box(e).height)),topOverlap:overlaps(context,actions),lowerOverlap:[decision,finish].some(e=>overlaps(e,context)||overlaps(e,actions)),compactOrder:!compact||(Math.abs(box(context).left-box(actions).left)<=1&&box(actions).top>=box(context).bottom-1),wideOrder:compact||(box(actions).left>=box(context).right-1)};});"
+            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review);return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only'))};});"
             + "document.querySelector('#probe').textContent=JSON.stringify(result);</script></body></html>",
             encoding="utf-8",
         )
@@ -1191,13 +1245,19 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             assert not metric["reviewOverflow"], metric
             assert metric["contained"], metric
             assert metric["candidateContained"], metric
+            assert metric["candidateFullWidth"], metric
             assert metric["directChildrenDisjoint"], metric
-            assert not metric["compact"] or metric["actionHeight"] < 160, metric
-            assert metric["maxButtonHeight"] < 72, metric
+            assert max(metric["buttonHeights"]) < 72, metric
+            assert metric["uniformButtonStyle"], metric
             assert not metric["topOverlap"], metric
             assert not metric["lowerOverlap"], metric
-            assert metric["compactOrder"], metric
-            assert metric["wideOrder"], metric
+            assert metric["toolbarBelowCandidate"], metric
+            assert metric["promptsHidden"], metric
+            if metric["width"] >= 700:
+                assert max(metric["buttonTops"]) - min(metric["buttonTops"]) <= 1, metric
+                assert max(metric["buttonHeights"]) - min(metric["buttonHeights"]) <= 1, metric
+            if metric["width"] == 900:
+                assert metric["candidateHeight"] < 60, metric
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
