@@ -452,7 +452,10 @@ def test_mobile_library_controls_collapse_to_one_bounded_column():
 def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
     for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
-        toolbar = re.search(r'<div class="review-toolbar">(.*?)</div><div id="reviewDecision"', html)
+        toolbar = re.search(
+            r'<div class="review-toolbar">(.*?)</div><details class="review-controls-disclosure">',
+            html,
+        )
         assert toolbar is not None
         controls = toolbar.group(1)
         ordered_ids = ("reviewPrev", "reviewNext", "hideCandidate", "keepCandidate")
@@ -1033,6 +1036,22 @@ def test_review_candidate_and_toolbar_span_the_output_review_width():
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
+def test_review_additional_modes_follow_the_four_button_toolbar_in_both_languages():
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        review = html.split('<section id="manualReview"', 1)[1].split("</section>", 1)[0]
+
+        disclosure_start = review.index('<details class="review-controls-disclosure">')
+        toolbar_start = review.index('<div class="review-toolbar">')
+        decision_start = review.index('<div id="reviewDecision" class=')
+
+        assert toolbar_start < disclosure_start < decision_start
+        toolbar = review[toolbar_start:disclosure_start]
+        assert toolbar.index('id="reviewPrev"') < toolbar.index('id="reviewNext"')
+        assert toolbar.index('id="reviewNext"') < toolbar.index('id="hideCandidate"')
+        assert toolbar.index('id="hideCandidate"') < toolbar.index('id="keepCandidate"')
+
+
 def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
     expectations = (
         (
@@ -1054,11 +1073,11 @@ def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
     for asset_name, hide_title, keep_title, hide_help, keep_help in expectations:
         html = asset_path(asset_name).read_text(encoding="utf-8")
         toolbar = html.split('<div class="review-toolbar">', 1)[1].split(
-            '<div id="reviewDecision"', 1
+            '<details class="review-controls-disclosure">', 1
         )[0]
         navigation = toolbar.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
         actions = toolbar.split('<div class="review-actions" id="reviewDecisionActions">', 1)[1].split(
-            '<div id="reviewDecision"', 1
+            '<details class="review-controls-disclosure">', 1
         )[0]
 
         assert 'id="hideCandidate"' not in navigation
@@ -1201,7 +1220,6 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
                 f'<div class="workspace-column case" data-language="{language}" style="width:{width}px">'
                 '<section class="review">'
                 '<div class="review-heading"><div><b>Manual review</b><p>Choose one action for the synthetic fragment.</p></div><span class="review-progress">2 remaining</span></div>'
-                '<details class="review-controls-disclosure"><summary>Additional modes</summary></details>'
                 '<div class="warning sr-only">Review every synthetic highlight.</div>'
                 '<div class="review-context"><div class="review-candidate">'
                 f'<b class="review-label">{label}</b><span id="reviewCurrent">{value}</span>'
@@ -1211,6 +1229,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
                 '<div class="review-actions">'
                 f'<button>{hide_text}</button><button>{keep_text}</button>'
                 '</div></div>'
+                '<details class="review-controls-disclosure"><summary>Additional modes</summary></details>'
                 '<p class="review-decision sr-only">The current choice applies only to the selected synthetic fragment.</p>'
                 '<p class="review-finish">Resolve every fragment before continuing.</p>'
                 '<p id="resultStatus" class="review-decision">Synthetic result status.</p>'
@@ -1225,7 +1244,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             + "const box=e=>e.getBoundingClientRect();"
             + "const inside=(child,parent)=>{const c=box(child),p=box(parent);return c.left>=p.left-1&&c.right<=p.right+1&&c.top>=p.top-1&&c.bottom<=p.bottom+1};"
             + "const overlaps=(a,b)=>{const x=box(a),y=box(b);return Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1};"
-            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review);return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only'))};});"
+            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),disclosure=root.querySelector('.review-controls-disclosure'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review);return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar)||overlaps(finish,disclosure),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,additionalModesBelowToolbar:box(disclosure).top>=box(toolbar).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only'))};});"
             + "document.querySelector('#probe').textContent=JSON.stringify(result);</script></body></html>",
             encoding="utf-8",
         )
@@ -1252,6 +1271,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             assert not metric["topOverlap"], metric
             assert not metric["lowerOverlap"], metric
             assert metric["toolbarBelowCandidate"], metric
+            assert metric["additionalModesBelowToolbar"], metric
             assert metric["promptsHidden"], metric
             if metric["width"] >= 700:
                 assert max(metric["buttonTops"]) - min(metric["buttonTops"]) <= 1, metric

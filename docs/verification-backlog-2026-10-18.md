@@ -185,3 +185,11 @@
 - **Приёмка:** privacy-safe RED/GREEN contracts и executable browser geometry RU/EN `390/700/900`; полный source suite, JS/compile/diff gates; independent review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke и installed-artifact geometry; exact-head CI; Release/tag `v0.2.9` не создавать.
 - **Проверка:** source commit `f55167ee8ab93eb0cca89f2f0dccafb23f3bd307`; `671 passed`, `tests/test_app.py` — `123 passed`; independent reviews — `passed=true`, без security/logic blockers. Чистый Windows package содержит `407` файлов, прошёл последовательную fail-closed проверку normal/`python -O` и Microsoft Defender (`found no threats`); EXE SHA-256 `7374ab7ccf1674ca208ade6b67a7728aa89374f502fe2265c752fcddeec305b4`.
 - **Установка/CI:** safe installer скопировал `407` byte-identical файлов; installed hash совпал, установленный package verifier прошёл normal/`python -O`, installed RU/EN geometry прошла на `390/700/900 px`, нативный GUI запустился. Exact-head CI `39570543689` для `f55167ee8ab93eb0cca89f2f0dccafb23f3bd307` завершился `success`. Release/tag `v0.2.9` не создавался.
+
+## B34 — «Дополнительные режимы» ниже кнопок ручной проверки
+
+- **Источник:** пользовательское сообщение и геометрическая разметка на приложенном снимке интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
+- **Статус:** в работе.
+- **Требование:** перенести сворачиваемый блок «Дополнительные режимы» / `Additional modes` ниже единой панели из четырёх кнопок ручной проверки.
+- **Границы:** сохранить порядок четырёх действий, единый стиль кнопок, полноширинную компактную карточку проверяемого фрагмента, RU/EN parity, доступность `details/summary`, адаптацию `4×1`/`2×2`, отсутствие overlap и horizontal overflow.
+- **Приёмка:** RED/GREEN structural contract для обеих локалей; executable geometry RU/EN `390/700/900`; полный source suite и независимый review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.
