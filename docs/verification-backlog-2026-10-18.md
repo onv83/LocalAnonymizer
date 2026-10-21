@@ -189,7 +189,9 @@
 ## B34 — «Дополнительные режимы» ниже кнопок ручной проверки
 
 - **Источник:** пользовательское сообщение и геометрическая разметка на приложенном снимке интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
-- **Статус:** в работе.
+- **Статус:** выполнено.
 - **Требование:** перенести сворачиваемый блок «Дополнительные режимы» / `Additional modes` ниже единой панели из четырёх кнопок ручной проверки.
 - **Границы:** сохранить порядок четырёх действий, единый стиль кнопок, полноширинную компактную карточку проверяемого фрагмента, RU/EN parity, доступность `details/summary`, адаптацию `4×1`/`2×2`, отсутствие overlap и horizontal overflow.
 - **Приёмка:** RED/GREEN structural contract для обеих локалей; executable geometry RU/EN `390/700/900`; полный source suite и независимый review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.
+- **Проверка:** source commit `95e6500c1f9a2b82e7e45346ae2fc7f73d79584f`; focused `5 passed`, application `124 passed`, full suite `672 passed`; executable RU/EN geometry `390/700/900` и independent review `passed=true`, без security/logic blockers. Clean package содержит `407` файлов, normal/`python -O` verifier и Defender прошли; EXE SHA-256 `bc7b5ca1d8b0a2ce27ce2277ee7ff836ad4f154eb1dd0582371f0636a74edf02`.
+- **Установка/CI:** safe install скопировал `407` byte-identical файлов; installed normal/`python -O` verifier, smoke и расширенная installed geometry прошли. Нативный установленный GUI визуально подтвердил расположение «Дополнительных режимов» непосредственно ниже четырёх кнопок. Exact-head CI `39576422687` завершился `success`; Release/tag `v0.2.9` не создавался.
