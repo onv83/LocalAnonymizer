@@ -199,7 +199,9 @@
 ## B35 — пояснение ручной проверки во всплывающей подсказке
 
 - **Источник:** пользовательское сообщение и красная геометрическая аннотация на приложенном снимке интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
-- **Статус:** в работе.
+- **Статус:** выполнено.
 - **Требование:** убрать постоянно видимый поясняющий абзац рядом с заголовком ручной проверки и сохранить короткую контекстную справку в компактной всплывающей подсказке.
 - **Границы:** синхронные RU/EN тексты; подсказка доступна мышью, с клавиатуры и экранному диктору; её скрытое состояние не занимает место и не перекрывает заголовок, прогресс, карточку кандидата или панель действий; сохранить B33/B34-инварианты и адаптацию `390/700/900 px`.
 - **Приёмка:** RED/GREEN structural/accessibility contracts и executable RU/EN geometry; полный source suite, JS/compile/diff/privacy gates, independent review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.
+- **Проверка:** source commit `97560e012402f9fdaf84d756f51e6657c5dcd3b2`; targeted tooltip/geometry contracts и application suite прошли (`125 passed`), полный suite — `673 passed` с тремя ожидаемыми duplicate-ZIP warnings. RU/EN executable geometry `390/700/900`, compileall, Node syntax, source E2E normal/`python -O`, privacy scan и `git diff --check` прошли. Независимый review вернул `passed=true` без security/logic blockers.
+- **Установка/CI:** clean Windows package содержит `407` файлов; fail-closed verifier normal/`python -O` и Defender прошли. EXE SHA-256 `be0acb60a296ec85bc8323edb4279eed8dc9e2e384c1b712fa9cef2ac8302049`. После явного разрешения пользователя закрыт только PID `18956`; safe install скопировал byte-identical package, installed verifier и расширенная RU/EN geometry normal/`python -O` прошли, установленный EXE совпадает с package. Нативный установленный GUI показывает компактный значок справки без постоянного абзаца. Exact-head CI `39710309484` завершился `success`; Release/tag `v0.2.9` не создавался.
