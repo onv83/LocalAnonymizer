@@ -1012,7 +1012,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) auto;gap:4px 10px;align-items:center}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
 
 
@@ -1042,7 +1042,7 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
     assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
     assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) auto;gap:4px 10px;align-items:center}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
     assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
     assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
@@ -1191,8 +1191,8 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     ru_js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     en_js = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
 
-    assert "Автопоиск не уверен — выберите действие." in ru_html
-    assert "Detection is uncertain — choose an action." in en_html
+    assert "Автопоиск не уверен — выберите действие." not in ru_html
+    assert "Detection is uncertain — choose an action." not in en_html
     assert "`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind" in ru_js
     assert "`${occurrences} вхожд. · Правила: «${$('#profile').value||'Общий'}»`" in ru_js
     assert "`“${all[reviewIndex].textContent.trim()}” · ${hintKindText(all[reviewIndex].dataset.kind)" in en_js
@@ -1200,8 +1200,85 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
 
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
     assert 'body[data-design="new"] .review-candidate .review-help{grid-column:3;margin:0}' in css
-    assert 'body[data-design="new"] .review-candidate small{grid-column:4;margin:0}' in css
+    assert 'body[data-design="new"] .review-candidate small' not in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
+
+
+def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
+    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(name).read_text(encoding="utf-8")
+        candidate = re.search(r'<div class="review-candidate">(.*?)</div>', html, re.S)
+        assert candidate is not None
+        content = candidate.group(1)
+        assert "<small>" not in content
+        assert re.search(
+            r'<span class="review-label">.*?</span>\s*'
+            r'<span id="reviewCurrent"[^>]*>.*?</span>\s*'
+            r'<span id="reviewMeta" class="review-help"></span>\s*$',
+            content,
+            re.S,
+        )
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert "grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px" in css
+    assert ".review-candidate small" not in css
+
+
+def test_production_manual_review_dom_reclaims_reason_column_at_responsive_widths(tmp_path: Path):
+    base_css_uri = asset_path("style-v1.1.css").as_uri()
+    css_uri = asset_path("new-design-v1.11.css").as_uri()
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows layout regression")
+    cases = (
+        ("index-v1.8.18.html", "«Синтетический фрагмент» · возможное имя", "2 вхожд. · Правила: «Общий»"),
+        ("index-en-v1.8.18.html", '"Synthetic fragment" · possible name', '2 occurrences · Rules: "General"'),
+    )
+
+    for index, (html_name, current_text, meta_text) in enumerate(cases):
+        source = asset_path(html_name).read_text(encoding="utf-8")
+        manual_review = re.search(
+            r'<section id="manualReview".*?</section>', source, re.S
+        )
+        assert manual_review is not None
+        fixture = tmp_path / f"production-review-{index}.html"
+        fixture.write_text(
+            f'''<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="{base_css_uri}"><link rel="stylesheet" href="{css_uri}"></head>
+<body data-design="new"><main id="workspace" class="workspace-column">{manual_review.group(0)}</main><pre id="probe"></pre><script>
+const rows=[];const workspace=document.getElementById('workspace');const candidate=document.querySelector('.review-candidate');
+document.getElementById('reviewCurrent').textContent={json.dumps(current_text)};document.getElementById('reviewMeta').textContent={json.dumps(meta_text)};
+for(const width of [390,700,900]){{workspace.style.width=width+'px';void candidate.offsetHeight;const help=document.getElementById('reviewMeta'),style=getComputedStyle(help),box=candidate.getBoundingClientRect();rows.push({{width,hasReason:Boolean(candidate.querySelector('small')),childColumns:[...candidate.children].map(child=>getComputedStyle(child).gridColumnStart),helpLines:Math.round(help.getBoundingClientRect().height/parseFloat(style.lineHeight)),candidateHeight:box.height,overflow:candidate.scrollWidth-candidate.clientWidth}})}}
+document.getElementById('probe').textContent=JSON.stringify(rows);</script></body></html>''',
+            encoding="utf-8",
+        )
+        profile = tmp_path / f"edge-profile-production-review-{index}"
+        result = subprocess.run(
+            [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--window-size=1200,900", "--dump-dom", fixture.as_uri()],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=True,
+        )
+        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+        assert match, result.stdout[-2000:]
+        metrics = json.loads(html_module.unescape(match.group(1)))
+        assert [metric["width"] for metric in metrics] == [390, 700, 900]
+        for metric in metrics:
+            assert not metric["hasReason"], metric
+            assert metric["overflow"] <= 1, metric
+            assert metric["helpLines"] <= 2, metric
+        assert metrics[-1]["childColumns"] == ["1", "2", "3"], metrics[-1]
+        assert metrics[-1]["candidateHeight"] < 50, metrics[-1]
 
 
 def test_manual_review_layout_is_bound_to_workspace_width_and_contains_long_copy():
@@ -1240,11 +1317,11 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             cases.append(
                 f'<div class="workspace-column case" data-language="{language}" style="width:{width}px">'
                 '<section class="review">'
-                '<div class="review-heading"><div><h2 tabindex="0" aria-describedby="syntheticReviewHelp" data-tooltip="Choose one action for the synthetic fragment.">Manual review <span class="review-heading-info" aria-hidden="true">?</span></h2><span id="syntheticReviewHelp" class="sr-only">Choose one action for the synthetic fragment.</span></div><span class="review-progress">2 remaining</span></div>'
+                '<div class="review-heading"><div><h2 tabindex="0" aria-describedby="syntheticReviewHelp" data-tooltip="Choose one action for the synthetic fragment.">Manual review <span class="review-heading-help" aria-hidden="true">?</span></h2><span id="syntheticReviewHelp" class="sr-only">Choose one action for the synthetic fragment.</span></div><span class="review-progress">2 remaining</span></div>'
                 '<div class="warning sr-only">Review every synthetic highlight.</div>'
                 '<div class="review-context"><div class="review-candidate">'
                 f'<b class="review-label">{label}</b><span id="reviewCurrent">{value}</span>'
-                f'<span class="review-help">{help_text}</span><small>3 matches · Documentation profile</small>'
+                f'<span class="review-help">2 matches · Documentation ruleset</span>'
                 '</div></div>'
                 '<div class="review-toolbar"><div class="review-navigation"><button>Previous</button><button>Next</button></div>'
                 '<div class="review-actions">'
@@ -1265,7 +1342,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             + "const box=e=>e.getBoundingClientRect();"
             + "const inside=(child,parent)=>{const c=box(child),p=box(parent);return c.left>=p.left-1&&c.right<=p.right+1&&c.top>=p.top-1&&c.bottom<=p.bottom+1};"
             + "const overlaps=(a,b)=>{const x=box(a),y=box(b);return Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1};"
-            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),disclosure=root.querySelector('.review-controls-disclosure'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),heading=root.querySelector('h2'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review),tooltipHidden=getComputedStyle(heading,'::after').display==='none';heading.focus();const tooltipVisibleOnFocus=getComputedStyle(heading,'::after').display==='block',tooltipWidth=parseFloat(getComputedStyle(heading,'::after').width);heading.blur();return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar)||overlaps(finish,disclosure),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,additionalModesBelowToolbar:box(disclosure).top>=box(toolbar).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only')),tooltipHidden,tooltipVisibleOnFocus,tooltipFitsViewport:tooltipWidth<=document.documentElement.clientWidth-24};});"
+            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),disclosure=root.querySelector('.review-controls-disclosure'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),heading=root.querySelector('h2'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review),help=root.querySelector('.review-help'),helpStyle=getComputedStyle(help),helpLineCount=Math.round(box(help).height/parseFloat(helpStyle.lineHeight)),tooltipHidden=getComputedStyle(heading,'::after').display==='none';heading.focus();const tooltipVisibleOnFocus=getComputedStyle(heading,'::after').display==='block',tooltipWidth=parseFloat(getComputedStyle(heading,'::after').width);heading.blur();return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar)||overlaps(finish,disclosure),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,additionalModesBelowToolbar:box(disclosure).top>=box(toolbar).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only')),helpLineCount,tooltipHidden,tooltipVisibleOnFocus,tooltipFitsViewport:tooltipWidth<=document.documentElement.clientWidth-24};});"
             + "document.querySelector('#probe').textContent=JSON.stringify(result);</script></body></html>",
             encoding="utf-8",
         )
@@ -1294,6 +1371,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             assert metric["toolbarBelowCandidate"], metric
             assert metric["additionalModesBelowToolbar"], metric
             assert metric["promptsHidden"], metric
+            assert metric["helpLineCount"] <= 2, metric
             assert metric["tooltipHidden"], metric
             assert metric["tooltipVisibleOnFocus"], metric
             assert metric["tooltipFitsViewport"], metric
@@ -1301,7 +1379,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
                 assert max(metric["buttonTops"]) - min(metric["buttonTops"]) <= 1, metric
                 assert max(metric["buttonHeights"]) - min(metric["buttonHeights"]) <= 1, metric
             if metric["width"] == 900:
-                assert metric["candidateHeight"] < 60, metric
+                assert metric["candidateHeight"] < 50, metric
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
@@ -2075,12 +2153,12 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
 
     for text in (
         "Ручная проверка спорных мест",
-        "Автопоиск не уверен — выберите действие.",
         "Скрыть и запомнить правило",
         "Оставить и добавить в исключения",
         "Как закончить проверку",
     ):
         assert text in html
+    assert "Автопоиск не уверен — выберите действие." not in html
     assert 'id="reviewDecision"' in html
     assert 'id="reviewFinish"' in html
     assert 'id="resultStatus"' in html
