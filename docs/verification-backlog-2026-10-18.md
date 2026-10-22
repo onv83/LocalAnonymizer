@@ -195,3 +195,11 @@
 - **Приёмка:** RED/GREEN structural contract для обеих локалей; executable geometry RU/EN `390/700/900`; полный source suite и независимый review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.
 - **Проверка:** source commit `95e6500c1f9a2b82e7e45346ae2fc7f73d79584f`; focused `5 passed`, application `124 passed`, full suite `672 passed`; executable RU/EN geometry `390/700/900` и independent review `passed=true`, без security/logic blockers. Clean package содержит `407` файлов, normal/`python -O` verifier и Defender прошли; EXE SHA-256 `bc7b5ca1d8b0a2ce27ce2277ee7ff836ad4f154eb1dd0582371f0636a74edf02`.
 - **Установка/CI:** safe install скопировал `407` byte-identical файлов; installed normal/`python -O` verifier, smoke и расширенная installed geometry прошли. Нативный установленный GUI визуально подтвердил расположение «Дополнительных режимов» непосредственно ниже четырёх кнопок. Exact-head CI `39576422687` завершился `success`; Release/tag `v0.2.9` не создавался.
+
+## B35 — пояснение ручной проверки во всплывающей подсказке
+
+- **Источник:** пользовательское сообщение и красная геометрическая аннотация на приложенном снимке интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
+- **Статус:** в работе.
+- **Требование:** убрать постоянно видимый поясняющий абзац рядом с заголовком ручной проверки и сохранить короткую контекстную справку в компактной всплывающей подсказке.
+- **Границы:** синхронные RU/EN тексты; подсказка доступна мышью, с клавиатуры и экранному диктору; её скрытое состояние не занимает место и не перекрывает заголовок, прогресс, карточку кандидата или панель действий; сохранить B33/B34-инварианты и адаптацию `390/700/900 px`.
+- **Приёмка:** RED/GREEN structural/accessibility contracts и executable RU/EN geometry; полный source suite, JS/compile/diff/privacy gates, independent review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, safe install, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.

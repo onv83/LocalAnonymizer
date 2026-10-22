@@ -476,6 +476,26 @@ def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
         assert "warning.textContent=hasWarnings?items.join('\\n'):''" in javascript
 
 
+def test_manual_review_intro_is_an_accessible_on_demand_tooltip_in_both_languages():
+    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+        html = asset_path(filename).read_text(encoding="utf-8")
+        heading = re.search(r'<div class="review-heading">(.*?)<strong id="reviewPos"', html, re.S)
+        assert heading is not None
+        content = heading.group(1)
+        assert "<p>" not in content
+        assert re.search(
+            r'<h2 id="reviewTitle"[^>]+tabindex="0"[^>]+aria-describedby="reviewIntroHelp"'
+            r'[^>]+data-tooltip="[^"]+"[^>]+title="[^"]+"',
+            content,
+        )
+        assert '<span class="review-heading-help" aria-hidden="true">?</span>' in content
+        assert re.search(r'<span id="reviewIntroHelp" class="sr-only">[^<]+(?:<b>.*?</b>[^<]*)?</span>', content)
+
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    assert ".review-heading h2:focus-visible::after" in css
+    assert ".review-heading h2:hover::after" not in css
+
+
 def test_manual_review_warning_runtime_hides_only_empty_guidance(tmp_path):
     for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
@@ -1112,7 +1132,8 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
     assert 'body[data-design="new"] .workflow-status{left:10px;right:10px;flex-wrap:wrap}' in css
     assert 'body[data-design="new"] .review-heading,body[data-design="new"] .review-controls-disclosure{grid-column:1/-1}' in css
     assert 'body[data-design="new"] .review-heading{margin:0;gap:8px;align-items:center;display:grid;grid-template-columns:minmax(0,1fr) auto}' in css
-    assert 'body[data-design="new"] .review-heading>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:8px;min-width:0}' in css
+    assert 'body[data-design="new"] .review-heading>div{min-width:0}' in css
+    assert 'body[data-design="new"] .review-heading h2{position:relative;margin:0;white-space:normal;overflow-wrap:anywhere;outline-offset:3px}' in css
     assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
     assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
     assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;' in css
@@ -1140,7 +1161,7 @@ def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warni
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
 
     assert '<label for="source"' in html
-    assert '<h2 id="reviewTitle">Ручная проверка спорных мест</h2>' in html
+    assert re.search(r'<h2 id="reviewTitle"[^>]+>Ручная проверка спорных мест ', html)
     assert 'id="fileLifecycleStatus"' in html and 'role="status"' in html
     assert "локальный архив документов и ключей восстановления" in html.lower()
     assert "профиль может содержать исходные чувствительные значения" in html.lower()
@@ -1219,7 +1240,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             cases.append(
                 f'<div class="workspace-column case" data-language="{language}" style="width:{width}px">'
                 '<section class="review">'
-                '<div class="review-heading"><div><b>Manual review</b><p>Choose one action for the synthetic fragment.</p></div><span class="review-progress">2 remaining</span></div>'
+                '<div class="review-heading"><div><h2 tabindex="0" aria-describedby="syntheticReviewHelp" data-tooltip="Choose one action for the synthetic fragment.">Manual review <span class="review-heading-info" aria-hidden="true">?</span></h2><span id="syntheticReviewHelp" class="sr-only">Choose one action for the synthetic fragment.</span></div><span class="review-progress">2 remaining</span></div>'
                 '<div class="warning sr-only">Review every synthetic highlight.</div>'
                 '<div class="review-context"><div class="review-candidate">'
                 f'<b class="review-label">{label}</b><span id="reviewCurrent">{value}</span>'
@@ -1244,7 +1265,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             + "const box=e=>e.getBoundingClientRect();"
             + "const inside=(child,parent)=>{const c=box(child),p=box(parent);return c.left>=p.left-1&&c.right<=p.right+1&&c.top>=p.top-1&&c.bottom<=p.bottom+1};"
             + "const overlaps=(a,b)=>{const x=box(a),y=box(b);return Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1};"
-            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),disclosure=root.querySelector('.review-controls-disclosure'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review);return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar)||overlaps(finish,disclosure),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,additionalModesBelowToolbar:box(disclosure).top>=box(toolbar).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only'))};});"
+            + "const result=[...document.querySelectorAll('.case')].map(root=>{const review=root.querySelector('.review'),context=root.querySelector('.review-context'),toolbar=root.querySelector('.review-toolbar'),disclosure=root.querySelector('.review-controls-disclosure'),finish=root.querySelector('.review-finish'),candidate=root.querySelector('.review-candidate'),heading=root.querySelector('h2'),buttons=[...root.querySelectorAll('.review-toolbar button')],direct=[...review.children].filter(e=>!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'),visible=[...review.querySelectorAll('.review-heading,.review-context,.review-candidate,.review-candidate>*,.review-toolbar,.review-toolbar button,.review-finish,.review-controls-disclosure,#resultStatus')],buttonBoxes=buttons.map(box),buttonStyles=buttons.map(e=>{const s=getComputedStyle(e);return [s.backgroundColor,s.borderColor,s.borderRadius,s.padding]}),candidateBox=box(candidate),reviewBox=box(review),tooltipHidden=getComputedStyle(heading,'::after').display==='none';heading.focus();const tooltipVisibleOnFocus=getComputedStyle(heading,'::after').display==='block',tooltipWidth=parseFloat(getComputedStyle(heading,'::after').width);heading.blur();return {language:root.dataset.language,width:root.clientWidth,reviewOverflow:review.scrollWidth>review.clientWidth+1,contained:visible.every(e=>inside(e,review)),candidateContained:[...candidate.children].every(e=>inside(e,candidate)),candidateFullWidth:Math.abs(candidateBox.left-(reviewBox.left+10))<=1&&Math.abs(candidateBox.right-(reviewBox.right-10))<=1,candidateHeight:candidateBox.height,directChildrenDisjoint:direct.every((e,i)=>direct.slice(i+1).every(other=>!overlaps(e,other))),buttonHeights:buttonBoxes.map(b=>b.height),buttonTops:buttonBoxes.map(b=>b.top),uniformButtonStyle:buttonStyles.every(s=>JSON.stringify(s)===JSON.stringify(buttonStyles[0])),topOverlap:overlaps(context,toolbar),lowerOverlap:overlaps(finish,context)||overlaps(finish,toolbar)||overlaps(finish,disclosure),toolbarBelowCandidate:box(toolbar).top>=box(context).bottom-1,additionalModesBelowToolbar:box(disclosure).top>=box(toolbar).bottom-1,promptsHidden:[...review.querySelectorAll('.warning,.review-decision.sr-only')].every(e=>e.classList.contains('sr-only')),tooltipHidden,tooltipVisibleOnFocus,tooltipFitsViewport:tooltipWidth<=document.documentElement.clientWidth-24};});"
             + "document.querySelector('#probe').textContent=JSON.stringify(result);</script></body></html>",
             encoding="utf-8",
         )
@@ -1273,6 +1294,9 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
             assert metric["toolbarBelowCandidate"], metric
             assert metric["additionalModesBelowToolbar"], metric
             assert metric["promptsHidden"], metric
+            assert metric["tooltipHidden"], metric
+            assert metric["tooltipVisibleOnFocus"], metric
+            assert metric["tooltipFitsViewport"], metric
             if metric["width"] >= 700:
                 assert max(metric["buttonTops"]) - min(metric["buttonTops"]) <= 1, metric
                 assert max(metric["buttonHeights"]) - min(metric["buttonHeights"]) <= 1, metric
