@@ -1317,7 +1317,7 @@ def test_review_navigation_runs_inside_formatted_previews_in_both_languages(tmp_
     if edge is None:
         pytest.skip("Microsoft Edge is required for the Windows formatted-navigation regression")
 
-    harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app"></iframe><pre id="probe">pending</pre><script>
+    harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app" style="width:__WIDTH__px;height:800px"></iframe><pre id="probe">pending</pre><script>
 const frame=document.getElementById('app');frame.src=__INDEX__;
 function finish(value){document.getElementById('probe').textContent=JSON.stringify(value);document.title=value.ok?'PASS':'FAIL';}
 frame.addEventListener('load',()=>setTimeout(()=>{try{
@@ -1335,23 +1335,24 @@ frame.addEventListener('load',()=>setTimeout(()=>{try{
 }catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},4500);</script>'''
 
     for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
-        fixture = tmp_path / f"formatted-review-navigation-{index}.html"
-        fixture.write_text(
-            harness_template.replace("__INDEX__", json.dumps(asset_path(html_name).as_uri())),
-            encoding="utf-8",
-        )
-        profile = tmp_path / f"edge-profile-formatted-review-{index}"
-        result = subprocess.run(
-            [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--virtual-time-budget=6000", "--dump-dom", fixture.as_uri()],
-            capture_output=True,
-            text=True,
-            timeout=45,
-            check=True,
-        )
-        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
-        assert match, result.stdout[-2000:]
-        outcome = json.loads(html_module.unescape(match.group(1)))
-        assert outcome["ok"], outcome
+        for workspace_width in (390, 700, 900):
+            fixture = tmp_path / f"formatted-review-navigation-{index}-{workspace_width}.html"
+            fixture.write_text(
+                harness_template.replace("__INDEX__", json.dumps(asset_path(html_name).as_uri())).replace("__WIDTH__", str(workspace_width)),
+                encoding="utf-8",
+            )
+            profile = tmp_path / f"edge-profile-formatted-review-{index}-{workspace_width}"
+            result = subprocess.run(
+                [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--virtual-time-budget=6000", "--dump-dom", fixture.as_uri()],
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=True,
+            )
+            match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+            assert match, result.stdout[-2000:]
+            outcome = json.loads(html_module.unescape(match.group(1)))
+            assert outcome["ok"], {"language": html_name, "width": workspace_width, **outcome}
 
 
 def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
