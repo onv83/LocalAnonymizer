@@ -1014,6 +1014,18 @@ class Anonymizer:
 
         def is_bounded_address(match: re.Match) -> bool:
             value = match.group(1)
+            lowercase_name_after_street_type = re.search(
+                rf"(?<![А-Яа-яЁё]){street_type}(?:{address_hws}+|(?<=\.))"
+                rf"(?!{primary_house_designator}\.?{address_hws}*(?:№{address_hws}*)?\d)"
+                rf"(?!{building_designator}\.?{address_hws}*(?:№{address_hws}*)?(?:\d|[А-ЯЁа-яё](?![А-ЯЁа-яё])))"
+                rf"[а-яё][а-яё'’.-]*",
+                value,
+            )
+            if (
+                lowercase_name_after_street_type is not None
+                and not typed_geography_evidence.search(value)
+            ):
+                return False
             if not ambiguous_street_token.search(value):
                 return True
             if typed_geography_evidence.search(value):
@@ -1065,9 +1077,11 @@ class Anonymizer:
             canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),
         )
 
-        # A postal address in a dedicated DOCX table cell is one record even
-        # when its components are reordered or contain uncommon building
-        # qualifiers. This fallback never applies to ordinary text lines.
+        # A postal address occupying one logical record is one value even when
+        # its components are reordered or contain uncommon building qualifiers.
+        # The same bounded-record semantics apply to plain lines and document
+        # cells, but strong geography/building evidence is required to keep
+        # ordinary prose such as "street was closed, 5" out of this fallback.
         record_street_start = re.compile(
             rf"(?<![А-Яа-яЁё]){street_type}(?:{address_hws}+|(?<=\.))"
             rf"(?:(?i:имени|им\.){address_hws}+)?"
@@ -1099,6 +1113,9 @@ class Anonymizer:
             "литера", "пом", "помещение", "оф", "офис", "уч", "участок",
             "кв", "квартира", "п", "пос", "поселок", "посёлок", "с", "село",
             "дер", "деревня", "мкр", "микрорайон", "тер", "территория",
+            "ул", "улица", "пр", "проспект", "проезд", "пер", "переулок",
+            "бульвар", "шоссе", "наб", "набережная", "аллея", "пл", "площадь",
+            "тракт", "тупик", "им", "имени",
         }
 
         def is_address_only_context(value: str) -> bool:
@@ -1123,9 +1140,17 @@ class Anonymizer:
             value = re.sub(r"\s+", " ", match.group(1).replace("\ufdd3", " ")).strip()
             if not 6 <= len(value) <= 400 or not record_allowed.fullmatch(value):
                 return False
+            if not is_address_only_context(value):
+                return False
             if (
                 ambiguous_street_token.search(value)
                 and not typed_geography_evidence.search(value)
+            ):
+                return False
+            if (
+                not typed_geography_evidence.search(value)
+                and not labelled_house_evidence.search(value)
+                and not secondary_building_evidence.search(value)
             ):
                 return False
             anchor = record_street_start.search(value) or record_street_end.search(value)
@@ -1138,7 +1163,7 @@ class Anonymizer:
             return is_address_only_context(tail[house_match.end():])
 
         add(
-            r"(?<=\ufdd0)([^\r\n\ufdd0\ufdd3]{5,400})(?=\ufdd0)",
+            r"(?<![^\r\n\ufdd0])([^\r\n\ufdd0\ufdd3]{5,400})(?![^\r\n\ufdd0])",
             "АДРЕС", 101, group=1, flags=0,
             validate=is_complete_address_record,
             canonical=lambda m: re.sub(r"\s+", " ", m.group(1).casefold()),

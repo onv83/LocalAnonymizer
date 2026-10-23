@@ -396,6 +396,31 @@ def test_docx_address_record_with_reordered_geography_and_tail_restores_byte_exa
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_complete_address_record_does_not_leave_nested_manual_review_candidate(tmp_path):
+    source = tmp_path / "synthetic-address-review-consistency.docx"
+    anonymized = tmp_path / "synthetic-address-review-consistency.anonymized.docx"
+    restored = tmp_path / "synthetic-address-review-consistency.restored.docx"
+    address = "Площадка 2 «Демоинфо» - г. Тестоградск, Проверочный проезд, 22, стр. 4"
+    document = Document()
+    document.add_paragraph(address)
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    assert Document(anonymized).paragraphs[0].text == "[АДРЕС-1]"
+    assert result.mapping == {"[АДРЕС-1]": address}
+    assert result.candidates == []
+    assert result.hint_count == 0
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_embedded_complete_address_preserves_surrounding_runs_and_restores_exactly(tmp_path):
     source = tmp_path / "synthetic-embedded-address.docx"
     anonymized = tmp_path / "synthetic-embedded-address.anonymized.docx"

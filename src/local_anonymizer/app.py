@@ -121,6 +121,35 @@ def _complete_postal_address_self_test(anonymizer=None) -> bool:
     return result.text == expected_text and result.mapping == expected_mapping
 
 
+def _address_review_parity_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    source = "Площадка 2 «Демоинфо» - г. Тестоградск, Проверочный проезд, 22, стр. 4"
+    boundary = "\ufdd0\ufdd1\ufdd0"
+    expected_mapping = {"[АДРЕС-1]": source}
+    plain = detector.anonymize(source)
+    structured = detector.anonymize(boundary + source + boundary)
+    ordinary = (
+        "Улица была перекрыта, д. 5\n"
+        "Улица была перекрыта, строение 5\n"
+        "Улица закрыта, дом 5"
+    )
+    ordinary_plain = detector.anonymize(ordinary)
+    ordinary_structured = detector.anonymize(boundary + ordinary + boundary)
+    return (
+        plain.text == "[АДРЕС-1]"
+        and plain.mapping == expected_mapping
+        and plain.hint_count == 0
+        and not any(part["t"] == "hint" for part in plain.parts)
+        and structured.text == boundary + plain.text + boundary
+        and structured.mapping == expected_mapping
+        and structured.hint_count == 0
+        and ordinary_plain.text == ordinary
+        and ordinary_plain.mapping == {}
+        and ordinary_structured.text == boundary + ordinary + boundary
+        and ordinary_structured.mapping == {}
+    )
+
+
 def _contextual_address_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     addresses = (
@@ -1209,6 +1238,7 @@ class AppApi:
         )
         address_inventory_ok = _address_inventory_self_test()
         address_postal_variants_ok = _complete_postal_address_self_test()
+        address_review_parity_ok = _address_review_parity_self_test()
         address_contextual_variants_ok = _contextual_address_self_test()
         compound_policy_abbreviation_ok = _compound_policy_abbreviation_self_test()
         mixed_separator_compound_abbreviation_ok = (
@@ -1251,6 +1281,7 @@ class AppApi:
                 and port_ok
                 and address_inventory_ok
                 and address_postal_variants_ok
+                and address_review_parity_ok
                 and address_contextual_variants_ok
                 and compound_policy_abbreviation_ok
                 and mixed_separator_compound_abbreviation_ok
@@ -1279,6 +1310,7 @@ class AppApi:
             "port_ok": port_ok,
             "address_inventory_ok": address_inventory_ok,
             "address_postal_variants_ok": address_postal_variants_ok,
+            "address_review_parity_ok": address_review_parity_ok,
             "address_contextual_variants_ok": address_contextual_variants_ok,
             "compound_policy_abbreviation_ok": compound_policy_abbreviation_ok,
             "mixed_separator_compound_abbreviation_ok": (

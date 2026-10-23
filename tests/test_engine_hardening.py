@@ -321,6 +321,10 @@ def test_address_and_deadline_adversarial_regressions():
     ordinary = (
         "ул. была перекрыта, 5\n"
         "Улица была перекрыта, 5\n"
+        "ул. была перекрыта, д. 5\n"
+        "Улица была перекрыта, дом 5\n"
+        "Улица была перекрыта, строение 5\n"
+        "Улица закрыта, д. 5\n"
         "пр. завершён, д. 12\n"
         "123456 задач обработано, город Тестовый модуль завершён.\n"
         "Оплата производится в течение 7 банковских дней.\n"
@@ -616,6 +620,34 @@ def test_complete_address_record_consumes_reordered_geography_and_building_tail(
 
     assert result.text == "[АДРЕС-1]"
     assert result.mapping == {"[АДРЕС-1]": source}
+
+
+def test_complete_address_record_has_plain_and_structural_boundary_parity():
+    source = "Площадка 2 «Демоинфо» - г. Тестоградск, Проверочный проезд, 22, стр. 4"
+    structural_boundary = "\ufdd0\ufdd1\ufdd0"
+
+    plain = Anonymizer().anonymize(source)
+    structured = Anonymizer().anonymize(
+        structural_boundary + source + structural_boundary
+    )
+
+    assert plain.text == "[АДРЕС-1]"
+    assert plain.mapping == {"[АДРЕС-1]": source}
+    assert plain.hint_count == 0
+    assert not any(part["t"] == "hint" for part in plain.parts)
+    assert structured.text == structural_boundary + plain.text + structural_boundary
+    assert structured.mapping == plain.mapping
+
+
+def test_complete_address_record_stays_within_plain_text_line_boundaries():
+    address = "Площадка 2 «Демоинфо» - г. Тестоградск, Проверочный проезд, 22, стр. 4"
+    source = f"Вводный текст без адреса.\n{address}\nЗаключительный текст без адреса."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Вводный текст без адреса.\n[АДРЕС-1]\nЗаключительный текст без адреса."
+    assert result.mapping == {"[АДРЕС-1]": address}
+    assert result.hint_count == 0
 
 
 def test_contextual_russian_address_variants_are_redacted_as_complete_values():

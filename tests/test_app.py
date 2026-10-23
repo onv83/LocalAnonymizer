@@ -71,6 +71,24 @@ def test_complete_postal_address_self_test_requires_every_variant():
     assert app_module._complete_postal_address_self_test(PartialDetector()) is False
 
 
+def test_address_review_parity_self_test_requires_plain_and_structural_consistency():
+    assert app_module._address_review_parity_self_test() is True
+
+    class StalePlainDetector:
+        def anonymize(self, source):
+            if source.startswith("\ufdd0"):
+                return Anonymizer().anonymize(source)
+            result = Anonymizer().anonymize(source)
+            return SimpleNamespace(
+                text="Площадка 2 «Демоинфо» - [АДРЕС-1]",
+                mapping=result.mapping,
+                hint_count=1,
+                parts=[{"t": "hint"}],
+            )
+
+    assert app_module._address_review_parity_self_test(StalePlainDetector()) is False
+
+
 def test_contextual_address_self_test_requires_every_complete_variant():
     assert app_module._contextual_address_self_test() is True
 
@@ -1300,6 +1318,67 @@ def test_formatted_review_current_match_has_visible_highlight_style():
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
     assert "::highlight(current-review)" in css
     assert ".preview-review-current" in css
+
+
+def test_formatted_preview_status_and_buttons_have_deterministic_rows():
+    for name in ("style-v1.1.css", "style.css"):
+        css = asset_path(name).read_text(encoding="utf-8")
+        assert ".preview-switch{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:-3px 0 7px}" in css
+        assert ".preview-completeness{grid-column:1/-1;min-width:0;color:#58708a;padding:0 4px}" in css
+        assert ".preview-switch>button{min-width:0;overflow-wrap:anywhere}" in css
+
+
+def test_formatted_preview_controls_keep_one_button_row_while_loading_and_ready(tmp_path: Path):
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows preview-controls regression")
+
+    base_css_uri = asset_path("style-v1.1.css").as_uri()
+    design_css_uri = asset_path("new-design-v1.11.css").as_uri()
+    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+        source = asset_path(html_name).read_text(encoding="utf-8")
+        controls = [
+            re.search(rf'<div id="{control_id}" class="preview-switch" hidden>.*?</div>', source, re.S)
+            for control_id in ("docxPreviewControls", "anonymizedPreviewControls")
+        ]
+        assert all(controls)
+        fixture = tmp_path / f"preview-controls-{index}.html"
+        fixture.write_text(
+            f'''<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="{base_css_uri}"><link rel="stylesheet" href="{design_css_uri}"></head>
+<body data-design="new"><div id="case">{controls[0].group(0)}{controls[1].group(0)}</div><pre id="probe"></pre><script>
+const rows=[];const root=document.getElementById('case');
+for(const width of [390,700,900]){{for(const state of ['loading','ready']){{root.style.width=width+'px';for(const controls of root.querySelectorAll('.preview-switch')){{controls.hidden=false;controls.querySelector('.preview-completeness').textContent=state==='loading'?'Formatted preview is being prepared…':'Formatted preview is ready · tables: 44. Text preview matches the selected settings.';const status=controls.querySelector('.preview-completeness').getBoundingClientRect(),buttons=[...controls.querySelectorAll('button')].map(button=>button.getBoundingClientRect());rows.push({{width,state,id:controls.id,count:buttons.length,buttonTops:[...new Set(buttons.map(box=>Math.round(box.top)))],statusBottom:Math.round(status.bottom),buttonTop:Math.round(Math.min(...buttons.map(box=>box.top))),overflow:controls.scrollWidth-controls.clientWidth,buttonOverflow:Math.max(...buttons.map(box=>box.right-controls.getBoundingClientRect().right))}})}}}}}}
+document.getElementById('probe').textContent=JSON.stringify(rows);</script></body></html>''',
+            encoding="utf-8",
+        )
+        profile = tmp_path / f"edge-profile-preview-controls-{index}"
+        result = subprocess.run(
+            [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--window-size=1200,900", "--dump-dom", fixture.as_uri()],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=True,
+        )
+        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+        assert match, result.stdout[-2000:]
+        metrics = json.loads(html_module.unescape(match.group(1)))
+        assert len(metrics) == 12
+        for metric in metrics:
+            assert metric["count"] == 5, metric
+            assert len(metric["buttonTops"]) == 1, metric
+            assert metric["statusBottom"] <= metric["buttonTop"], metric
+            assert metric["overflow"] <= 1, metric
+            assert metric["buttonOverflow"] <= 1, metric
 
 
 def test_review_navigation_runs_inside_formatted_previews_in_both_languages(tmp_path: Path):
