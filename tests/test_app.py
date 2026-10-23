@@ -1280,6 +1280,80 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_review_navigation_preserves_formatted_mode_and_targets_both_previews(asset_name):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+    focus_mark = re.search(
+        r"function focusMark\(i\)\{(?P<body>.*?)\n\}", javascript, re.S
+    )
+
+    assert focus_mark is not None
+    assert "setAnonymizedPreviewMode(false)" not in focus_mark.group("body")
+    assert "focusFormattedReview(part,sourceOffset)" in focus_mark.group("body")
+    assert "function focusFormattedReview(part,sourceOffset)" in javascript
+    assert "textRangeForSourceOffset(sourceRoot,needle,$('#source').value,sourceOffset,globalOccurrence)" in javascript
+    assert "data-preview-anchor" in javascript
+    assert "CSS.highlights.set('current-review'" in javascript
+
+
+def test_formatted_review_current_match_has_visible_highlight_style():
+    css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
+    assert "::highlight(current-review)" in css
+    assert ".preview-review-current" in css
+
+
+def test_review_navigation_runs_inside_formatted_previews_in_both_languages(tmp_path: Path):
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows formatted-navigation regression")
+
+    harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app"></iframe><pre id="probe">pending</pre><script>
+const frame=document.getElementById('app');frame.src=__INDEX__;
+function finish(value){document.getElementById('probe').textContent=JSON.stringify(value);document.title=value.ok?'PASS':'FAIL';}
+frame.addEventListener('load',()=>setTimeout(()=>{try{
+ const w=frame.contentWindow,d=w.document,needle='SyntheticCandidate',lineA=`Context A ${needle} tail A`,lineB=`Context B ${needle} tail B`;
+ const blocks=Array.from({length:18},(_,i)=>`<p data-preview-anchor="body/p${i}">${i===4?lineA:i===15?lineB:'Synthetic paragraph '+i}</p>`).join('');
+ d.getElementById('docxPreview').innerHTML=blocks;d.getElementById('anonymizedDocxPreview').innerHTML=blocks;
+ d.getElementById('source').value=`${lineB}\n${'filler\n'.repeat(10)}${lineA}`;const first=d.getElementById('source').value.indexOf(needle),second=d.getElementById('source').value.lastIndexOf(needle);
+ d.getElementById('richOutput').innerHTML=`<span class="mark-hint" data-s0="${first}">${needle}</span>${' filler '.repeat(40)}<span class="mark-hint" data-s0="${second}">${needle}</span>`;
+ d.getElementById('docxPreview').hidden=false;d.getElementById('textPreview').hidden=true;d.getElementById('showFormatted').setAttribute('aria-pressed','true');d.getElementById('anonymizedDocxPreview').hidden=false;d.getElementById('richOutput').hidden=true;d.getElementById('showAnonymizedFormatted').setAttribute('aria-pressed','true');
+ const anchors=()=>Array.from(w.CSS.highlights.get('current-review')||[]).map(range=>range.startContainer.parentElement.closest('[data-preview-anchor]').dataset.previewAnchor);
+ d.getElementById('reviewNext').click();d.getElementById('reviewNext').click();const nextOffset=d.querySelector('#richOutput .mark-current')?.dataset.s0,nextAnchors=anchors();
+ d.getElementById('reviewPrev').click();const previousOffset=d.querySelector('#richOutput .mark-current')?.dataset.s0,previousAnchors=anchors();
+ const formatted=!d.getElementById('docxPreview').hidden&&!d.getElementById('anonymizedDocxPreview').hidden&&d.getElementById('richOutput').hidden;
+ finish({ok:formatted&&nextOffset===String(second)&&nextAnchors.length===2&&nextAnchors.every(anchor=>anchor==='body/p4')&&previousOffset===String(first)&&previousAnchors.length===2&&previousAnchors.every(anchor=>anchor==='body/p15'),formatted,nextOffset,previousOffset,nextAnchors,previousAnchors});
+}catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},4500);</script>'''
+
+    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+        fixture = tmp_path / f"formatted-review-navigation-{index}.html"
+        fixture.write_text(
+            harness_template.replace("__INDEX__", json.dumps(asset_path(html_name).as_uri())),
+            encoding="utf-8",
+        )
+        profile = tmp_path / f"edge-profile-formatted-review-{index}"
+        result = subprocess.run(
+            [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--virtual-time-budget=6000", "--dump-dom", fixture.as_uri()],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=True,
+        )
+        match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+        assert match, result.stdout[-2000:]
+        outcome = json.loads(html_module.unescape(match.group(1)))
+        assert outcome["ok"], outcome
+
+
 def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")

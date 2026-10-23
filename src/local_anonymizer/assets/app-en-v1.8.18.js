@@ -350,7 +350,52 @@ function renderOutput(){
 function marks(){return [...$('#richOutput').querySelectorAll('.mark-replacement,.mark-secret,.mark-hint')];}
 function hintMarks(){return [...$('#richOutput').querySelectorAll('.mark-hint:not(.reviewed)')];}
 function scrollReviewMarkWithinOutput(mark){const rich=$('#richOutput'),box=rich.getBoundingClientRect(),target=mark.getBoundingClientRect();rich.scrollTop+=target.top-box.top-(rich.clientHeight-target.height)/2;}
-function focusMark(i){setAnonymizedPreviewMode(false);const all=hintMarks();if(!all.length){reviewIndex=-1;updateReviewPosition();return;}reviewIndex=(i+all.length)%all.length;marks().forEach(x=>x.classList.remove('mark-current'));all[reviewIndex].classList.add('mark-current');const sourceOffset=Number(all[reviewIndex].dataset.s0||0);scrollReviewMarkWithinOutput(all[reviewIndex]);if(sourceOffset)$('#source').setSelectionRange(sourceOffset,sourceOffset);updateReviewPosition();}
+function clearFormattedReviewHighlight(){
+  [$('#docxPreview'),$('#anonymizedDocxPreview')].forEach(root=>root.querySelectorAll('.preview-review-current').forEach(node=>node.classList.remove('preview-review-current')));
+  if(globalThis.CSS&&CSS.highlights)CSS.highlights.delete('current-review');
+}
+function occurrenceBefore(text,needle,offset){if(!needle)return 0;let count=0,from=0,index=0;const haystack=String(text||'').toLocaleLowerCase(),target=String(needle).toLocaleLowerCase(),limit=Math.max(0,Number(offset)||0);while((index=haystack.indexOf(target,from))>=0&&index<limit){count++;from=index+Math.max(1,target.length);}return count;}
+function textRangeForOccurrence(root,needle,occurrence){
+  if(!root||!needle||typeof document.createTreeWalker!=='function')return null;
+  const nodes=[],walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),target=String(needle),foldedTarget=target.toLocaleLowerCase();let node,text='';
+  while((node=walker.nextNode())){nodes.push({node,start:text.length,end:text.length+node.nodeValue.length});text+=node.nodeValue;}
+  let at=-1,from=0;const folded=text.toLocaleLowerCase();for(let n=0;n<=occurrence;n++){at=folded.indexOf(foldedTarget,from);if(at<0)return null;from=at+Math.max(1,target.length);}
+  const start=nodes.find(item=>item.start<=at&&at<item.end),finishAt=at+target.length,finish=nodes.find(item=>item.start<finishAt&&finishAt<=item.end);
+  if(!start||!finish)return null;
+  const range=document.createRange();range.setStart(start.node,at-start.start);range.setEnd(finish.node,finishAt-finish.start);
+  const element=start.node.parentElement,block=element&&element.closest?element.closest('[data-preview-anchor]'):null;
+  return {range,block:block||element};
+}
+function sourceContextRange(text,offset){const value=String(text||''),at=Math.max(0,Math.min(Number(offset)||0,value.length)),start=value.lastIndexOf('\n',Math.max(0,at-1))+1,next=value.indexOf('\n',at);return{value:value.slice(start,next<0?value.length:next),localOffset:at-start};}
+function normalizedReviewText(value){return String(value||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();}
+function textRangeForSourceOffset(root,needle,sourceText,sourceOffset,fallbackOccurrence){
+ const context=sourceContextRange(sourceText,sourceOffset),foldedNeedle=normalizedReviewText(needle),foldedContext=normalizedReviewText(context.value);
+ if(foldedContext&&foldedContext!==foldedNeedle&&foldedContext.length>foldedNeedle.length+3){const localOccurrence=occurrenceBefore(context.value,needle,context.localOffset);for(const block of root.querySelectorAll('[data-preview-anchor]')){const foldedBlock=normalizedReviewText(block.textContent);if(foldedBlock&&(foldedBlock.includes(foldedContext)||foldedContext.includes(foldedBlock))){const match=textRangeForOccurrence(block,needle,localOccurrence);if(match)return match;}}}
+ return textRangeForOccurrence(root,needle,fallbackOccurrence);
+}
+function centerPreviewTarget(container,target){if(!container||!target||container.hidden)return;const box=container.getBoundingClientRect(),rect=target.getBoundingClientRect();const next=Math.max(0,Math.min(container.scrollHeight-container.clientHeight,container.scrollTop+rect.top-box.top-(container.clientHeight-rect.height)/2));programmaticPreviewScrollTargets.set(container,next);container.scrollTop=next;}
+function focusFormattedReview(part,sourceOffset){
+  clearFormattedReviewHighlight();
+  const needle=part&&part.orig?String(part.orig):'';if(!needle)return false;
+  const sourceRoot=$('#docxPreview'),outputRoot=$('#anonymizedDocxPreview'),globalOccurrence=occurrenceBefore($('#source').value,needle,sourceOffset);
+  const sourceMatch=textRangeForSourceOffset(sourceRoot,needle,$('#source').value,sourceOffset,globalOccurrence);let outputMatch=null,anchor='';
+  if(sourceMatch&&sourceMatch.block){anchor=sourceMatch.block.dataset&&sourceMatch.block.dataset.previewAnchor||'';const prefix=document.createRange();prefix.selectNodeContents(sourceMatch.block);prefix.setEnd(sourceMatch.range.startContainer,sourceMatch.range.startOffset);const prefixText=prefix.toString(),localOccurrence=occurrenceBefore(prefixText,needle,prefixText.length);const outputBlock=anchor?[...outputRoot.querySelectorAll('[data-preview-anchor]')].find(node=>node.dataset.previewAnchor===anchor):null;outputMatch=textRangeForOccurrence(outputBlock||outputRoot,needle,outputBlock?localOccurrence:globalOccurrence);}
+  else outputMatch=textRangeForOccurrence(outputRoot,needle,globalOccurrence);
+  const ranges=[],sourceVisible=sourceMatch&&!sourceRoot.hidden,outputVisible=outputMatch&&!outputRoot.hidden;
+  if(sourceVisible){ranges.push(sourceMatch.range);centerPreviewTarget(sourceRoot,sourceMatch.block);}
+  if(outputVisible){ranges.push(outputMatch.range);centerPreviewTarget(outputRoot,outputMatch.block);}
+  const exactHighlight=ranges.length&&globalThis.CSS&&CSS.highlights&&typeof Highlight==='function';
+  if(exactHighlight)CSS.highlights.set('current-review',new Highlight(...ranges));
+  else{if(sourceVisible)sourceMatch.block.classList.add('preview-review-current');if(outputVisible)outputMatch.block.classList.add('preview-review-current');}
+  return ranges.length>0;
+}
+function focusMark(i){
+  const all=hintMarks();if(!all.length){reviewIndex=-1;clearFormattedReviewHighlight();updateReviewPosition();return;}
+  reviewIndex=(i+all.length)%all.length;marks().forEach(x=>x.classList.remove('mark-current'));const mark=all[reviewIndex];mark.classList.add('mark-current');const sourceOffset=Number(mark.dataset.s0||0),part=(last.parts||[]).find(item=>item.t==='hint'&&Number(item.s0||0)===sourceOffset)||{orig:mark.textContent};
+  const formattedFocused=focusFormattedReview(part,sourceOffset);if(!formattedFocused||$('#anonymizedDocxPreview').hidden)scrollReviewMarkWithinOutput(mark);if(Number.isFinite(sourceOffset))$('#source').setSelectionRange(sourceOffset,sourceOffset);
+  if($('#docxPreview').hidden&&$('#anonymizedDocxPreview').hidden){const output=activeAnonymizedPreview(),source=activeSourcePreview();restorePreviewPosition(previewScrollPosition(output),source);}
+  updateReviewPosition();
+}
 function reviewDisabledReason(){if($('#paranoid').checked)return 'Manual review is disabled because “Hide automatically” is selected. Choose “Show for manual review” to decide each item individually.';const hints=document.querySelector('.category[data-categories="HINTS"]');if(hints&&!hints.checked)return 'Manual review is disabled because “Do not detect uncertain items” is selected. Uncertain items remain unchanged and will not appear in the queue.';return 'No uncertain items found.';}
 function updateReviewPosition(){const all=hintMarks();if(reviewIndex>=all.length)reviewIndex=all.length?0:-1;if(reviewIndex<0&&all.length)reviewIndex=all.length?0:-1;const hasCurrent=all.length>0&&reviewIndex>=0;const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length,remaining=all.length,total=remaining+reviewed;const reason=reviewDisabledReason(),emptyProgress=reason.startsWith('Manual review is disabled')?'Manual review is disabled':'No uncertain items';$('#reviewPos').textContent=total?`Remaining: ${remaining} of ${total} · Decided: ${reviewed}`:emptyProgress;$('#reviewCurrent').textContent=hasCurrent?`“${all[reviewIndex].textContent.trim()}” · ${hintKindText(all[reviewIndex].dataset.kind)||'possibly sensitive data'}`:reason;if(hasCurrent){const part=last.parts[Number(all[reviewIndex].dataset.part)],needle=(part?.orig||'').toLocaleLowerCase('ru-RU'),occurrences=(last.parts||[]).filter(p=>p.t==='hint'&&(p.orig||'').toLocaleLowerCase('ru-RU')===needle).length;$('#reviewMeta').textContent=`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`;}else $('#reviewMeta').textContent='';$('#reviewDecision').textContent=lastReviewDecision||(hasCurrent?'Choose one of the two options below.':(reviewed?'Queue complete. Every uncertain item has a decision.':'No decision yet.'));$('#reviewPrev').disabled=!hasCurrent;$('#reviewNext').disabled=!hasCurrent;$('#hideCandidate').disabled=!hasCurrent;$('#keepCandidate').disabled=!hasCurrent;$('#reviewFinish').innerHTML=hasCurrent?'Review the remaining items. For files, then click <b>“Apply settings to file”</b>.':(reviewed?(filePreview?'Queue complete. Click <b>“Apply settings to file”</b> to rebuild the exportable copy.':'Queue complete. All decisions are already applied to the text.'):'When yellow items appear, review them here one by one.');$('#reviewFinish').classList.toggle('complete',!hasCurrent&&reviewed>0);if(lastReviewDecision&&!(last.warnings||[]).length)$('#warning').textContent=hasCurrent?`Uncertain items remaining: ${remaining}.`:'Manual review complete: all uncertain items were reviewed.';if(lastReviewDecision&&!hasCurrent)$('#resultStatus').textContent=filePreview?'Manual review complete. Now apply the settings to the file.':'Manual review complete. All decisions were applied to the text.';}
 function restoreReplacement(index){

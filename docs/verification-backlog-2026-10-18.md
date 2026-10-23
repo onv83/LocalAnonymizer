@@ -236,3 +236,11 @@
 - **Приёмка:** RED/GREEN runtime regression для всех трёх состояний и legacy migration; profile round-trip; полный suite, JS/compile/diff/privacy gates; independent review; fresh Windows package, verifier normal/`python -O`, Defender, безопасная установка и push в `main`. Release/tag `v0.2.9` не создавать.
 - **Проверка:** RED одновременно воспроизвёл отсутствие единого control, нового profile field и API-совместимости (`3 failed`). GREEN проверяет DOM и runtime RU/EN, все три состояния, legacy `paranoid=true/false`, нормализацию противоречивых/некорректных значений и profile round-trip. Application suite — `131 passed`; полный suite — `680 passed` с тремя ожидаемыми duplicate-ZIP warnings. Compileall, RU/EN Node syntax, source E2E normal/`python -O`, privacy scan и `git diff --check` прошли. Независимый review вернул `passed=true` без security/logic blockers.
 - **Source/package/install/CI:** source commit `504e26bdfcd2437316b61e52cd731be312d0f588` отправлен в `main`; exact-head CI `39922997667` завершился `success`. Clean Windows package и установленная копия прошли fail-closed verifier и отдельный RU/EN unified-mode verifier normal/`python -O`; Defender угроз не обнаружил. Safe install скопировал `407` byte-identical файлов; SHA-256 package/installed EXE `2c2096b0bbaf6c6d1ea239d8328b80e293dbefa6c34a0d756894e926e069a25c`. Установленный GUI запущен из точного installed path как PID `3832`. Release/tag `v0.2.9` не создавался.
+
+## B39 — навигация по спорным фрагментам без смены вида
+
+- **Источник:** пользовательское сообщение и снимок экрана; содержимое документа и реальные значения с изображения не сохраняются.
+- **Статус:** в работе.
+- **Требование:** «Следующее» / «Предыдущее» не переключают выбранный «Форматированный вид» на «Текст и подсветка»; текущий фрагмент остаётся визуально выделенным; левая и правая панели переходят к одному логическому месту документа.
+- **Совместимость:** RU/EN runtime синхронны; навигация в режиме «Текст и подсветка» сохраняется; для DOCX/ODT используется общий структурный anchor, чтобы различия длины исходного и обезличенного текста не рассинхронизировали панели.
+- **Приёмка:** RED/GREEN regression, browser/runtime-проверка RU/EN, responsive widths `390/700/900`, полный suite, package/install verification, Defender, независимый review и exact-head CI. Release/tag `v0.2.9` не создавать.
