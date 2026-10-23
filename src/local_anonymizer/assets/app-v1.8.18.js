@@ -3,7 +3,8 @@ const APP_VERSION='1.8';
 const THEME_KEY='local-anonymizer-theme';
 const UNCERTAIN_MODES=new Set(['off','review','auto']);
 function normalizeUncertainMode(mode,paranoid=false,reviewHints=true){return UNCERTAIN_MODES.has(mode)?mode:(paranoid?'auto':(reviewHints?'review':'off'));}
-function applyUncertainMode(mode){const normalized=normalizeUncertainMode(mode);$('#uncertainMode').value=normalized;$('#reviewHints').checked=normalized!=='off';$('#paranoid').checked=normalized==='auto';return normalized;}
+function applyUncertainMode(mode){const normalized=normalizeUncertainMode(mode);$('#uncertainMode').value=normalized;$('#reviewHints').checked=normalized!=='off';$('#reviewHintsMode').checked=normalized==='review';$('#paranoid').checked=normalized==='auto';return normalized;}
+function syncUncertainModeFromCheckboxes(){return applyUncertainMode($('#paranoid').checked?'auto':($('#reviewHintsMode').checked?'review':'off'));}
 async function applyCurrentDesign(){document.body.dataset.design='new';$('#detectionCategories').open=false;try{localStorage.setItem('designMode','new');}catch(_error){}try{await pywebview.api.set_design_mode('new')}catch(_error){}}
 function preferredTheme(){
   try{const saved=localStorage.getItem(THEME_KEY);if(saved==='light'||saved==='dark')return saved;}catch(_error){}
@@ -92,7 +93,9 @@ function updateRestoreContext(){}
 function hasFormattedDocumentPreview(format){return format==='docx'||format==='odt';}
 let previewScrollSyncDepth=0;
 let lastPreviewScrollSource=null;
+let reviewScrollSyncLocked=false,reviewScrollUnlockFrame=null;
 const previewAnchorCache=new WeakMap(),programmaticPreviewScrollTargets=new WeakMap();
+function holdReviewScrollSync(){reviewScrollSyncLocked=true;if(reviewScrollUnlockFrame!==null)cancelAnimationFrame(reviewScrollUnlockFrame);reviewScrollUnlockFrame=requestAnimationFrame(()=>{reviewScrollUnlockFrame=requestAnimationFrame(()=>{reviewScrollUnlockFrame=null;reviewScrollSyncLocked=false;});});}
 function invalidatePreviewAnchors(container){previewAnchorCache.delete(container);}
 function collectPreviewAnchorModel(container){
   const cached=previewAnchorCache.get(container);
@@ -159,12 +162,15 @@ function restorePreviewPosition(position,target){
   target.scrollTop=programmaticPreviewScrollTargets.get(target);
 }
 function refreshPreviewLayout(source,target){
+  if(reviewScrollSyncLocked)return;
+  if(typeof hintMarks==='function'&&hintMarks().length&&(!$('#docxPreview').hidden||!$('#anonymizedDocxPreview').hidden)){refreshFormattedReviewFocus();return;}
   invalidatePreviewAnchors(source);invalidatePreviewAnchors(target);
   if(!source||!target||source.hidden||target.hidden||!source.clientHeight||!target.clientHeight)return;
   const leader=lastPreviewScrollSource===target?target:source,follower=leader===source?target:source;
   restorePreviewPosition(previewScrollPosition(leader),follower);
 }
 function syncPreviewScroll(source,target){
+  if(reviewScrollSyncLocked){programmaticPreviewScrollTargets.delete(source);return;}
   const expected=programmaticPreviewScrollTargets.get(source);
   if(expected!==undefined){programmaticPreviewScrollTargets.delete(source);if(Math.abs(source.scrollTop-expected)<1)return;}
   if(previewScrollSyncDepth||!source||!target||source.hidden||target.hidden||!source.clientHeight||!target.clientHeight)return;
@@ -336,24 +342,25 @@ function textRangeForOccurrence(root,needle,occurrence){
   const element=start.node.parentElement,block=element&&element.closest?element.closest('[data-preview-anchor]'):null;
   return {range,block:block||element};
 }
-function sourceContextRange(text,offset){const value=String(text||''),at=Math.max(0,Math.min(Number(offset)||0,value.length)),start=value.lastIndexOf('\n',Math.max(0,at-1))+1,next=value.indexOf('\n',at);return{value:value.slice(start,next<0?value.length:next),localOffset:at-start};}
+function sourceContextRange(text,offset){const value=String(text||''),at=Math.max(0,Math.min(Number(offset)||0,value.length)),start=value.lastIndexOf('\n',Math.max(0,at-1))+1,next=value.indexOf('\n',at);return{value:value.slice(start,next<0?value.length:next),localOffset:at-start,start};}
 function normalizedReviewText(value){return String(value||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();}
 function textRangeForSourceOffset(root,needle,sourceText,sourceOffset,fallbackOccurrence){
  const context=sourceContextRange(sourceText,sourceOffset),foldedNeedle=normalizedReviewText(needle),foldedContext=normalizedReviewText(context.value);
- if(foldedContext&&foldedContext!==foldedNeedle&&foldedContext.length>foldedNeedle.length+3){const localOccurrence=occurrenceBefore(context.value,needle,context.localOffset);for(const block of root.querySelectorAll('[data-preview-anchor]')){const foldedBlock=normalizedReviewText(block.textContent);if(foldedBlock&&(foldedBlock.includes(foldedContext)||foldedContext.includes(foldedBlock))){const match=textRangeForOccurrence(block,needle,localOccurrence);if(match)return match;}}}
+ if(foldedContext&&foldedContext!==foldedNeedle&&foldedContext.length>foldedNeedle.length+3){const localOccurrence=occurrenceBefore(context.value,needle,context.localOffset),sourceLines=String(sourceText||'').split('\n'),duplicateIndex=String(sourceText||'').slice(0,context.start).split('\n').filter(line=>normalizedReviewText(line)===foldedContext).length,sourceDuplicateCount=sourceLines.filter(line=>normalizedReviewText(line)===foldedContext).length,blocks=[...root.querySelectorAll('[data-preview-anchor]')].filter(block=>{const foldedBlock=normalizedReviewText(block.textContent);return foldedBlock&&(foldedBlock===foldedContext||(sourceDuplicateCount===1&&(foldedBlock.includes(foldedContext)||foldedContext.includes(foldedBlock))));}),block=blocks.length===sourceDuplicateCount?blocks[duplicateIndex]:null;if(block){const match=textRangeForOccurrence(block,needle,localOccurrence);if(match)return match;}}
  return textRangeForOccurrence(root,needle,fallbackOccurrence);
 }
 function centerPreviewTarget(container,target){if(!container||!target||container.hidden)return;const box=container.getBoundingClientRect(),rect=target.getBoundingClientRect();const next=Math.max(0,Math.min(container.scrollHeight-container.clientHeight,container.scrollTop+rect.top-box.top-(container.clientHeight-rect.height)/2));programmaticPreviewScrollTargets.set(container,next);container.scrollTop=next;}
 function focusFormattedReview(part,sourceOffset){
   clearFormattedReviewHighlight();
   const needle=part&&part.orig?String(part.orig):'';if(!needle)return false;
+  holdReviewScrollSync();
   const sourceRoot=$('#docxPreview'),outputRoot=$('#anonymizedDocxPreview'),globalOccurrence=occurrenceBefore($('#source').value,needle,sourceOffset);
   const sourceMatch=textRangeForSourceOffset(sourceRoot,needle,$('#source').value,sourceOffset,globalOccurrence);let outputMatch=null,anchor='';
   if(sourceMatch&&sourceMatch.block){anchor=sourceMatch.block.dataset&&sourceMatch.block.dataset.previewAnchor||'';const prefix=document.createRange();prefix.selectNodeContents(sourceMatch.block);prefix.setEnd(sourceMatch.range.startContainer,sourceMatch.range.startOffset);const prefixText=prefix.toString(),localOccurrence=occurrenceBefore(prefixText,needle,prefixText.length);const outputBlock=anchor?[...outputRoot.querySelectorAll('[data-preview-anchor]')].find(node=>node.dataset.previewAnchor===anchor):null;outputMatch=textRangeForOccurrence(outputBlock||outputRoot,needle,outputBlock?localOccurrence:globalOccurrence);}
   else outputMatch=textRangeForOccurrence(outputRoot,needle,globalOccurrence);
   const ranges=[],sourceVisible=sourceMatch&&!sourceRoot.hidden,outputVisible=outputMatch&&!outputRoot.hidden;
-  if(sourceVisible){ranges.push(sourceMatch.range);centerPreviewTarget(sourceRoot,sourceMatch.block);}
-  if(outputVisible){ranges.push(outputMatch.range);centerPreviewTarget(outputRoot,outputMatch.block);}
+  if(sourceVisible){ranges.push(sourceMatch.range);centerPreviewTarget(sourceRoot,sourceMatch.range);}
+  if(outputVisible){ranges.push(outputMatch.range);centerPreviewTarget(outputRoot,outputMatch.range);}
   const exactHighlight=ranges.length&&globalThis.CSS&&CSS.highlights&&typeof Highlight==='function';
   if(exactHighlight)CSS.highlights.set('current-review',new Highlight(...ranges));
   else{if(sourceVisible)sourceMatch.block.classList.add('preview-review-current');if(outputVisible)outputMatch.block.classList.add('preview-review-current');}
@@ -371,9 +378,9 @@ function refreshFormattedReviewFocus(){
   if(reviewFocusFrame!==null){cancelAnimationFrame(reviewFocusFrame);reviewFocusFrame=null;}
   if(!hintMarks().length){clearFormattedReviewHighlight();return;}
   focusMark(reviewIndex);
-  reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);});
+  reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);});});
 }
-function reviewDisabledReason(){if($('#paranoid').checked)return 'Ручная проверка отключена: выбран режим «Скрывать автоматически». Чтобы решать спорные места по одному, выберите «Показывать для ручной проверки».';const hints=document.querySelector('.category[data-categories="HINTS"]');if(hints&&!hints.checked)return 'Ручная проверка отключена: выбран режим «Не искать спорное». Спорные фрагменты останутся без изменения и не появятся в очереди.';return 'Спорных мест не найдено.';}
+function reviewDisabledReason(){if($('#paranoid').checked)return 'Ручная проверка отключена: включено автоматическое скрытие спорного. Чтобы решать спорные места по одному, снимите галочку «Автоматически скрывать спорное без подтверждения».';const hints=document.querySelector('.category[data-categories="HINTS"]');if(hints&&!hints.checked)return 'Ручная проверка отключена: поиск спорных мест выключен. Спорные фрагменты останутся без изменения и не появятся в очереди.';return 'Спорных мест не найдено.';}
 function updateReviewPosition(){const all=hintMarks();if(reviewIndex>=all.length)reviewIndex=all.length?0:-1;if(reviewIndex<0&&all.length)reviewIndex=all.length?0:-1;const hasCurrent=all.length>0&&reviewIndex>=0;const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length,remaining=all.length,total=remaining+reviewed;const reason=reviewDisabledReason(),emptyProgress=reason.startsWith('Ручная проверка отключена:')?'Ручная проверка отключена':'Спорных мест нет';$('#reviewPos').textContent=total?`Осталось ${remaining} из ${total} · решено ${reviewed}`:emptyProgress;$('#reviewCurrent').textContent=hasCurrent?`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind||'возможные чувствительные данные'}`:reason;if(hasCurrent){const part=last.parts[Number(all[reviewIndex].dataset.part)],needle=(part?.orig||'').toLocaleLowerCase('ru-RU'),occurrences=(last.parts||[]).filter(p=>p.t==='hint'&&(p.orig||'').toLocaleLowerCase('ru-RU')===needle).length;$('#reviewMeta').textContent=`${occurrences} вхожд. · Правила: «${$('#profile').value||'Общий'}»`;}else $('#reviewMeta').textContent='';$('#reviewDecision').textContent=lastReviewDecision||(hasCurrent?'Выберите одно из двух решений ниже.':(reviewed?'Очередь разобрана. Все спорные места получили решение.':'Решение ещё не принято.'));$('#reviewPrev').disabled=!hasCurrent;$('#reviewNext').disabled=!hasCurrent;$('#hideCandidate').disabled=!hasCurrent;$('#keepCandidate').disabled=!hasCurrent;$('#reviewFinish').innerHTML=hasCurrent?'Разберите оставшиеся места. Для файлов после этого нажмите <b>«Применить настройки к файлу»</b>.':(reviewed?(filePreview?'Очередь разобрана. Нажмите <b>«Применить настройки к файлу»</b>, чтобы пересоздать экспортируемую копию.':'Очередь разобрана. Все решения уже применены к тексту.'):'После появления жёлтых мест разберите их здесь по одному.');$('#reviewFinish').classList.toggle('complete',!hasCurrent&&reviewed>0);if(lastReviewDecision&&!(last.warnings||[]).length)$('#warning').textContent=hasCurrent?`Осталось спорных мест: ${remaining}.`:'Ручная проверка завершена: все спорные места разобраны.';if(lastReviewDecision&&!hasCurrent)$('#resultStatus').textContent=filePreview?'Ручная проверка завершена. Теперь примените настройки к файлу.':'Ручная проверка завершена. Все решения применены к тексту.';}
 function restoreReplacement(index){
   const p=last.parts[index]; if(!p||p.t!=='ph'||p.secret)return;
@@ -507,9 +514,10 @@ $('#exportProfile').onclick=async()=>{const n=$('#profile').value;try{const r=aw
 $('#importProfile').onclick=async()=>{try{const r=await pywebview.api.import_profile();if(r.ok){await refreshProfiles(r.name);await loadProfileIntoEditor(r.name);$('#settingsStatus').textContent=fileDirty?`Профиль «${r.name}» импортирован и загружен. Примените настройки к файлу перед экспортом.`:`Профиль «${r.name}» импортирован и загружен.`;}else if(r.error){$('#settingsStatus').textContent=r.error;}}catch(e){$('#settingsStatus').textContent='Не удалось импортировать профиль.';}};
 function markSettingsDirty(){settingsGeneration++;if(filePreview){fileDirty=true;$('#settingsStatus').textContent='Изменения настроек ещё не применены к экспортируемому файлу. Проверьте обновлённый предпросмотр и нажмите «Применить настройки к файлу».';}updatePrimaryAction();scheduleAnonymize();}
 ['#rules','#whitelist','#redactDocxGraphics'].forEach(s=>$(s).addEventListener('input',markSettingsDirty));
-$('#uncertainMode').addEventListener('change',e=>{applyUncertainMode(e.target.value);markSettingsDirty();});
+$('#reviewHintsMode').onchange=async()=>{if($('#reviewHintsMode').checked)$('#paranoid').checked=false;syncUncertainModeFromCheckboxes();markSettingsDirty();};
+$('#paranoid').onchange=async()=>{if($('#paranoid').checked)$('#reviewHintsMode').checked=false;syncUncertainModeFromCheckboxes();markSettingsDirty();};
 $('#compactMarkers').addEventListener('input',()=>{updateCategoryMarkerExamples();markSettingsDirty();});
-document.querySelectorAll('.category').forEach(x=>x.addEventListener('change',markSettingsDirty));
+ document.querySelectorAll('.category:not(#reviewHints)').forEach(x=>x.addEventListener('change',markSettingsDirty));
 $('#source').addEventListener('scroll',()=>{$('#sourceMirror').scrollTop=$('#source').scrollTop;syncPreviewScroll($('#source'),activeAnonymizedPreview());});$('#richOutput').addEventListener('scroll',()=>{syncPreviewScroll($('#richOutput'),activeSourcePreview());$('#sourceMirror').scrollTop=$('#source').scrollTop;});
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();$('#copy').click();}if(e.key==='Escape'){if(previewFullscreen){setPreviewFullscreen(false);return;}if(anonymizedPreviewFullscreen){setAnonymizedPreviewFullscreen(false);}}});
 ['dragenter','dragover'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));document.addEventListener('drop',async e=>{e.preventDefault();const paths=[...e.dataTransfer.files].map(f=>f.path).filter(Boolean);if(paths.length){const ticket=++importGeneration;generation++;previewGeneration++;const r=await pywebview.api.import_paths(paths);if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent='Ошибка импорта';}});

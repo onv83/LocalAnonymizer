@@ -245,7 +245,7 @@ console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,curr
 
     result = json.loads(completed.stdout)
     assert result["progress"] == "Ручная проверка отключена"
-    assert "Скрывать автоматически" in result["current"]
+    assert "Автоматически скрывать спорное без подтверждения" in result["current"]
     assert len(result["current"]) > len(result["progress"])
 
 

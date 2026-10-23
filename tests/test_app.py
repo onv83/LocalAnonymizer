@@ -375,34 +375,40 @@ def test_profile_json_import_reports_invalid_file_without_overwriting_profile(tm
     assert api.load_profile("Общий") == before
 
 
-def test_uncertain_fragments_use_one_three_state_control_in_both_languages():
+def test_uncertain_fragments_use_two_visible_checkboxes_without_duplicate_heading():
     labels = {
         "index-v1.8.18.html": (
-            "Не искать спорное",
-            "Показывать для ручной проверки",
-            "Скрывать автоматически",
+            "Искать спорные места для ручной проверки",
+            "Автоматически скрывать спорное без подтверждения",
         ),
         "index-en-v1.8.18.html": (
-            "Do not detect uncertain items",
-            "Show for manual review",
-            "Hide automatically",
+            "Find uncertain items for manual review",
+            "Automatically hide uncertain items without confirmation",
         ),
+    }
+    forbidden_headings = {
+        "index-v1.8.18.html": ("<summary>Дополнительные режимы</summary>", "<legend>Дополнительные режимы</legend>"),
+        "index-en-v1.8.18.html": ("<summary>Additional modes</summary>", "<legend>Additional modes</legend>"),
     }
     for html_name, expected_labels in labels.items():
         html = asset_path(html_name).read_text(encoding="utf-8")
         assert html.count('id="uncertainMode"') == 1
-        assert '<select id="uncertainMode"' in html
-        for value, label in zip(("off", "review", "auto"), expected_labels, strict=True):
-            assert f'<option value="{value}"' in html
-            assert label in html
+        assert '<input id="uncertainMode" type="hidden" value="review">' in html
+        assert '<select id="uncertainMode"' not in html
         assert '<input class="category" data-categories="HINTS" id="reviewHints" type="checkbox" checked hidden>' in html
-        assert '<input id="paranoid" type="checkbox" hidden>' in html
+        assert '<input id="reviewHintsMode" type="checkbox" checked>' in html
+        assert '<input id="paranoid" type="checkbox">' in html
+        for label in expected_labels:
+            assert label in html
+        for heading in forbidden_headings[html_name]:
+            assert heading not in html
 
     for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
         javascript = asset_path(js_name).read_text(encoding="utf-8")
         assert "const UNCERTAIN_MODES=new Set(['off','review','auto'])" in javascript
         assert "function applyUncertainMode(mode)" in javascript
         assert "$('#reviewHints').checked=normalized!=='off'" in javascript
+        assert "$('#reviewHintsMode').checked=normalized==='review'" in javascript
         assert "$('#paranoid').checked=normalized==='auto'" in javascript
         assert "p.uncertain_mode" in javascript
         assert "$('#uncertainMode').value" in javascript
@@ -416,11 +422,12 @@ def test_uncertain_mode_runtime_maps_all_three_states_and_legacy_profiles():
 const elements={{
   '#uncertainMode':{{value:'review'}},
   '#reviewHints':{{checked:true}},
+  '#reviewHintsMode':{{checked:true}},
   '#paranoid':{{checked:false}}
 }};
 const document={{querySelector:(selector)=>elements[selector]}};
 {runtime}
-function snapshot(mode){{applyUncertainMode(mode);return [elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#paranoid'].checked];}}
+function snapshot(mode){{applyUncertainMode(mode);return [elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#reviewHintsMode'].checked,elements['#paranoid'].checked];}}
 const actual={{
   off:snapshot('off'),
   review:snapshot('review'),
@@ -436,12 +443,55 @@ console.log(JSON.stringify(actual));
         )
         assert completed.returncode == 0, completed.stderr
         assert json.loads(completed.stdout) == {
-            "off": ["off", False, False],
-            "review": ["review", True, False],
-            "auto": ["auto", True, True],
+            "off": ["off", False, False, False],
+            "review": ["review", True, True, False],
+            "auto": ["auto", True, False, True],
             "legacyFalse": "review",
             "legacyTrue": "auto",
             "invalid": "review",
+        }
+
+
+def test_uncertain_mode_checkbox_changes_keep_three_state_model_consistent():
+    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(js_name).read_text(encoding="utf-8")
+        assert "function syncUncertainModeFromCheckboxes()" in javascript
+        assert "$('#reviewHintsMode').onchange=async()=>" in javascript
+        assert "$('#paranoid').onchange=async()=>" in javascript
+        assert "$('#uncertainMode').onchange" not in javascript
+        runtime = javascript[:javascript.index("async function applyCurrentDesign")]
+        handlers = "\n".join(
+            line for line in javascript.splitlines()
+            if line.startswith("$('#reviewHintsMode').onchange=") or line.startswith("$('#paranoid').onchange=")
+        )
+        harness = f"""
+const elements={{
+  '#uncertainMode':{{value:'review'}},
+  '#reviewHints':{{checked:true}},
+  '#reviewHintsMode':{{checked:true}},
+  '#paranoid':{{checked:false}}
+}};
+const document={{querySelector:(selector)=>elements[selector]}};
+let dirty=0;function markSettingsDirty(){{dirty++;}}
+{runtime}
+{handlers}
+(async()=>{{
+  elements['#paranoid'].checked=true;await elements['#paranoid'].onchange();
+  const automatic=[elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#reviewHintsMode'].checked,elements['#paranoid'].checked];
+  elements['#paranoid'].checked=false;await elements['#paranoid'].onchange();
+  const off=[elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#reviewHintsMode'].checked,elements['#paranoid'].checked];
+  elements['#reviewHintsMode'].checked=true;await elements['#reviewHintsMode'].onchange();
+  const review=[elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#reviewHintsMode'].checked,elements['#paranoid'].checked];
+  console.log(JSON.stringify({{automatic,off,review,dirty}}));
+}})();
+"""
+        completed = subprocess.run(["node", "-e", harness], capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, completed.stderr
+        assert json.loads(completed.stdout) == {
+            "automatic": ["auto", True, False, True],
+            "off": ["off", False, False, False],
+            "review": ["review", True, True, False],
+            "dirty": 3,
         }
 
 
@@ -547,7 +597,7 @@ def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
     for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         toolbar = re.search(
-            r'<div class="review-toolbar">(.*?)</div><details class="review-controls-disclosure">',
+            r'<div class="review-toolbar">(.*?)</div><div class="review-controls-disclosure">',
             html,
         )
         assert toolbar is not None
@@ -636,7 +686,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
         r'<input class="category" data-categories="([^"]+)"[^>]*>\s*([^<]+)',
         html,
     )
-    categories = [category for category, _label in controls]
+    categories = [category for category, _label in controls if category != "HINTS"]
     assert len(categories) == len(set(categories))
     assert all("," not in category for category in categories)
 
@@ -1123,9 +1173,9 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
         assert output_start < review_start
         assert settings_start > html.index('id="sourceHeading"')
         assert review_start > html.index('id="anonymizedPreviewSurface"')
-        assert '<details class="review-controls-disclosure">' in html
-        assert '<fieldset class="review-controls">' in html
-        for control_id in ("reviewHints", "paranoid", "compactMarkers", "mono"):
+        assert '<div class="review-controls-disclosure">' in html
+        assert '<fieldset class="review-controls" aria-label=' in html
+        for control_id in ("reviewHints", "reviewHintsMode", "paranoid", "compactMarkers", "mono"):
             assert f'id="{control_id}"' in html
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
@@ -1150,12 +1200,12 @@ def test_review_candidate_and_toolbar_span_the_output_review_width():
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
-def test_review_additional_modes_follow_the_four_button_toolbar_in_both_languages():
+def test_review_checkbox_modes_follow_the_four_button_toolbar_in_both_languages():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         review = html.split('<section id="manualReview"', 1)[1].split("</section>", 1)[0]
 
-        disclosure_start = review.index('<details class="review-controls-disclosure">')
+        disclosure_start = review.index('<div class="review-controls-disclosure">')
         toolbar_start = review.index('<div class="review-toolbar">')
         decision_start = review.index('<div id="reviewDecision" class=')
 
@@ -1187,11 +1237,11 @@ def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
     for asset_name, hide_title, keep_title, hide_help, keep_help in expectations:
         html = asset_path(asset_name).read_text(encoding="utf-8")
         toolbar = html.split('<div class="review-toolbar">', 1)[1].split(
-            '<details class="review-controls-disclosure">', 1
+            '<div class="review-controls-disclosure">', 1
         )[0]
         navigation = toolbar.split('<div class="review-navigation">', 1)[1].split("</div>", 1)[0]
         actions = toolbar.split('<div class="review-actions" id="reviewDecisionActions">', 1)[1].split(
-            '<details class="review-controls-disclosure">', 1
+            '<div class="review-controls-disclosure">', 1
         )[0]
 
         assert 'id="hideCandidate"' not in navigation
@@ -1452,26 +1502,34 @@ def test_selected_review_is_visible_after_initial_navigation_and_formatted_ready
     harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app" style="width:__WIDTH__px;height:800px"></iframe><pre id="probe">pending</pre><script>
 const frame=document.getElementById('app');frame.src=__INDEX__;
 function finish(value){document.getElementById('probe').textContent=JSON.stringify(value);document.title=value.ok?'PASS':'FAIL';}
-frame.addEventListener('load',()=>setTimeout(()=>{try{
- const w=frame.contentWindow,d=w.document,needleA='SyntheticCandidateA',needleB='SyntheticCandidateB';
- const lines=Array.from({length:24},(_,i)=>i===4?`Context ${needleA} tail`:i===19?`Context ${needleB} tail`:`Synthetic paragraph ${i}`);
- const blocks=()=>lines.map((line,i)=>`<p data-preview-anchor="body/p${i}" style="height:52px;margin:0">${line}</p>`).join('');
- const sourceText=lines.join('\n'),offsetA=sourceText.indexOf(needleA),offsetB=sourceText.indexOf(needleB);
- const rich=`<span class="mark-hint" data-kind="name" data-s0="${offsetB}">${needleB}</span><span class="mark-hint" data-kind="name" data-s0="${offsetA}">${needleA}</span>`;
+frame.addEventListener('load',()=>setTimeout(async()=>{try{
+ const w=frame.contentWindow,d=w.document,needles=['SyntheticCandidateTop','SyntheticCandidateMiddle','SyntheticCandidateBottom'];
+ const words=Array.from({length:360},(_,i)=>`filler${i}`);words.splice(8,0,needles[0]);words.splice(180,0,needles[1]);words.splice(350,0,needles[2]);
+ const paragraph=words.join(' '),sourceText=paragraph+'\n'+paragraph,offsets=needles.map(needle=>paragraph.length+1+paragraph.indexOf(needle));
+ const blocks=()=>`<p data-preview-anchor="body/p0" style="line-height:24px;margin:0;overflow-wrap:anywhere">${paragraph}</p><p data-preview-anchor="body/p1" style="line-height:24px;margin:0;overflow-wrap:anywhere">${paragraph}</p>`;
+ const rich=needles.map((needle,index)=>`<span class="mark-hint" data-kind="name" data-s0="${offsets[index]}">${needle}</span>`).join('');
  const left=d.getElementById('docxPreview'),right=d.getElementById('anonymizedDocxPreview');
  d.getElementById('source').value=sourceText;left.innerHTML=blocks();right.innerHTML=blocks();
  left.hidden=false;d.getElementById('textPreview').hidden=true;d.getElementById('showFormatted').setAttribute('aria-pressed','true');
  right.hidden=false;d.getElementById('richOutput').hidden=true;d.getElementById('showAnonymizedFormatted').setAttribute('aria-pressed','true');
- const visible=pane=>{let target=pane.querySelector('.preview-review-current');if(!target&&w.CSS?.highlights){const ranges=Array.from(w.CSS.highlights.get('current-review')||[]);const range=ranges.find(item=>pane.contains(item.startContainer));target=range?.startContainer?.parentElement?.closest('[data-preview-anchor]');}if(!target)return false;const p=pane.getBoundingClientRect(),t=target.getBoundingClientRect();return t.top>=p.top-1&&t.bottom<=p.bottom+1;};
- const snapshot=label=>({label,left:visible(left),right:visible(right),leftTop:left.scrollTop,rightTop:right.scrollTop});
+ const exactRange=(pane,needle)=>{const walker=d.createTreeWalker(pane,w.NodeFilter.SHOW_TEXT);let node,seen=0;while(node=walker.nextNode()){const index=node.nodeValue.indexOf(needle);if(index>=0){if(seen++===1){const range=d.createRange();range.setStart(node,index);range.setEnd(node,index+needle.length);return range;}}}return null;};
+ const visible=(pane,needle)=>{const range=exactRange(pane,needle);if(!range)return false;const p=pane.getBoundingClientRect(),t=range.getBoundingClientRect();return t.top>=p.top+1&&t.bottom<=p.bottom-1;};
+ const settle=()=>new Promise(resolve=>w.setTimeout(resolve,80));
+ const currentNeedle=()=>needles.find(needle=>d.getElementById('reviewCurrent').textContent.includes(needle));
+ const snapshot=label=>{const needle=currentNeedle();return {label,needle,left:Boolean(needle)&&visible(left,needle),right:Boolean(needle)&&visible(right,needle),leftTop:left.scrollTop,rightTop:right.scrollTop};};
  const checks=[];
- d.getElementById('richOutput').innerHTML=rich;w.refreshFormattedReviewFocus();checks.push(snapshot('initial'));
- d.getElementById('reviewNext').click();checks.push(snapshot('next'));
- d.getElementById('reviewPrev').click();checks.push(snapshot('previous'));
- right.innerHTML='';w.refreshFormattedReviewFocus();checks.push({label:'pending-source',left:visible(left)});
- right.innerHTML=blocks();w.refreshFormattedReviewFocus();checks.push(snapshot('ready'));
- right.querySelector('[data-preview-anchor="body/p19"]').removeAttribute('data-preview-anchor');w.refreshFormattedReviewFocus();checks.push(snapshot('missing-anchor-fallback'));
- finish({ok:checks.every(check=>check.left&&check.right!==false),checks});
+ d.getElementById('richOutput').innerHTML=rich;w.refreshFormattedReviewFocus();await settle();checks.push(snapshot('initial'));
+ d.getElementById('reviewNext').click();await settle();checks.push(snapshot('next-1'));
+ d.getElementById('reviewNext').click();await settle();checks.push(snapshot('next-2'));
+ d.getElementById('reviewPrev').click();await settle();checks.push(snapshot('previous'));
+ w.refreshFormattedReviewFocus();d.getElementById('reviewNext').click();await settle();checks.push(snapshot('stale-frame-next'));
+ [left,right].forEach(pane=>pane.insertAdjacentHTML('afterbegin','<div style="height:240px" aria-hidden="true"></div>'));await settle();checks.push(snapshot('delayed-layout'));
+ right.innerHTML='';w.refreshFormattedReviewFocus();await settle();checks.push({label:'pending-source',needle:currentNeedle(),left:visible(left,currentNeedle())});
+ right.innerHTML=blocks();w.refreshFormattedReviewFocus();await settle();checks.push(snapshot('ready'));
+ [left,right].forEach(pane=>[...pane.querySelectorAll('[data-preview-anchor]')].at(-1).removeAttribute('data-preview-anchor'));w.refreshFormattedReviewFocus();await settle();checks.push(snapshot('missing-target-anchor-fallback'));
+ [left,right].forEach(pane=>{const paragraphs=[...pane.querySelectorAll('p')];paragraphs[1].dataset.previewAnchor='body/p1';paragraphs[0].removeAttribute('data-preview-anchor');});w.refreshFormattedReviewFocus();await settle();checks.push(snapshot('missing-earlier-anchor-fallback'));
+ const visited=new Set(checks.slice(0,3).map(check=>check.needle));
+ finish({ok:visited.size===3&&checks.every(check=>check.left&&check.right!==false),checks,visited:[...visited]});
 }catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},6000);</script>'''
 
     for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
@@ -1510,8 +1568,12 @@ def test_formatted_review_focus_is_bound_to_render_lifecycle_without_timeout():
         assert "refreshFormattedReviewFocus();" in render_output
         assert "refreshFormattedReviewFocus();" in formatted_ready
         assert "cancelDocxPreviewScrollReset();cancelAnonymizedPreviewScrollReset();" in script
-        assert "requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);})" in refresh_focus
+        assert "requestAnimationFrame(()=>{reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);});})" in refresh_focus
         assert "setTimeout" not in refresh_focus
+        assert "function holdReviewScrollSync()" in script
+        assert "if(reviewScrollSyncLocked){programmaticPreviewScrollTargets.delete(source);return;}" in script
+        assert "if(reviewScrollSyncLocked)return;" in script
+        assert "refreshFormattedReviewFocus();return;" in script
 
 
 def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
@@ -1696,7 +1758,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
                 '<div class="review-actions">'
                 f'<button>{hide_text}</button><button>{keep_text}</button>'
                 '</div></div>'
-                '<details class="review-controls-disclosure"><summary>Additional modes</summary></details>'
+                '<div class="review-controls-disclosure"><fieldset class="review-controls" aria-label="Synthetic controls"><label><input type="checkbox" checked>Review uncertain items</label><label><input type="checkbox">Hide automatically</label></fieldset></div>'
                 '<p class="review-decision sr-only">The current choice applies only to the selected synthetic fragment.</p>'
                 '<p class="review-finish">Resolve every fragment before continuing.</p>'
                 '<p id="resultStatus" class="review-decision">Synthetic result status.</p>'
@@ -2382,7 +2444,7 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
     for control_id in ("uncertainMode", "paranoid", "compactMarkers", "mono"):
         assert f'id="{control_id}"' in html
     for explanation in (
-        "Скрывать автоматически",
+        "Автоматически скрывать спорное без подтверждения",
         "укорачивает подписи маркеров",
         "меняет только отображение текста",
     ):
@@ -2519,10 +2581,11 @@ def test_manual_review_owns_its_search_and_display_controls():
     settings = html[settings_start:settings_end]
     categories_start = html.index('id="detectionCategories"')
 
-    for control_id in ("uncertainMode", "reviewHints", "paranoid", "compactMarkers", "mono"):
+    for control_id in ("uncertainMode", "reviewHints", "reviewHintsMode", "paranoid", "compactMarkers", "mono"):
         assert f'id="{control_id}"' in review
-    assert "Показывать для ручной проверки" in review
-    assert "Дополнительные режимы" in review
+    assert "Искать спорные места для ручной проверки" in review
+    assert "Автоматически скрывать спорное без подтверждения" in review
+    assert "Дополнительные режимы" not in review
     assert 'data-categories="HINTS"' not in html[categories_start:]
     assert 'id="paranoid"' not in settings
 
@@ -2555,11 +2618,11 @@ def test_manual_review_unified_mode_and_current_candidate_are_obvious():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
-    assert "Скрывать автоматически" in html
-    assert "Показывать для ручной проверки" in html
+    assert "Автоматически скрывать спорное без подтверждения" in html
+    assert "Искать спорные места для ручной проверки" in html
     assert 'id="reviewCurrent"' in html
     assert "Ручная проверка отключена" in javascript
-    assert "выберите «Показывать для ручной проверки»" in javascript
+    assert "снимите галочку «Автоматически скрывать спорное без подтверждения»" in javascript
     assert "setAnonymizedPreviewMode(false)" in javascript
     assert "`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind" in javascript
 

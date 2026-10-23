@@ -271,3 +271,14 @@
 - **Корневая причина:** первичный `renderOutput()` обновлял карточку, но не фокусировал форматированные панели; затем асинхронная готовность правой панели заменяла DOM и восстанавливала пропорциональную позицию без повторного перехода к logical target. Отложенный reset исходного preview мог поверх этого вернуть прокрутку назад.
 - **Source verification:** Edge regression прошёл для RU/EN × `390/700/900`, обеих панелей, initial/Previous/Next, pending→ready и missing-anchor fallback; полный suite — `693 passed`, E2E normal/optimized и `92` category checks прошли.
 - **Закрытие:** independent review — без logic/security findings; source commit `8cee981dbdab4fca0765b37a1d4e6750c0beea2a`, CI `39955595576 success`. Windows package/installed EXE прошли normal/`python -O`, Defender угроз не нашёл; SHA-256 `ebdc8a4dabbe4212b04520ed2353697ddd1735eccee30174f1d3d968d9fbc6a1`. Установленная программа запущена как PID `33680`; release/tag не создавался.
+
+## B43 — intermittent-фокус спорного фрагмента и возврат checkbox
+
+- [x] **Источник:** новое пользовательское сообщение и три снимка интерфейса; содержимое документа и реальные значения с изображений не сохраняются.
+- [x] **Исправить реальную видимость:** при выборе слов в разных вертикальных позициях внутри одного форматированного блока обе панели прокручиваются к точному диапазону слова, а не к контейнеру блока.
+- [x] **Lifecycle:** initial/Previous/Next, pending→ready, exact anchor и missing-anchor fallback покрыты; stale animation/layout/scroll callbacks не отменяют более новый выбор.
+- [x] **Матрица:** executable Edge regression с реальными layout metrics прошёл RU/EN × `390/700/900`, target в начале/середине/конце второго из двух идентичных высоких блоков; проверяется точный range внутри viewport обеих панелей, delayed layout и fallback при отсутствии target/earlier anchor.
+- [x] **Вернуть checkbox:** видимый `select#uncertainMode` заменён отдельными флажками ручной проверки и автоматического скрытия; hidden `uncertainMode` сохраняет persisted/profile-семантику `off/review/auto`, обработчики исключают противоречивые состояния.
+- [x] **Убрать дубли заголовка:** оба видимых экземпляра «Дополнительные режимы» / `Additional modes` удалены; fieldset имеет локализованное доступное имя.
+- [x] **Паритет и совместимость:** RU/EN синхронны; B39–B42 invariants, profile/storage и responsive layout не регрессируют; полный suite — `694 passed`.
+- [ ] **Проверка и доставка:** source tests, независимый review, clean Windows build, fail-closed package verification normal/`python -O`, Defender, безопасная установка после проверки процесса/несохранённых данных, installed EXE verification и push. Release/tag не создавать без отдельного разрешения.
