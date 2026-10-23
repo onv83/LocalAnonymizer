@@ -205,7 +205,9 @@ function syncPreviewScroll(source,target){
 }
 const sourcePreviewAlignment=$('#sourcePreviewAlignment');
 const outputPreviewAlignment=$('#outputPreviewAlignment');
-const canAlignPreviewTops=sourcePreviewAlignment?.classList?.contains('preview-alignment-spacer')&&outputPreviewAlignment?.classList?.contains('preview-alignment-spacer');
+const sourcePanelAlignment=$('#sourcePanelAlignment');
+const outputPanelAlignment=$('#outputPanelAlignment');
+const canAlignPreviewTops=sourcePreviewAlignment?.classList?.contains('preview-alignment-spacer')&&outputPreviewAlignment?.classList?.contains('preview-alignment-spacer')&&sourcePanelAlignment&&outputPanelAlignment;
 function activeSourcePreview(){return $('#docxPreview').hidden?$('#source'):$('#docxPreview');}
 function activeAnonymizedPreview(){return $('#anonymizedDocxPreview').hidden?$('#richOutput'):$('#anonymizedDocxPreview');}
 let previewLayoutRefreshFrame=0;
@@ -226,6 +228,7 @@ let previewAlignmentFrame=0;
 function syncPreviewTopAlignment(){
   if(!canAlignPreviewTops)return;
   sourcePreviewAlignment.style.height='0px';outputPreviewAlignment.style.height='0px';
+  sourcePanelAlignment.style.height='0px';outputPanelAlignment.style.height='0px';
   if(previewFullscreen||anonymizedPreviewFullscreen)return;
   const sourcePreview=activeSourcePreview(),outputPreview=activeAnonymizedPreview();
   const sourcePane=sourcePreview.closest('.pane'),outputPane=outputPreview.closest('.pane');
@@ -234,6 +237,9 @@ function syncPreviewTopAlignment(){
   const difference=sourcePreview.getBoundingClientRect().top-outputPreview.getBoundingClientRect().top;
   if(difference>0.5)outputPreviewAlignment.style.height=`${difference}px`;
   else if(difference<-.5)sourcePreviewAlignment.style.height=`${-difference}px`;
+  const panelDifference=sourcePane.getBoundingClientRect().bottom-outputPane.getBoundingClientRect().bottom;
+  if(panelDifference>0.5)outputPanelAlignment.style.height=`${panelDifference}px`;
+  else if(panelDifference<-.5)sourcePanelAlignment.style.height=`${-panelDifference}px`;
 }
 function schedulePreviewTopAlignment(){
   if(previewAlignmentFrame)return;
@@ -243,7 +249,7 @@ function schedulePreviewTopAlignment(){
 }
 const previewAlignmentResizeObserver=!canAlignPreviewTops||typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedulePreviewTopAlignment);
 if(previewAlignmentResizeObserver){
-  [$('#sourceLibrary'),$('#docxPreviewControls'),$('#anonymizedPreviewControls'),$('#source').closest('.pane')?.querySelector('.bar'),$('#richOutput').closest('.pane')?.querySelector('.bar')].filter(Boolean).forEach(element=>previewAlignmentResizeObserver.observe(element));
+  [$('#sourceLibrary'),$('#docxPreviewControls'),$('#anonymizedPreviewControls'),$('#source').closest('.pane'),$('#richOutput').closest('.pane'),$('#source').closest('.pane')?.querySelector('.bar'),$('#richOutput').closest('.pane')?.querySelector('.bar')].filter(Boolean).forEach(element=>previewAlignmentResizeObserver.observe(element));
 }
 const previewAlignmentMutationObserver=!canAlignPreviewTops||typeof MutationObserver==='undefined'?null:new MutationObserver(schedulePreviewTopAlignment);
 if(previewAlignmentMutationObserver){

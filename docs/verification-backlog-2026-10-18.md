@@ -215,3 +215,11 @@
 - **Приёмка:** RED/GREEN structural contract и executable Edge geometry на production-классах для RU/EN; полный source suite, JS/compile/diff/privacy gates, independent review; свежий Windows package, fail-closed verifier normal/`python -O`, Defender, безопасная установка без broad kill, installed smoke/geometry и exact-head CI. Release/tag `v0.2.9` не создавать.
 - **Проверка:** source commit `eca4b1fb1a78f2f0a847726ae286f3bd1acf3c28`; targeted production-DOM и extended geometry прошли для RU/EN на `390/700/900`, application suite — `127 passed`, полный suite — `675 passed` с тремя ожидаемыми duplicate-ZIP warnings. Compileall, RU/EN Node syntax, source E2E normal/`python -O`, privacy scan и `git diff --check` прошли. Независимый review вернул `passed=true` без security/logic blockers.
 - **Установка/CI:** clean Windows package содержит `407` файлов; fail-closed verifier normal/`python -O` и Defender прошли. EXE SHA-256 `3034f521904db37a553cc6ef7b4ff953d2e067c00aa06ca6d58da54e25da02a2`. После явного подтверждения сохранения закрыт только PID `1032`; safe install скопировал byte-identical package, installed verifier и RU/EN production-DOM geometry normal/`python -O` прошли, установленный EXE и изменённые assets совпадают с package/source. Установленный GUI запущен как PID `3356`. Exact-head CI `39713831063` завершился `success`; Release/tag `v0.2.9` не создавался.
+
+## B37 — единая горизонталь нижних рабочих блоков
+
+- **Источник:** пользовательское сообщение и красная геометрическая аннотация на приложенном снимке интерфейса; содержимое документа и реальные значения с изображения не сохраняются.
+- **Статус:** в работе.
+- **Требование:** выровнять по одной горизонтали нижние границы двух верхних рабочих панелей и, следовательно, верхние границы следующих за ними блоков настроек и ручной проверки.
+- **Границы:** на широком двухколоночном layout допустимое расхождение — не более `1 px`; на узком одноколоночном layout нельзя добавлять искусственную высоту или создавать overlap. Проверить production RU/EN DOM на ширинах `390/700/900`, используя только синтетические значения.
+- **Приёмка:** RED/GREEN runtime и browser geometry; полный source suite, package/install verification, Defender, независимый review и exact-head CI. Release/tag `v0.2.9` не создавать.

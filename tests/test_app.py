@@ -1036,7 +1036,7 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
 
     assert 'grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr)' in css
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
-    assert 'body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspace-column>.review,body[data-design="new"] .workspace-column>.settings-panel{width:100%;min-width:0;margin-bottom:0}' in css
+    assert 'body[data-design="new"] .workspace-column>.pane,body[data-design="new"] .workspace-column>.review,body[data-design="new"] .workspace-column>.settings-panel{width:100%;min-width:0;margin:0}' in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
     assert 'body[data-design="new"] .review-context{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}' in css
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
@@ -1279,6 +1279,65 @@ document.getElementById('probe').textContent=JSON.stringify(rows);</script></bod
             assert metric["helpLines"] <= 2, metric
         assert metrics[-1]["childColumns"] == ["1", "2", "3"], metrics[-1]
         assert metrics[-1]["candidateHeight"] < 50, metrics[-1]
+
+
+def test_production_workspace_lower_panels_share_one_horizontal_line(tmp_path: Path):
+    base_css_uri = asset_path("style-v1.1.css").as_uri()
+    css_uri = asset_path("new-design-v1.11.css").as_uri()
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows layout regression")
+
+    for index, (html_name, javascript_name) in enumerate(
+        (("index-v1.8.18.html", "app-v1.8.18.js"), ("index-en-v1.8.18.html", "app-en-v1.8.18.js"))
+    ):
+        source = asset_path(html_name).read_text(encoding="utf-8")
+        workspace = re.search(r'<main class="columns">.*?</main>', source, re.S)
+        assert workspace is not None
+        javascript = asset_path(javascript_name).read_text(encoding="utf-8")
+        start = javascript.index("const sourcePreviewAlignment=")
+        end = javascript.index("function syncFormattedSourceScroll", start)
+        implementation = javascript[start:end]
+        for width in (390, 700, 900):
+            fixture = tmp_path / f"production-workspace-line-{index}-{width}.html"
+            fixture.write_text(
+                f'''<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="{base_css_uri}"><link rel="stylesheet" href="{css_uri}"><style>.columns{{width:{width * 2 + 14}px}}</style></head><body data-design="new">{workspace.group(0)}<pre id="probe"></pre><script>
+const $=selector=>document.querySelector(selector);let previewFullscreen=false,anonymizedPreviewFullscreen=false;
+{implementation}
+document.getElementById('chips').innerHTML='<span>TYPE-A</span><span>TYPE-B</span><span>TYPE-C</span><span>TYPE-D</span><span>TYPE-E</span>';
+document.getElementById('source').value='Synthetic documentation content';document.getElementById('richOutput').textContent='[SYNTHETIC-1]';syncPreviewTopAlignment();
+document.getElementById('undoChips').textContent='Synthetic reversible marker';
+setTimeout(()=>{{const box=element=>element.getBoundingClientRect(),sourcePane=document.querySelector('#sourceColumn>.pane'),outputPane=document.querySelector('#anonymizedColumn>.pane'),settings=document.getElementById('anonymizationSettings'),review=document.getElementById('manualReview');document.getElementById('probe').textContent=JSON.stringify({{sourceWidth:document.getElementById('sourceColumn').clientWidth,outputWidth:document.getElementById('anonymizedColumn').clientWidth,paneBottomDifference:Math.abs(box(sourcePane).bottom-box(outputPane).bottom),lowerTopDifference:Math.abs(box(settings).top-box(review).top),settingsGap:box(settings).top-box(sourcePane).bottom,reviewGap:box(review).top-box(outputPane).bottom,sourcePanelSpacer:parseFloat(document.getElementById('sourcePanelAlignment').style.height)||0,outputPanelSpacer:parseFloat(document.getElementById('outputPanelAlignment').style.height)||0,dynamicUndoVisible:box(document.getElementById('undoChips')).height>0}});}},120);</script></body></html>''',
+                encoding="utf-8",
+            )
+            profile = tmp_path / f"edge-profile-workspace-line-{index}-{width}"
+            result = subprocess.run(
+                [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--window-size=1200,1000", "--virtual-time-budget=500", "--dump-dom", fixture.as_uri()],
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=True,
+            )
+            match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+            assert match, result.stdout[-2000:]
+            metric = json.loads(html_module.unescape(match.group(1)))
+            assert abs(metric["sourceWidth"] - width) <= 1, metric
+            assert abs(metric["outputWidth"] - width) <= 1, metric
+            assert metric["paneBottomDifference"] <= 1, metric
+            assert metric["lowerTopDifference"] <= 1, metric
+            assert metric["dynamicUndoVisible"], metric
+            assert metric["settingsGap"] >= 0 and metric["reviewGap"] >= 0, metric
+            assert metric["sourcePanelSpacer"] >= 0 and metric["outputPanelSpacer"] >= 0, metric
 
 
 def test_manual_review_layout_is_bound_to_workspace_width_and_contains_long_copy():
@@ -1741,9 +1800,13 @@ def test_source_and_anonymized_preview_screens_stay_vertically_aligned():
         # language-specific pixel offset, aligns whichever active previews are visible.
         assert 'id="sourcePreviewAlignment" class="preview-alignment-spacer"' in html
         assert 'id="outputPreviewAlignment" class="preview-alignment-spacer"' in html
+        assert 'id="sourcePanelAlignment" class="pane-bottom-alignment-spacer"' in html
+        assert 'id="outputPanelAlignment" class="pane-bottom-alignment-spacer"' in html
         assert "function syncPreviewTopAlignment()" in javascript
         assert "sourcePreviewAlignment.style.height='0px'" in javascript
         assert "outputPreviewAlignment.style.height='0px'" in javascript
+        assert "sourcePanelAlignment.style.height='0px'" in javascript
+        assert "outputPanelAlignment.style.height='0px'" in javascript
         assert "activeSourcePreview()" in javascript
         assert "activeAnonymizedPreview()" in javascript
         assert "function isPreviewActive(preview)" in javascript
@@ -1770,26 +1833,33 @@ let sourceBase=200,outputBase=100;
 const px=value=>Number.parseFloat(value||'0')||0;
 const sourceSpacer={{style:{{height:'0px'}},classList:{{contains:name=>name==='preview-alignment-spacer'}}}};
 const outputSpacer={{style:{{height:'0px'}},classList:{{contains:name=>name==='preview-alignment-spacer'}}}};
-const sourcePane={{top:0,getBoundingClientRect(){{return{{top:this.top}};}},querySelector:()=>({{}})}};
-const outputPane={{top:0,getBoundingClientRect(){{return{{top:this.top}};}},querySelector:()=>({{}})}};
+const sourcePanelSpacer={{style:{{height:'0px'}}}};
+const outputPanelSpacer={{style:{{height:'0px'}}}};
+const sourcePane={{top:0,naturalHeight:430,getBoundingClientRect(){{return{{top:this.top,bottom:this.top+this.naturalHeight+px(sourceSpacer.style.height)+px(sourcePanelSpacer.style.height)}};}},querySelector:()=>({{}})}};
+const outputPane={{top:0,naturalHeight:438,getBoundingClientRect(){{return{{top:this.top,bottom:this.top+this.naturalHeight+px(outputSpacer.style.height)+px(outputPanelSpacer.style.height)}};}},querySelector:()=>({{}})}};
 const source={{hidden:false,clientWidth:500,clientHeight:405,closest:()=>sourcePane,getBoundingClientRect:()=>({{top:sourceBase+px(sourceSpacer.style.height)}})}};
 const output={{hidden:false,clientWidth:500,clientHeight:405,closest:()=>outputPane,getBoundingClientRect:()=>({{top:outputBase+px(outputSpacer.style.height)}})}};
 const hidden={{hidden:true,clientWidth:500,clientHeight:405,closest:()=>sourcePane,getBoundingClientRect:()=>({{top:0}})}};
 const generic={{classList:{{contains:()=>false}},closest:()=>sourcePane}};
-const elements={{sourcePreviewAlignment:sourceSpacer,outputPreviewAlignment:outputSpacer,source,richOutput:output,docxPreview:hidden,anonymizedDocxPreview:hidden,sourceLibrary:generic,docxPreviewControls:generic,anonymizedPreviewControls:generic,textPreview:generic}};
-const queued=[];let timer=null;
-const context={{Boolean,Math,Number,previewFullscreen:false,anonymizedPreviewFullscreen:false,$:selector=>elements[selector.slice(1)],requestAnimationFrame:fn=>{{queued.push(fn);return queued.length;}},setTimeout:fn=>{{timer=fn;}},ResizeObserver:class{{observe(){{}}}},MutationObserver:class{{observe(){{}}}},window:{{addEventListener(){{}}}},document:{{fonts:null}}}};
+const elements={{sourcePreviewAlignment:sourceSpacer,outputPreviewAlignment:outputSpacer,sourcePanelAlignment:sourcePanelSpacer,outputPanelAlignment:outputPanelSpacer,source,richOutput:output,docxPreview:hidden,anonymizedDocxPreview:hidden,sourceLibrary:generic,docxPreviewControls:generic,anonymizedPreviewControls:generic,textPreview:generic}};
+const queued=[];const observed=[];let timer=null;
+const context={{Boolean,Math,Number,previewFullscreen:false,anonymizedPreviewFullscreen:false,$:selector=>elements[selector.slice(1)],requestAnimationFrame:fn=>{{queued.push(fn);return queued.length;}},setTimeout:fn=>{{timer=fn;}},ResizeObserver:class{{observe(element){{observed.push(element);}}}},MutationObserver:class{{observe(){{}}}},window:{{addEventListener(){{}}}},document:{{fonts:null}}}};
 vm.createContext(context);
 vm.runInContext({json.dumps(implementation + "this.api={syncPreviewTopAlignment};")},context);
+if(!observed.includes(sourcePane)||!observed.includes(outputPane))throw new Error('pane resize changes must schedule realignment');
 if(!timer)throw new Error('missing throttled-animation fallback');
 timer();
 if(outputSpacer.style.height!=='100px')throw new Error('timer fallback did not align collapsed panes');
+if(sourcePanelSpacer.style.height!=='108px'||outputPanelSpacer.style.height!=='0px')throw new Error('lower panels were not aligned after preview offset');
 sourceBase=320;context.api.syncPreviewTopAlignment();
 if(outputSpacer.style.height!=='220px')throw new Error('expanded library was not realigned');
+if(sourcePanelSpacer.style.height!=='228px')throw new Error('lower panel alignment did not follow dynamic preview offset');
 sourceBase=90;context.api.syncPreviewTopAlignment();
 if(sourceSpacer.style.height!=='10px'||outputSpacer.style.height!=='0px')throw new Error('shorter source side was not aligned');
+if(outputPanelSpacer.style.height!=='2px'||sourcePanelSpacer.style.height!=='0px')throw new Error('opposite lower panel was not aligned');
 outputPane.top=500;context.api.syncPreviewTopAlignment();
 if(sourceSpacer.style.height!=='0px'||outputSpacer.style.height!=='0px')throw new Error('stacked cards must not be cross-aligned');
+if(sourcePanelSpacer.style.height!=='0px'||outputPanelSpacer.style.height!=='0px')throw new Error('stacked cards must not receive artificial panel height');
 """
     script = tmp_path / f"{asset_name}.alignment-runtime.js"
     script.write_text(harness, encoding="utf-8")
