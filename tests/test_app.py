@@ -357,6 +357,82 @@ def test_profile_json_import_reports_invalid_file_without_overwriting_profile(tm
     assert api.load_profile("Общий") == before
 
 
+def test_uncertain_fragments_use_one_three_state_control_in_both_languages():
+    labels = {
+        "index-v1.8.18.html": (
+            "Не искать спорное",
+            "Показывать для ручной проверки",
+            "Скрывать автоматически",
+        ),
+        "index-en-v1.8.18.html": (
+            "Do not detect uncertain items",
+            "Show for manual review",
+            "Hide automatically",
+        ),
+    }
+    for html_name, expected_labels in labels.items():
+        html = asset_path(html_name).read_text(encoding="utf-8")
+        assert html.count('id="uncertainMode"') == 1
+        assert '<select id="uncertainMode"' in html
+        for value, label in zip(("off", "review", "auto"), expected_labels, strict=True):
+            assert f'<option value="{value}"' in html
+            assert label in html
+        assert '<input class="category" data-categories="HINTS" id="reviewHints" type="checkbox" checked hidden>' in html
+        assert '<input id="paranoid" type="checkbox" hidden>' in html
+
+    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(js_name).read_text(encoding="utf-8")
+        assert "const UNCERTAIN_MODES=new Set(['off','review','auto'])" in javascript
+        assert "function applyUncertainMode(mode)" in javascript
+        assert "$('#reviewHints').checked=normalized!=='off'" in javascript
+        assert "$('#paranoid').checked=normalized==='auto'" in javascript
+        assert "p.uncertain_mode" in javascript
+        assert "$('#uncertainMode').value" in javascript
+
+
+def test_uncertain_mode_runtime_maps_all_three_states_and_legacy_profiles():
+    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        javascript = asset_path(js_name).read_text(encoding="utf-8")
+        runtime = javascript[:javascript.index("async function applyCurrentDesign")]
+        harness = f"""
+const elements={{
+  '#uncertainMode':{{value:'review'}},
+  '#reviewHints':{{checked:true}},
+  '#paranoid':{{checked:false}}
+}};
+const document={{querySelector:(selector)=>elements[selector]}};
+{runtime}
+function snapshot(mode){{applyUncertainMode(mode);return [elements['#uncertainMode'].value,elements['#reviewHints'].checked,elements['#paranoid'].checked];}}
+const actual={{
+  off:snapshot('off'),
+  review:snapshot('review'),
+  auto:snapshot('auto'),
+  legacyFalse:normalizeUncertainMode(undefined,false,true),
+  legacyTrue:normalizeUncertainMode(undefined,true,true),
+  invalid:normalizeUncertainMode('unexpected',false,true)
+}};
+console.log(JSON.stringify(actual));
+"""
+        completed = subprocess.run(
+            ["node", "-e", harness], capture_output=True, text=True, check=False
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert json.loads(completed.stdout) == {
+            "off": ["off", False, False],
+            "review": ["review", True, False],
+            "auto": ["auto", True, True],
+            "legacyFalse": "review",
+            "legacyTrue": "auto",
+            "invalid": "review",
+        }
+
+
+def test_profile_api_roundtrip_preserves_three_state_uncertain_mode(tmp_path):
+    api = AppApi(tmp_path / "data")
+    assert api.save_profile("Точный", "", "", False, "off")["ok"] is True
+    assert api.load_profile("Точный")["uncertain_mode"] == "off"
+
+
 def test_settings_and_manual_review_belong_to_their_preview_columns_in_both_languages():
     class LayoutParser(HTMLParser):
         VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -554,7 +630,7 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
         "ГОСНОМЕР", "ТАБЕЛЬНЫЙ", "ДОГОВОР", "ДОКУМЕНТ", "ДАТА-РОЖДЕНИЯ",
         "СУММА", "СТАВКА", "ФИО", "ЛОГИН", "ОРГАНИЗАЦИЯ", "СИСТЕМА",
         "ЗАДАЧА", "ГОРОД", "АДРЕС", "ИНДЕКС", "ДОЛЖНОСТЬ", "СПЕЦКАТЕГОРИЯ", "СКРЫТО",
-        "CUSTOM", "HINTS",
+        "CUSTOM",
     }
     assert set(categories) == expected
 
@@ -2004,7 +2080,7 @@ def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
-    save = "await pywebview.api.save_profile($('#profile').value,$('#rules').value,$('#whitelist').value,$('#paranoid').checked)"
+    save = "await pywebview.api.save_profile($('#profile').value,$('#rules').value,$('#whitelist').value,$('#paranoid').checked,$('#uncertainMode').value)"
     assert save in hide_hint
     assert hide_hint.index(save) < hide_hint.index("await anonymizeText()")
     assert "правило сохранено в профиле" in hide_hint
@@ -2069,10 +2145,10 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
     assert "SmartArt, диаграммы, OLE и графика XLSX" in html
     assert "экспорт блокируется" in html
     assert "Отключённые категории останутся в документе без замены" in html
-    for control_id in ("paranoid", "compactMarkers", "mono"):
+    for control_id in ("uncertainMode", "paranoid", "compactMarkers", "mono"):
         assert f'id="{control_id}"' in html
     for explanation in (
-        "заменяет все жёлтые подсказки",
+        "Скрывать автоматически",
         "укорачивает подписи маркеров",
         "меняет только отображение текста",
     ):
@@ -2080,7 +2156,7 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
 
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     assert "$('#redactDocxGraphics').checked" in javascript
-    assert "['#rules','#whitelist','#paranoid','#redactDocxGraphics']" in javascript
+    assert "['#rules','#whitelist','#redactDocxGraphics']" in javascript
 
 
 def test_settings_and_primary_action_explain_their_real_effect():
@@ -2209,9 +2285,9 @@ def test_manual_review_owns_its_search_and_display_controls():
     settings = html[settings_start:settings_end]
     categories_start = html.index('id="detectionCategories"')
 
-    for control_id in ("reviewHints", "paranoid", "compactMarkers", "mono"):
+    for control_id in ("uncertainMode", "reviewHints", "paranoid", "compactMarkers", "mono"):
         assert f'id="{control_id}"' in review
-    assert "Искать спорные места для ручной проверки" in review
+    assert "Показывать для ручной проверки" in review
     assert "Дополнительные режимы" in review
     assert 'data-categories="HINTS"' not in html[categories_start:]
     assert 'id="paranoid"' not in settings
@@ -2241,15 +2317,15 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
     assert "$('#warning').textContent=hasCurrent?`Осталось спорных мест: ${remaining}.`:'Ручная проверка завершена: все спорные места разобраны.'" in javascript
 
 
-def test_manual_review_makes_paranoid_conflict_and_current_candidate_obvious():
+def test_manual_review_unified_mode_and_current_candidate_are_obvious():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
 
-    assert "Автоматически скрывать спорное без подтверждения" in html
-    assert "жёлтой очереди для ручного решения не будет" in html
+    assert "Скрывать автоматически" in html
+    assert "Показывать для ручной проверки" in html
     assert 'id="reviewCurrent"' in html
     assert "Ручная проверка отключена" in javascript
-    assert "снимите «Автоматически скрывать спорное без подтверждения»" in javascript
+    assert "выберите «Показывать для ручной проверки»" in javascript
     assert "setAnonymizedPreviewMode(false)" in javascript
     assert "`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind" in javascript
 

@@ -1074,8 +1074,12 @@ class AppApi:
     def list_profiles(self) -> list[str]:
         return [row[0] for row in self.service.storage.connection.execute("select name from profiles order by name")]
 
-    def save_profile(self, name: str, rules: str, whitelist: str, paranoid: bool) -> dict:
-        self.service.storage.save_profile(name, self._rules(rules), [x.strip() for x in whitelist.splitlines() if x.strip()], paranoid=paranoid)
+    def save_profile(self, name: str, rules: str, whitelist: str, paranoid: bool,
+                     uncertain_mode: str | None = None) -> dict:
+        self.service.storage.save_profile(
+            name, self._rules(rules), [x.strip() for x in whitelist.splitlines() if x.strip()],
+            paranoid=paranoid, uncertain_mode=uncertain_mode,
+        )
         return {"ok": True}
 
     def load_profile(self, name: str) -> dict:
@@ -1088,7 +1092,7 @@ class AppApi:
         return {"ok": True}
 
     def export_profile(self, name: str, rules: str | None = None, whitelist: str | None = None,
-                       paranoid: bool | None = None) -> dict:
+                       paranoid: bool | None = None, uncertain_mode: str | None = None) -> dict:
         paths = self._window.create_file_dialog(30, save_filename=f"{name}.json", file_types=("JSON (*.json)",)) if self._window else None
         if not paths:
             return {"ok": False}
@@ -1096,13 +1100,16 @@ class AppApi:
             if rules is None or whitelist is None or paranoid is None:
                 exported = self.service.storage.export_profile(name)
             else:
-                payload = self.service.storage._validate_profile({
+                current = {
                     "version": 1,
                     "name": name,
                     "dictionary": self._rules(rules),
                     "whitelist": [x.strip() for x in whitelist.splitlines() if x.strip()],
                     "paranoid": bool(paranoid),
-                })
+                }
+                if uncertain_mode is not None:
+                    current["uncertain_mode"] = uncertain_mode
+                payload = self.service.storage._validate_profile(current)
                 exported = json.dumps(payload, ensure_ascii=False, indent=2)
             Path(paths[0]).write_text(exported, encoding="utf-8")
         except ValueError as exc:

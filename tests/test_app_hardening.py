@@ -104,8 +104,8 @@ const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
 const calls=[];
 const saves=[];
 const pywebview={api:{
-  save_profile:async(name,rules,whitelist,paranoid)=>{
-    saves.push({name,rules,whitelist,paranoid});return {ok:true};
+  save_profile:async(name,rules,whitelist,paranoid,uncertainMode)=>{
+    saves.push({name,rules,whitelist,paranoid,uncertainMode});return {ok:true};
   },
   anonymize_text:async(text,paranoid,rules)=>{
     calls.push({text,rules});elements.get('#richOutput').querySelectorAll=()=>[];
@@ -116,6 +116,7 @@ const pywebview={api:{
     scenario = r"""
 elements.get('#source').value='2) Переключение на новую платформу:\n– Переключение доступа';
 elements.get('#profile').value='Общий';
+applyUncertainMode('review');
 last={mapping:{},candidates:[],counts:{},parts:[{t:'text',s:'2) '},{t:'hint',kind:'возможное имя собственное',orig:'Переключение',s0:3,s:'Переключение'},{t:'text',s:' на новую платформу:\n– '},{t:'hint',kind:'возможное имя собственное',orig:'Переключение',s0:39,s:'Переключение'},{t:'text',s:' доступа'}],total:0,hintCount:2,warnings:[]};
 reviewIndex=0;
 const hintMark=new FakeElement();hintMark.dataset.part='1';hintMark.classList.contains=name=>name==='mark-hint';
@@ -133,7 +134,7 @@ elements.get('#richOutput').querySelectorAll=()=>[hintMark];
     assert result["text"].count("[СКРЫТО-1]") == 2
     assert "Переключение" not in result["text"]
     assert result["rules"] == "Переключение => СКРЫТО"
-    assert result["saves"] == [{"name": "Общий", "rules": "Переключение => СКРЫТО", "whitelist": "", "paranoid": True}]
+    assert result["saves"] == [{"name": "Общий", "rules": "Переключение => СКРЫТО", "whitelist": "", "paranoid": False, "uncertainMode": "review"}]
     assert result["calls"] == [{"text": source_text, "rules": "Переключение => СКРЫТО"}]
     assert "Все одинаковые вхождения «Переключение» заменены" in result["decision"]
     assert "правило сохранено в профиле «Общий»" in result["decision"]
@@ -162,8 +163,8 @@ const imported={dictionary:{'Переключение':'СКРЫТО','Пове�
 const pywebview={api:{
   list_profiles:async()=>['Общий','Импортированный'],
   load_profile:async name=>{calls.push(['load',name]);return imported;},
-  save_profile:async(name,rules,whitelist,paranoid)=>{calls.push(['save',name,rules,whitelist,paranoid]);return {ok:true};},
-  export_profile:async(name,rules,whitelist,paranoid)=>{calls.push(['export',name,rules,whitelist,paranoid]);return {ok:true};},
+  save_profile:async(name,rules,whitelist,paranoid,uncertainMode)=>{calls.push(['save',name,rules,whitelist,paranoid,uncertainMode]);return {ok:true};},
+  export_profile:async(name,rules,whitelist,paranoid,uncertainMode)=>{calls.push(['export',name,rules,whitelist,paranoid,uncertainMode]);return {ok:true};},
   import_profile:async()=>{calls.push(['import']);return {ok:true,name:'Импортированный'};}
 }};
 """
@@ -171,7 +172,7 @@ const pywebview={api:{
 elements.get('#profile').value='Общий';
 elements.get('#rules').value='Переключение => СКРЫТО';
 elements.get('#whitelist').value='Разрешено';
-elements.get('#paranoid').checked=true;
+applyUncertainMode('auto');
 (async()=>{
   await elements.get('#exportProfile').onclick();
   filePreview={};fileDirty=false;
@@ -180,7 +181,7 @@ elements.get('#paranoid').checked=true;
   selected='doc';documentsById={doc:{status:'Готов'}};
   await elements.get('#downloadAnon').onclick();
   await elements.get('#downloadAll').onclick();
-  console.log(JSON.stringify({calls,alerts,rules:elements.get('#rules').value,whitelist:elements.get('#whitelist').value,paranoid:elements.get('#paranoid').checked,profile:elements.get('#profile').value,fileDirty,status:elements.get('#settingsStatus').textContent}));
+  console.log(JSON.stringify({calls,alerts,rules:elements.get('#rules').value,whitelist:elements.get('#whitelist').value,paranoid:elements.get('#paranoid').checked,uncertainMode:elements.get('#uncertainMode').value,profile:elements.get('#profile').value,fileDirty,status:elements.get('#settingsStatus').textContent}));
   process.exit(0);
 })();
 """
@@ -193,13 +194,14 @@ elements.get('#paranoid').checked=true;
     result = json.loads(completed.stdout)
     assert result == {
         "calls": [
-            ["export", "Общий", "Переключение => СКРЫТО", "Разрешено", True],
+            ["export", "Общий", "Переключение => СКРЫТО", "Разрешено", True, "auto"],
             ["import"],
             ["load", "Импортированный"],
         ],
         "rules": "Переключение => СКРЫТО\nПоведение => ТЕРМИН",
         "whitelist": "Оставить",
         "paranoid": True,
+        "uncertainMode": "auto",
         "profile": "Импортированный",
         "fileDirty": True,
         "alerts": [
@@ -210,7 +212,7 @@ elements.get('#paranoid').checked=true;
     }
 
 
-def test_auto_hide_checkbox_keeps_review_progress_compact(tmp_path):
+def test_auto_hide_mode_keeps_review_progress_compact(tmp_path):
     javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
     harness = r"""
 class FakeElement {
@@ -230,7 +232,7 @@ const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
 const pywebview={api:{}};
 """
     scenario = r"""
-elements.get('#paranoid').checked=true;
+applyUncertainMode('auto');
 updateReviewPosition();
 console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,current:elements.get('#reviewCurrent').textContent}));
 """
@@ -243,7 +245,7 @@ console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,curr
 
     result = json.loads(completed.stdout)
     assert result["progress"] == "Ручная проверка отключена"
-    assert "Автоматически скрывать спорное без подтверждения" in result["current"]
+    assert "Скрывать автоматически" in result["current"]
     assert len(result["current"]) > len(result["progress"])
 
 

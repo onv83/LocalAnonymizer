@@ -246,9 +246,13 @@ class Storage:
         self.connection.execute("delete from documents where id=?", (document_id,))
         self.connection.commit()
 
-    def save_profile(self, name: str, dictionary: dict[str, str], whitelist: list[str], *, paranoid: bool = False) -> None:
-        payload = self._validate_profile({"version": 1, "name": name, "dictionary": dictionary,
-                                          "whitelist": whitelist, "paranoid": bool(paranoid)})
+    def save_profile(self, name: str, dictionary: dict[str, str], whitelist: list[str], *,
+                     paranoid: bool = False, uncertain_mode: str | None = None) -> None:
+        profile = {"version": 1, "name": name, "dictionary": dictionary,
+                   "whitelist": whitelist, "paranoid": bool(paranoid)}
+        if uncertain_mode is not None:
+            profile["uncertain_mode"] = uncertain_mode
+        payload = self._validate_profile(profile)
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.connection.execute("insert or replace into profiles(name,envelope) values(?,?)",
                                 (name, self._protect(raw, f"LocalAnonymizer:profile:{name}")))
@@ -268,7 +272,10 @@ class Storage:
 
     def import_profile(self, text: str) -> str:
         payload = self._validate_profile(json.loads(text))
-        self.save_profile(payload["name"], payload["dictionary"], payload["whitelist"], paranoid=payload["paranoid"])
+        self.save_profile(
+            payload["name"], payload["dictionary"], payload["whitelist"],
+            paranoid=payload["paranoid"], uncertain_mode=payload.get("uncertain_mode"),
+        )
         return payload["name"]
 
     @staticmethod
@@ -288,5 +295,12 @@ class Storage:
                 raise ValueError("Некорректное правило словаря") from exc
         if any(not isinstance(x, str) or len(x) > 500 for x in whitelist):
             raise ValueError("Некорректный белый список")
-        return {"version": 1, "name": name, "dictionary": clean, "whitelist": whitelist,
-                "paranoid": bool(payload.get("paranoid", False))}
+        result = {"version": 1, "name": name, "dictionary": clean, "whitelist": whitelist,
+                  "paranoid": bool(payload.get("paranoid", False))}
+        if "uncertain_mode" in payload:
+            uncertain_mode = payload["uncertain_mode"]
+            if not isinstance(uncertain_mode, str) or uncertain_mode not in {"off", "review", "auto"}:
+                raise ValueError("Некорректный режим обработки спорных фрагментов")
+            result["uncertain_mode"] = uncertain_mode
+            result["paranoid"] = uncertain_mode == "auto"
+        return result

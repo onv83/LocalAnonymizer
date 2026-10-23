@@ -70,3 +70,32 @@ def test_profiles_validate_and_roundtrip_without_executable_content(tmp_path):
     assert imported == "Новый"
     with pytest.raises(ValueError):
         store.import_profile('{"version":1,"name":"x","dictionary":{"a":"BAD ]"},"whitelist":[]}')
+
+
+def test_profiles_preserve_new_uncertain_mode_and_accept_legacy_paranoid_only(tmp_path):
+    store = Storage(tmp_path)
+    store.save_profile("Старый", {}, [], paranoid=True)
+    legacy = store.load_profile("Старый")
+    assert legacy["paranoid"] is True
+    assert "uncertain_mode" not in legacy
+
+    store.save_profile("Новый", {}, [], paranoid=False, uncertain_mode="off")
+    current = store.load_profile("Новый")
+    assert current["paranoid"] is False
+    assert current["uncertain_mode"] == "off"
+    exported = store.export_profile("Новый")
+    assert store.import_profile(exported.replace('"Новый"', '"Копия"')) == "Копия"
+    assert store.load_profile("Копия")["uncertain_mode"] == "off"
+
+    store.save_profile("Нормализованный", {}, [], paranoid=True, uncertain_mode="review")
+    normalized = store.load_profile("Нормализованный")
+    assert normalized["uncertain_mode"] == "review"
+    assert normalized["paranoid"] is False
+
+    with pytest.raises(ValueError):
+        store.save_profile("Ошибка", {}, [], uncertain_mode="unexpected")
+    with pytest.raises(ValueError):
+        store._validate_profile({
+            "version": 1, "name": "Ошибка", "dictionary": {}, "whitelist": [],
+            "uncertain_mode": {"unexpected": True},
+        })
