@@ -234,7 +234,7 @@ const pywebview={api:{}};
     scenario = r"""
 applyUncertainMode('auto');
 updateReviewPosition();
-console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,current:elements.get('#reviewCurrent').textContent}));
+console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,current:elements.get('#reviewCurrent').textContent,title:elements.get('#reviewCurrent').title,ariaLabel:elements.get('#reviewCurrent').ariaLabel}));
 """
     script = tmp_path / "auto-hide-review-layout.js"
     script.write_text(harness + javascript + scenario, encoding="utf-8")
@@ -245,8 +245,9 @@ console.log(JSON.stringify({progress:elements.get('#reviewPos').textContent,curr
 
     result = json.loads(completed.stdout)
     assert result["progress"] == "Ручная проверка отключена"
-    assert "Автоматически скрывать спорное без подтверждения" in result["current"]
-    assert len(result["current"]) > len(result["progress"])
+    assert result["current"] == "Автоматическое скрытие включено"
+    assert "Автоматически скрывать спорное без подтверждения" in result["title"]
+    assert result["ariaLabel"] == result["title"]
 
 
 @pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])

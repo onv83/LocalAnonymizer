@@ -281,4 +281,13 @@
 - [x] **Вернуть checkbox:** видимый `select#uncertainMode` заменён отдельными флажками ручной проверки и автоматического скрытия; hidden `uncertainMode` сохраняет persisted/profile-семантику `off/review/auto`, обработчики исключают противоречивые состояния.
 - [x] **Убрать дубли заголовка:** оба видимых экземпляра «Дополнительные режимы» / `Additional modes` удалены; fieldset имеет локализованное доступное имя.
 - [x] **Паритет и совместимость:** RU/EN синхронны; B39–B42 invariants, profile/storage и responsive layout не регрессируют; полный suite — `694 passed`.
-- [ ] **Проверка и доставка:** source tests, независимый review, clean Windows build, fail-closed package verification normal/`python -O`, Defender, безопасная установка после проверки процесса/несохранённых данных, installed EXE verification и push. Release/tag не создавать без отдельного разрешения.
+- [x] **Проверка и доставка:** полный suite `694 passed`, итоговый независимый review без замечаний, clean Windows build, fail-closed package verification normal/`python -O`, Defender, безопасная установка, проверка установленного EXE и push `378fc294fb26db4f56228ec1b396b0b8e096b999`. CI: macOS success; Linux dependency-install завис до тестов, run отменён. Release/tag не создавался.
+
+## B44 — стабильная высота блока «Что проверяется»
+
+- [x] **Источник:** пользовательское сообщение и три снимка состояний ручной проверки; содержимое документа и реальные значения с изображений не сохраняются.
+- [x] **Требование:** высота `.review-candidate` одинакова при режимах `review`, `auto` и `off` и совпадает с высотой активного состояния «Искать спорные места для ручной проверки».
+- [x] **Содержание:** длинное объяснение отключённого режима не растягивает карточку; краткий статус остаётся видимым, полное локализованное объяснение сохраняется в tooltip/доступном имени.
+- [x] **Матрица:** executable Edge regression прошёл RU/EN × `390/700/900`; для каждого размера высоты `review/auto/off` равны, текст не обрезается, горизонтального overflow нет, кнопки под карточкой остаются на одной позиции.
+- [x] **Совместимость:** семантика checkbox/profile `off/review/auto`, очередь, навигация, formatted preview и правила обезличивания сохранены; полный suite — `695 passed`.
+- [ ] **Проверка и доставка:** независимый review, clean Windows package, fail-closed normal/`python -O`, Defender, безопасная установка и проверка установленного EXE; push без release/tag.

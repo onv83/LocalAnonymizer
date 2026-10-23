@@ -1156,7 +1156,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
     css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:46px;max-height:none;overflow:visible;padding:6px 8px;box-sizing:border-box;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-decision,body[data-design="new"] .review-finish{background:var(--surface-raised);color:var(--text-secondary)}' in css
 
 
@@ -1186,7 +1186,7 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     assert 'body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(34vh,380px);min-height:250px}' in css
     assert '@media(min-width:801px) and (min-height:761px) and (max-height:950px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(calc(36vh + 46px),390px);min-height:346px}}' in css
     assert '@media(min-width:801px) and (max-height:760px){body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:min(22vh,220px);min-height:170px}}' in css
-    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:0;max-height:none;overflow:visible;padding:6px 8px;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
+    assert 'body[data-design="new"] .review-candidate{height:auto;min-height:46px;max-height:none;overflow:visible;padding:6px 8px;box-sizing:border-box;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
     assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
     assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
@@ -1651,6 +1651,78 @@ document.getElementById('probe').textContent=JSON.stringify(rows);</script></bod
             assert metric["helpLines"] <= 2, metric
         assert metrics[-1]["childColumns"] == ["1", "2", "3"], metrics[-1]
         assert metrics[-1]["candidateHeight"] < 50, metrics[-1]
+
+
+def test_review_candidate_keeps_active_height_for_off_review_and_auto_modes(tmp_path: Path):
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the review-height regression")
+
+    state_text = {
+        "index-v1.8.18.html": {
+            "review": ("«SyntheticCandidate» · возможное имя собственное", "12 вхожд. · Правила: «Общий»"),
+            "auto": ("Автоматическое скрытие включено", ""),
+            "off": ("Поиск спорных мест выключен", ""),
+        },
+        "index-en-v1.8.18.html": {
+            "review": ("“SyntheticCandidate” · possible proper name", "12 matches · Rules: “General”"),
+            "auto": ("Automatic hiding is enabled", ""),
+            "off": ("Uncertain-item detection is off", ""),
+        },
+    }
+    harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app" style="width:__WIDTH__px;height:700px;border:0"></iframe><pre id="probe">pending</pre><script>
+const frame=document.getElementById('app');frame.src=__INDEX__;
+function finish(value){document.getElementById('probe').textContent=JSON.stringify(value);document.title=value.ok?'PASS':'FAIL';}
+frame.addEventListener('load',()=>setTimeout(()=>{try{
+ const d=frame.contentDocument,candidate=d.querySelector('.review-candidate'),toolbar=d.querySelector('.review-toolbar'),current=d.getElementById('reviewCurrent'),meta=d.getElementById('reviewMeta'),states=__STATES__,metrics={};
+ for(const [mode,text] of Object.entries(states)){
+   current.textContent=text[0];meta.textContent=text[1];
+   const box=candidate.getBoundingClientRect(),toolbarBox=toolbar.getBoundingClientRect();
+   metrics[mode]={height:box.height,toolbarTop:toolbarBox.top,verticalOverflow:candidate.scrollHeight-candidate.clientHeight,horizontalOverflow:candidate.scrollWidth-candidate.clientWidth};
+ }
+ const heights=Object.values(metrics).map(value=>value.height),tops=Object.values(metrics).map(value=>value.toolbarTop);
+ const ok=Math.max(...heights)-Math.min(...heights)<=0.5&&Math.max(...tops)-Math.min(...tops)<=0.5&&Object.values(metrics).every(value=>value.verticalOverflow<=1&&value.horizontalOverflow<=1);
+ finish({ok,metrics});
+}catch(error){finish({ok:false,error:String(error)});}},800));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},4000);</script>'''
+
+    for language, texts in state_text.items():
+        for workspace_width in (390, 700, 900):
+            fixture = tmp_path / f"review-height-{language}-{workspace_width}.html"
+            fixture.write_text(
+                harness_template.replace("__INDEX__", json.dumps(asset_path(language).as_uri()))
+                .replace("__WIDTH__", str(workspace_width))
+                .replace("__STATES__", json.dumps(texts, ensure_ascii=False)),
+                encoding="utf-8",
+            )
+            profile = tmp_path / f"edge-profile-review-height-{language}-{workspace_width}"
+            result = subprocess.run(
+                [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--virtual-time-budget=5000", "--dump-dom", fixture.as_uri()],
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=True,
+            )
+            match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+            assert match, result.stdout[-2000:]
+            outcome = json.loads(html_module.unescape(match.group(1)))
+            assert outcome["ok"], {"language": language, "width": workspace_width, **outcome}
+
+    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        script = asset_path(script_name).read_text(encoding="utf-8")
+        update_review = script[script.index("function updateReviewPosition()") : script.index("function restoreReplacement(")]
+        assert "reviewDisabledSummary" in update_review
+        assert ".title=hasCurrent?'':reason" in update_review
+        assert ".ariaLabel=hasCurrent?reviewCurrent.textContent:reason" in update_review
 
 
 def test_production_workspace_lower_panels_share_one_horizontal_line(tmp_path: Path):
