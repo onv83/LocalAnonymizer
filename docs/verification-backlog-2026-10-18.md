@@ -290,4 +290,4 @@
 - [x] **Содержание:** длинное объяснение отключённого режима не растягивает карточку; краткий статус остаётся видимым, полное локализованное объяснение сохраняется в tooltip/доступном имени.
 - [x] **Матрица:** executable Edge regression прошёл RU/EN × `390/700/900`; для каждого размера высоты `review/auto/off` равны, текст не обрезается, горизонтального overflow нет, кнопки под карточкой остаются на одной позиции.
 - [x] **Совместимость:** семантика checkbox/profile `off/review/auto`, очередь, навигация, formatted preview и правила обезличивания сохранены; полный suite — `695 passed`.
-- [ ] **Проверка и доставка:** независимый review, clean Windows package, fail-closed normal/`python -O`, Defender, безопасная установка и проверка установленного EXE; push без release/tag.
+- [x] **Проверка и доставка:** независимый review без замечаний; clean Windows package; fail-closed normal/`python -O`; Defender без угроз; безопасная установка после явного подтверждения сохранения; установленный EXE и RU/EN/CSS assets проверены; source commit `f9566aef806e875badc023bb266f4d7fc0b5f78b` pushed. Release/tag не создавался.
