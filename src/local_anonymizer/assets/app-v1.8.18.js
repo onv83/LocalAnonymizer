@@ -39,6 +39,7 @@ let previewScrollResetToken = 0;
 let anonymizedPreviewFullscreen = false;
 let anonymizedPreviewScrollResetToken = 0;
 let lastReviewDecision = '';
+let reviewFocusFrame = null;
 const reviewedHints = new Set();
 const restoredParts = new Set();
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -314,7 +315,7 @@ function renderOutput(){
   }).join('');
   $('#output').value=outputText();
   $('#undoChips').innerHTML=[...restoredParts].map(i=>`<button class="undo-chip" data-undo="${i}" title="Отменить возврат значения и снова показать маркер">Отменить возврат ${esc(last.parts[i]?.s||'')}</button>`).join('');
-  renderMirror(); renderStats(); updateReviewPosition();
+  renderMirror(); renderStats(); updateReviewPosition(); refreshFormattedReviewFocus();
 }
 function marks(){return [...$('#richOutput').querySelectorAll('.mark-replacement,.mark-secret,.mark-hint')];}
 function hintMarks(){return [...$('#richOutput').querySelectorAll('.mark-hint:not(.reviewed)')];}
@@ -360,10 +361,17 @@ function focusFormattedReview(part,sourceOffset){
 }
 function focusMark(i){
   const all=hintMarks();if(!all.length){reviewIndex=-1;clearFormattedReviewHighlight();updateReviewPosition();return;}
+  cancelDocxPreviewScrollReset();cancelAnonymizedPreviewScrollReset();
   reviewIndex=(i+all.length)%all.length;marks().forEach(x=>x.classList.remove('mark-current'));const mark=all[reviewIndex];mark.classList.add('mark-current');const sourceOffset=Number(mark.dataset.s0||0),part=(last.parts||[]).find(item=>item.t==='hint'&&Number(item.s0||0)===sourceOffset)||{orig:mark.textContent};
   const formattedFocused=focusFormattedReview(part,sourceOffset);if(!formattedFocused||$('#anonymizedDocxPreview').hidden)scrollReviewMarkWithinOutput(mark);if(Number.isFinite(sourceOffset))$('#source').setSelectionRange(sourceOffset,sourceOffset);
   if($('#docxPreview').hidden&&$('#anonymizedDocxPreview').hidden){const output=activeAnonymizedPreview(),source=activeSourcePreview();restorePreviewPosition(previewScrollPosition(output),source);}
   updateReviewPosition();
+}
+function refreshFormattedReviewFocus(){
+  if(reviewFocusFrame!==null){cancelAnimationFrame(reviewFocusFrame);reviewFocusFrame=null;}
+  if(!hintMarks().length){clearFormattedReviewHighlight();return;}
+  focusMark(reviewIndex);
+  reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);});
 }
 function reviewDisabledReason(){if($('#paranoid').checked)return 'Ручная проверка отключена: выбран режим «Скрывать автоматически». Чтобы решать спорные места по одному, выберите «Показывать для ручной проверки».';const hints=document.querySelector('.category[data-categories="HINTS"]');if(hints&&!hints.checked)return 'Ручная проверка отключена: выбран режим «Не искать спорное». Спорные фрагменты останутся без изменения и не появятся в очереди.';return 'Спорных мест не найдено.';}
 function updateReviewPosition(){const all=hintMarks();if(reviewIndex>=all.length)reviewIndex=all.length?0:-1;if(reviewIndex<0&&all.length)reviewIndex=all.length?0:-1;const hasCurrent=all.length>0&&reviewIndex>=0;const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length,remaining=all.length,total=remaining+reviewed;const reason=reviewDisabledReason(),emptyProgress=reason.startsWith('Ручная проверка отключена:')?'Ручная проверка отключена':'Спорных мест нет';$('#reviewPos').textContent=total?`Осталось ${remaining} из ${total} · решено ${reviewed}`:emptyProgress;$('#reviewCurrent').textContent=hasCurrent?`«${all[reviewIndex].textContent.trim()}» · ${all[reviewIndex].dataset.kind||'возможные чувствительные данные'}`:reason;if(hasCurrent){const part=last.parts[Number(all[reviewIndex].dataset.part)],needle=(part?.orig||'').toLocaleLowerCase('ru-RU'),occurrences=(last.parts||[]).filter(p=>p.t==='hint'&&(p.orig||'').toLocaleLowerCase('ru-RU')===needle).length;$('#reviewMeta').textContent=`${occurrences} вхожд. · Правила: «${$('#profile').value||'Общий'}»`;}else $('#reviewMeta').textContent='';$('#reviewDecision').textContent=lastReviewDecision||(hasCurrent?'Выберите одно из двух решений ниже.':(reviewed?'Очередь разобрана. Все спорные места получили решение.':'Решение ещё не принято.'));$('#reviewPrev').disabled=!hasCurrent;$('#reviewNext').disabled=!hasCurrent;$('#hideCandidate').disabled=!hasCurrent;$('#keepCandidate').disabled=!hasCurrent;$('#reviewFinish').innerHTML=hasCurrent?'Разберите оставшиеся места. Для файлов после этого нажмите <b>«Применить настройки к файлу»</b>.':(reviewed?(filePreview?'Очередь разобрана. Нажмите <b>«Применить настройки к файлу»</b>, чтобы пересоздать экспортируемую копию.':'Очередь разобрана. Все решения уже применены к тексту.'):'После появления жёлтых мест разберите их здесь по одному.');$('#reviewFinish').classList.toggle('complete',!hasCurrent&&reviewed>0);if(lastReviewDecision&&!(last.warnings||[]).length)$('#warning').textContent=hasCurrent?`Осталось спорных мест: ${remaining}.`:'Ручная проверка завершена: все спорные места разобраны.';if(lastReviewDecision&&!hasCurrent)$('#resultStatus').textContent=filePreview?'Ручная проверка завершена. Теперь примените настройки к файлу.':'Ручная проверка завершена. Все решения применены к тексту.';}
@@ -417,7 +425,7 @@ async function anonymizeText(){
     if(ticket!==generation)return;
     setAnonymizedPreviewLoading(false);
     if(hasFormattedDocumentPreview(formattedPreview?.format)){
-      const sourcePosition=previewScrollPosition(activeSourcePreview()),rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Форматированный вид готов · таблиц: ${rich.querySelectorAll('.docx-table').length}. Текстовый предпросмотр уже соответствует выбранным галочкам.`;setAnonymizedPreviewMode(true);restorePreviewPosition(sourcePosition,rich);
+      const sourcePosition=previewScrollPosition(activeSourcePreview()),rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Форматированный вид готов · таблиц: ${rich.querySelectorAll('.docx-table').length}. Текстовый предпросмотр уже соответствует выбранным галочкам.`;setAnonymizedPreviewMode(true);restorePreviewPosition(sourcePosition,rich);refreshFormattedReviewFocus();
     }else{
       leaveAnonymizedPreview();
       if(formattedPreview?.error)$('#anonymizedPreviewCompleteness').textContent=`Форматированный предпросмотр недоступен: ${formattedPreview.error}`;

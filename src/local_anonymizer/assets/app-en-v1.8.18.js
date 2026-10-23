@@ -39,6 +39,7 @@ let previewScrollResetToken = 0;
 let anonymizedPreviewFullscreen = false;
 let anonymizedPreviewScrollResetToken = 0;
 let lastReviewDecision = '';
+let reviewFocusFrame = null;
 const reviewedHints = new Set();
 const restoredParts = new Set();
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -345,7 +346,7 @@ function renderOutput(){
   }).join('');
   $('#output').value=outputText();
   $('#undoChips').innerHTML=[...restoredParts].map(i=>`<button class="undo-chip" data-undo="${i}" title="Undo restoration and show the marker again">Undo restoration of ${esc(last.parts[i]?.s||'')}</button>`).join('');
-  renderMirror(); renderStats(); updateReviewPosition();
+  renderMirror(); renderStats(); updateReviewPosition(); refreshFormattedReviewFocus();
 }
 function marks(){return [...$('#richOutput').querySelectorAll('.mark-replacement,.mark-secret,.mark-hint')];}
 function hintMarks(){return [...$('#richOutput').querySelectorAll('.mark-hint:not(.reviewed)')];}
@@ -391,10 +392,17 @@ function focusFormattedReview(part,sourceOffset){
 }
 function focusMark(i){
   const all=hintMarks();if(!all.length){reviewIndex=-1;clearFormattedReviewHighlight();updateReviewPosition();return;}
+  cancelDocxPreviewScrollReset();cancelAnonymizedPreviewScrollReset();
   reviewIndex=(i+all.length)%all.length;marks().forEach(x=>x.classList.remove('mark-current'));const mark=all[reviewIndex];mark.classList.add('mark-current');const sourceOffset=Number(mark.dataset.s0||0),part=(last.parts||[]).find(item=>item.t==='hint'&&Number(item.s0||0)===sourceOffset)||{orig:mark.textContent};
   const formattedFocused=focusFormattedReview(part,sourceOffset);if(!formattedFocused||$('#anonymizedDocxPreview').hidden)scrollReviewMarkWithinOutput(mark);if(Number.isFinite(sourceOffset))$('#source').setSelectionRange(sourceOffset,sourceOffset);
   if($('#docxPreview').hidden&&$('#anonymizedDocxPreview').hidden){const output=activeAnonymizedPreview(),source=activeSourcePreview();restorePreviewPosition(previewScrollPosition(output),source);}
   updateReviewPosition();
+}
+function refreshFormattedReviewFocus(){
+  if(reviewFocusFrame!==null){cancelAnimationFrame(reviewFocusFrame);reviewFocusFrame=null;}
+  if(!hintMarks().length){clearFormattedReviewHighlight();return;}
+  focusMark(reviewIndex);
+  reviewFocusFrame=requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);});
 }
 function reviewDisabledReason(){if($('#paranoid').checked)return 'Manual review is disabled because “Hide automatically” is selected. Choose “Show for manual review” to decide each item individually.';const hints=document.querySelector('.category[data-categories="HINTS"]');if(hints&&!hints.checked)return 'Manual review is disabled because “Do not detect uncertain items” is selected. Uncertain items remain unchanged and will not appear in the queue.';return 'No uncertain items found.';}
 function updateReviewPosition(){const all=hintMarks();if(reviewIndex>=all.length)reviewIndex=all.length?0:-1;if(reviewIndex<0&&all.length)reviewIndex=all.length?0:-1;const hasCurrent=all.length>0&&reviewIndex>=0;const reviewed=[...reviewedHints].filter(k=>k.startsWith(generation+'|')).length,remaining=all.length,total=remaining+reviewed;const reason=reviewDisabledReason(),emptyProgress=reason.startsWith('Manual review is disabled')?'Manual review is disabled':'No uncertain items';$('#reviewPos').textContent=total?`Remaining: ${remaining} of ${total} · Decided: ${reviewed}`:emptyProgress;$('#reviewCurrent').textContent=hasCurrent?`“${all[reviewIndex].textContent.trim()}” · ${hintKindText(all[reviewIndex].dataset.kind)||'possibly sensitive data'}`:reason;if(hasCurrent){const part=last.parts[Number(all[reviewIndex].dataset.part)],needle=(part?.orig||'').toLocaleLowerCase('ru-RU'),occurrences=(last.parts||[]).filter(p=>p.t==='hint'&&(p.orig||'').toLocaleLowerCase('ru-RU')===needle).length;$('#reviewMeta').textContent=`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`;}else $('#reviewMeta').textContent='';$('#reviewDecision').textContent=lastReviewDecision||(hasCurrent?'Choose one of the two options below.':(reviewed?'Queue complete. Every uncertain item has a decision.':'No decision yet.'));$('#reviewPrev').disabled=!hasCurrent;$('#reviewNext').disabled=!hasCurrent;$('#hideCandidate').disabled=!hasCurrent;$('#keepCandidate').disabled=!hasCurrent;$('#reviewFinish').innerHTML=hasCurrent?'Review the remaining items. For files, then click <b>“Apply settings to file”</b>.':(reviewed?(filePreview?'Queue complete. Click <b>“Apply settings to file”</b> to rebuild the exportable copy.':'Queue complete. All decisions are already applied to the text.'):'When yellow items appear, review them here one by one.');$('#reviewFinish').classList.toggle('complete',!hasCurrent&&reviewed>0);if(lastReviewDecision&&!(last.warnings||[]).length)$('#warning').textContent=hasCurrent?`Uncertain items remaining: ${remaining}.`:'Manual review complete: all uncertain items were reviewed.';if(lastReviewDecision&&!hasCurrent)$('#resultStatus').textContent=filePreview?'Manual review complete. Now apply the settings to the file.':'Manual review complete. All decisions were applied to the text.';}
@@ -448,7 +456,7 @@ async function anonymizeText(){
     if(ticket!==generation)return;
     setAnonymizedPreviewLoading(false);
     if(hasFormattedDocumentPreview(formattedPreview?.format)){
-      const sourcePosition=previewScrollPosition(activeSourcePreview()),rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Formatted view ready · Tables: ${rich.querySelectorAll('.docx-table').length}. The text preview already reflects the selected options.`;setAnonymizedPreviewMode(true);restorePreviewPosition(sourcePosition,rich);
+      const sourcePosition=previewScrollPosition(activeSourcePreview()),rich=$('#anonymizedDocxPreview');invalidatePreviewAnchors(rich);rich.innerHTML=formattedPreview.rich_html||'';rich.scrollTop=0;$('#anonymizedPreviewCompleteness').textContent=`Formatted view ready · Tables: ${rich.querySelectorAll('.docx-table').length}. The text preview already reflects the selected options.`;setAnonymizedPreviewMode(true);restorePreviewPosition(sourcePosition,rich);refreshFormattedReviewFocus();
     }else{
       leaveAnonymizedPreview();
       if(formattedPreview?.error)$('#anonymizedPreviewCompleteness').textContent=bridgeErrorText('formatted-preview');

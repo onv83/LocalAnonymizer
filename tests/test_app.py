@@ -1434,6 +1434,86 @@ frame.addEventListener('load',()=>setTimeout(()=>{try{
             assert outcome["ok"], {"language": html_name, "width": workspace_width, **outcome}
 
 
+def test_selected_review_is_visible_after_initial_navigation_and_formatted_ready(tmp_path: Path):
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the Windows formatted-review visibility regression")
+
+    harness_template = r'''<!doctype html><meta charset="utf-8"><title>pending</title><iframe id="app" style="width:__WIDTH__px;height:800px"></iframe><pre id="probe">pending</pre><script>
+const frame=document.getElementById('app');frame.src=__INDEX__;
+function finish(value){document.getElementById('probe').textContent=JSON.stringify(value);document.title=value.ok?'PASS':'FAIL';}
+frame.addEventListener('load',()=>setTimeout(()=>{try{
+ const w=frame.contentWindow,d=w.document,needleA='SyntheticCandidateA',needleB='SyntheticCandidateB';
+ const lines=Array.from({length:24},(_,i)=>i===4?`Context ${needleA} tail`:i===19?`Context ${needleB} tail`:`Synthetic paragraph ${i}`);
+ const blocks=()=>lines.map((line,i)=>`<p data-preview-anchor="body/p${i}" style="height:52px;margin:0">${line}</p>`).join('');
+ const sourceText=lines.join('\n'),offsetA=sourceText.indexOf(needleA),offsetB=sourceText.indexOf(needleB);
+ const rich=`<span class="mark-hint" data-kind="name" data-s0="${offsetB}">${needleB}</span><span class="mark-hint" data-kind="name" data-s0="${offsetA}">${needleA}</span>`;
+ const left=d.getElementById('docxPreview'),right=d.getElementById('anonymizedDocxPreview');
+ d.getElementById('source').value=sourceText;left.innerHTML=blocks();right.innerHTML=blocks();
+ left.hidden=false;d.getElementById('textPreview').hidden=true;d.getElementById('showFormatted').setAttribute('aria-pressed','true');
+ right.hidden=false;d.getElementById('richOutput').hidden=true;d.getElementById('showAnonymizedFormatted').setAttribute('aria-pressed','true');
+ const visible=pane=>{let target=pane.querySelector('.preview-review-current');if(!target&&w.CSS?.highlights){const ranges=Array.from(w.CSS.highlights.get('current-review')||[]);const range=ranges.find(item=>pane.contains(item.startContainer));target=range?.startContainer?.parentElement?.closest('[data-preview-anchor]');}if(!target)return false;const p=pane.getBoundingClientRect(),t=target.getBoundingClientRect();return t.top>=p.top-1&&t.bottom<=p.bottom+1;};
+ const snapshot=label=>({label,left:visible(left),right:visible(right),leftTop:left.scrollTop,rightTop:right.scrollTop});
+ const checks=[];
+ d.getElementById('richOutput').innerHTML=rich;w.refreshFormattedReviewFocus();checks.push(snapshot('initial'));
+ d.getElementById('reviewNext').click();checks.push(snapshot('next'));
+ d.getElementById('reviewPrev').click();checks.push(snapshot('previous'));
+ right.innerHTML='';w.refreshFormattedReviewFocus();checks.push({label:'pending-source',left:visible(left)});
+ right.innerHTML=blocks();w.refreshFormattedReviewFocus();checks.push(snapshot('ready'));
+ right.querySelector('[data-preview-anchor="body/p19"]').removeAttribute('data-preview-anchor');w.refreshFormattedReviewFocus();checks.push(snapshot('missing-anchor-fallback'));
+ finish({ok:checks.every(check=>check.left&&check.right!==false),checks});
+}catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},6000);</script>'''
+
+    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+        for workspace_width in (390, 700, 900):
+            fixture = tmp_path / f"formatted-review-visible-{index}-{workspace_width}.html"
+            fixture.write_text(
+                harness_template.replace("__INDEX__", json.dumps(asset_path(html_name).as_uri())).replace("__WIDTH__", str(workspace_width)),
+                encoding="utf-8",
+            )
+            profile = tmp_path / f"edge-profile-formatted-visible-{index}-{workspace_width}"
+            result = subprocess.run(
+                [str(edge), "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={profile}", "--virtual-time-budget=7500", "--dump-dom", fixture.as_uri()],
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=True,
+            )
+            match = re.search(r'<pre id="probe">(.*?)</pre>', result.stdout, re.S)
+            assert match, result.stdout[-2000:]
+            outcome = json.loads(html_module.unescape(match.group(1)))
+            assert outcome["ok"], {"language": html_name, "width": workspace_width, **outcome}
+
+
+def test_formatted_review_focus_is_bound_to_render_lifecycle_without_timeout():
+    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+        script = asset_path(name).read_text(encoding="utf-8")
+        render_output = script[script.index("function renderOutput()") : script.index("function marks()")]
+        refresh_focus = script[
+            script.index("function refreshFormattedReviewFocus()") : script.index("function reviewDisabledReason()")
+        ]
+        formatted_start = script.index("if(hasFormattedDocumentPreview(formattedPreview?.format))")
+        formatted_ready = script[
+            formatted_start : script.index("}else{", formatted_start)
+        ]
+
+        assert "refreshFormattedReviewFocus();" in render_output
+        assert "refreshFormattedReviewFocus();" in formatted_ready
+        assert "cancelDocxPreviewScrollReset();cancelAnonymizedPreviewScrollReset();" in script
+        assert "requestAnimationFrame(()=>{reviewFocusFrame=null;focusMark(reviewIndex);})" in refresh_focus
+        assert "setTimeout" not in refresh_focus
+
+
 def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
