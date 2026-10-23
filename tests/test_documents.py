@@ -815,6 +815,40 @@ def test_docx_underscored_service_accounts_across_runs_and_hard_break_restore_ex
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_table_redacts_labelled_login_and_complete_distinguished_name(tmp_path):
+    source = tmp_path / "directory-inventory-source.docx"
+    anonymized = tmp_path / "directory-inventory-anonymized.docx"
+    restored = tmp_path / "directory-inventory-restored.docx"
+    account = "synthetic_demo_user"
+    distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Учётная запись"
+    table.cell(0, 1).text = account
+    table.cell(1, 0).text = "Distinguished name"
+    table.cell(1, 1).text = distinguished_name
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    output = Document(anonymized).tables[0]
+    assert output.cell(0, 1).text == "[ЛОГИН-1]"
+    assert output.cell(1, 1).text == "[DN-1]"
+    payload = _all_xml(anonymized)
+    assert account.encode() not in payload
+    assert distinguished_name.encode() not in payload
+    assert set(result.mapping.values()) == {account, distinguished_name}
+    assert source.read_bytes() == source_bytes
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_service_account_split_inside_token_by_hard_break_has_no_fragment_leak(tmp_path):
     source = tmp_path / "split-service-account-source.docx"
     anonymized = tmp_path / "split-service-account-anonymized.docx"

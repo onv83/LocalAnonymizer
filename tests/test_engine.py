@@ -827,6 +827,43 @@ def test_privileged_group_member_login_with_initial_is_redacted():
     assert "[ЛОГИН-" in result.text
 
 
+def test_labelled_login_in_adjacent_docx_table_cell_is_redacted():
+    account = "synthetic_demo_user"
+    source = f"Учётная запись\ufdd0{account}"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Учётная запись\ufdd0[ЛОГИН-1]"
+    assert result.mapping == {"[ЛОГИН-1]": account}
+    assert result.counts == {"ЛОГИН": 1}
+    disabled = Anonymizer(disabled_categories={"ЛОГИН"}).anonymize(source)
+    assert disabled.text == source
+    assert disabled.mapping == {}
+
+
+def test_english_account_label_in_adjacent_docx_table_cell_is_redacted():
+    account = "synthetic_demo_user"
+    source = f"Account\ufdd0{account}"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Account\ufdd0[ЛОГИН-1]"
+    assert result.mapping == {"[ЛОГИН-1]": account}
+
+
+def test_distinguished_name_wins_over_nested_domain_and_abbreviations():
+    distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
+
+    result = Anonymizer().anonymize(distinguished_name)
+
+    assert result.text == "[DN-1]"
+    assert result.mapping == {"[DN-1]": distinguished_name}
+    assert result.counts == {"DN": 1}
+    disabled = Anonymizer(disabled_categories={"DN"}).anonymize(distinguished_name)
+    assert disabled.text == distinguished_name
+    assert disabled.mapping == {}
+
+
 def test_service_account_with_site_code_is_one_bounded_login_marker():
     account = "SvcQAZ-BackupTask"
     source = f"Учётная запись: {account}. Повтор: {account}."

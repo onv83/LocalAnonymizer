@@ -64,6 +64,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "device_inventory_identifier_ok": True,
             "service_account_ok": True,
             "split_service_account_ok": True,
+            "directory_identifiers_ok": True,
             "graphics_roundtrip_ok": True,
             "domain_inventory_subject_ok": True,
             "source_snapshot_sha256": "a" * 64,
@@ -96,7 +97,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
     "underscored_dns_fqdn_ok",
     "domain_inventory_subject_ok", "domain_inventory_row_ok",
     "device_inventory_identifier_ok", "service_account_ok", "split_service_account_ok",
-    "address_review_parity_ok",
+    "directory_identifiers_ok", "address_review_parity_ok",
 ))
 def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
     required = (
@@ -113,7 +114,7 @@ def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
         "contextual_location_table_ok", "server_inventory_name_ok",
         "split_server_inventory_name_ok", "semantic_server_capacity_node_ok",
         "underscored_dns_fqdn_ok", "service_account_ok",
-        "split_service_account_ok",
+        "split_service_account_ok", "directory_identifiers_ok",
         "graphics_roundtrip_ok", "domain_inventory_subject_ok", "domain_inventory_row_ok",
         "device_inventory_identifier_ok",
     )
@@ -258,6 +259,7 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "device_inventory_identifier_ok": True,
             "service_account_ok": True,
             "split_service_account_ok": True,
+            "directory_identifiers_ok": True,
             "graphics_roundtrip_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,

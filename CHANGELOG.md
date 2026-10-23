@@ -6,6 +6,8 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ## [Unreleased]
 
+## [0.2.9] — 2026-10-23
+
 ### English
 
 #### Changed
@@ -32,6 +34,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Fixed
 
+- Account names placed in the adjacent DOCX table cell after an explicit Russian or English label are now redacted as one reversible `ЛОГИН` marker. A complete Active Directory distinguished name now takes precedence over nested domain and abbreviation matches, preventing individual `DC=` values from remaining visible.
 - Contextual addresses with postfix street types, ordinal names, building qualifiers, and DOCX split runs are now replaced by one bounded `АДРЕС` marker without consuming adjacent prose.
 - Server names split by a hard break or paragraph boundary inside one DOCX inventory cell are now replaced by one `УЗЕЛ` marker; neighbouring cells, rows, and ordinary prose remain separate.
 - Bounded service-account names now become one semantic `ЛОГИН` marker, and four-column inventory rows cover administrative area, district abbreviation, city/branch, and complete address with semantic precedence over the abbreviation fallback.
@@ -83,6 +86,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 #### Исправлено
 
+- Имя учётной записи, расположенное в соседней ячейке таблицы DOCX после явной русской или английской подписи, теперь заменяется одним обратимым маркером `ЛОГИН`. Полное различающееся имя Active Directory теперь имеет приоритет над вложенными совпадениями домена и сокращений, поэтому отдельные значения `DC=` больше не остаются открытыми.
 - Контекстные адреса с типом улицы после названия, порядковыми названиями, реквизитами строения и разрывами фрагментов DOCX теперь заменяются одним ограниченным маркером `АДРЕС` без захвата соседнего текста.
 - Серверные имена с жёстким переносом или границей абзаца внутри одной инвентарной ячейки DOCX теперь заменяются одним маркером `УЗЕЛ`; соседние ячейки, строки и обычный текст не склеиваются.
 - Ограниченные имена сервисных учётных записей теперь заменяются одним семантическим маркером `ЛОГИН`, а четырёхколоночные инвентарные строки покрывают регион, сокращение округа, город/филиал и полный адрес с приоритетом точных сущностей над общим правилом сокращений.

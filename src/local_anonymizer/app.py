@@ -742,6 +742,25 @@ def _service_account_self_test(anonymizer=None) -> bool:
     )
 
 
+def _directory_identifiers_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    account = "synthetic_demo_user"
+    distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
+    login_result = detector.anonymize(f"Учётная запись\ufdd0{account}")
+    english_login_result = detector.anonymize(f"Account\ufdd0{account}")
+    dn_result = detector.anonymize(distinguished_name)
+    return (
+        login_result.text == "Учётная запись\ufdd0[ЛОГИН-1]"
+        and login_result.mapping == {"[ЛОГИН-1]": account}
+        and login_result.counts == {"ЛОГИН": 1}
+        and english_login_result.text == "Account\ufdd0[ЛОГИН-1]"
+        and english_login_result.mapping == {"[ЛОГИН-1]": account}
+        and dn_result.text == "[DN-1]"
+        and dn_result.mapping == {"[DN-1]": distinguished_name}
+        and dn_result.counts == {"DN": 1}
+    )
+
+
 def _split_service_account_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     intra = "\ufdd3"
@@ -1267,6 +1286,7 @@ class AppApi:
         device_inventory_identifier_ok = _device_inventory_identifier_self_test()
         service_account_ok = _service_account_self_test()
         split_service_account_ok = _split_service_account_self_test()
+        directory_identifiers_ok = _directory_identifiers_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -1300,6 +1320,7 @@ class AppApi:
                 and device_inventory_identifier_ok
                 and service_account_ok
                 and split_service_account_ok
+                and directory_identifiers_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
@@ -1337,6 +1358,7 @@ class AppApi:
             "device_inventory_identifier_ok": device_inventory_identifier_ok,
             "service_account_ok": service_account_ok,
             "split_service_account_ok": split_service_account_ok,
+            "directory_identifiers_ok": directory_identifiers_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,
             "git_revision": BUILD_GIT_REVISION,
