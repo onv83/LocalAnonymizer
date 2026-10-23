@@ -30,7 +30,7 @@ The packaged application does not require Python, `uv`, pip, or manually install
 
 - Added native Linux/macOS CI and packaged smoke gates, including fail-closed checks for secure storage and clipboard integration. Windows remains the primary supported platform, and the existing Word COM path for high-fidelity DOC/DOCX handling is unchanged.
 - Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
-- Moved the manual-review workspace below the two preview panes, compacted its actions, collapsed optional modes, and kept the apply panel visible while reviewing.
+- Moved the manual-review workspace below the two preview panes, compacted its actions, and kept the apply panel visible while reviewing. Two explicit, mutually consistent checkboxes now control manual review and automatic concealment without the former dropdown or duplicate `Additional modes` headings.
 - Reworked the document workspace: `Open` is in the source header, the mapping chips sit above the anonymized preview, both previews are larger, and the redundant workflow strip, subtitle, source label, storage notice, and visible drop hint were removed. Window-level drag-and-drop remains available.
 - Increased the preferred Windows launch width to 1600 px while clamping it to the available screen, improved low-height layouts, and aligned the Russian and English interfaces in light and dark themes.
 - The formatted-preview toolbar now appears immediately while rendering, reserves its final position, reports that the view is being prepared, and enables formatted-only controls when ready.
@@ -49,6 +49,11 @@ The packaged application does not require Python, `uv`, pip, or manually install
 - On narrow screens the file-library controls collapse to one bounded column, so select/import/export/delete controls stay inside the viewport.
 - Equal DOCX location values with different hard-break topology keep separate reversible identities during edited-package restoration.
 - Embedded DOCX images and static diagrams are removed from the anonymized copy with a visible `[СХЕМА-N]` marker and restored exactly on the local computer; the public screenshots show the current clean UI without user data.
+- Previous/Next navigation preserves the selected formatted or text view, aligns both formatted panes by structural anchor, and scrolls the exact selected range into view after initial selection, delayed rendering, repeated values, or a missing-anchor fallback.
+- The formatted-preview status occupies its own row and all five controls remain together on the next row during loading and ready states, including narrow RU/EN layouts.
+- Plain text, structured documents, and the manual-review queue now use the same detector precedence, so a nested uncertain hint is not queued when a stronger rule replaces the complete logical record.
+- The current-review card keeps a stable responsive height in `off`, `review`, and `auto` states; compact disabled summaries retain the complete localized explanation in the tooltip and accessible label.
+- Conservative infrastructure detection now covers structured machine and service identifiers with internal hyphens/underscores, mixed separators or case, compact letter-number forms, and digit-led inventory values while retaining prose and software/version safeguards.
 - Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
@@ -131,7 +136,7 @@ Python, `uv`, pip и установка зависимостей для гото
 
 - Добавлены нативные CI-сборки Linux/macOS и проверки готовых пакетов, включая fail-closed-проверки защищённого хранилища и буфера обмена. Windows остаётся основной поддерживаемой платформой, существующий Word COM-конвейер точной обработки DOC/DOCX не изменён.
 - В готовые сборки включены служебные шаблоны `python-docx`, необходимые для создания и экспорта DOCX.
-- Блок ручной проверки перенесён под две панели предпросмотра, его действия уплотнены, дополнительные режимы свёрнуты, а панель применения остаётся видимой во время проверки.
+- Блок ручной проверки перенесён под две панели предпросмотра, его действия уплотнены, а панель применения остаётся видимой во время проверки. Ручной проверкой и автоматическим скрытием теперь управляют два явных взаимосогласованных флажка без прежнего выпадающего списка и дублирующихся заголовков «Дополнительные режимы».
 - Рабочая область документа перестроена: `Открыть` находится в заголовке исходного документа, маркеры соответствий — над обезличенным предпросмотром, обе области предпросмотра увеличены. Удалены лишняя полоса этапов, подзаголовок, подпись исходного редактора, статическое уведомление о хранении и видимая drop-подсказка; перетаскивание файла в окно продолжает работать.
 - Предпочтительная ширина окна Windows увеличена до 1600 пикселей с ограничением по доступному экрану, улучшена компоновка при небольшой высоте, русская и английская версии согласованы в светлой и тёмной темах.
 - Панель форматированного предпросмотра появляется сразу после начала подготовки, заранее занимает итоговое место, сообщает о загрузке и включает доступные только после готовности команды автоматически.
@@ -145,6 +150,11 @@ Python, `uv`, pip и установка зависимостей для гото
 - Ограниченные имена сервисных учётных записей заменяются одним маркером `ЛОГИН`, а четырёхколоночные инвентарные строки покрывают регион, сокращение округа, город/филиал и полный адрес с приоритетом точных сущностей над сокращениями.
 - Обе кнопки решения ручной проверки собраны под правой панелью обезличенного текста; hover-подсказки сохранены, постоянная инструкция по завершению скрыта из видимой компоновки.
 - Встроенные рисунки и статические схемы DOCX удаляются из обезличенной копии с видимым маркером `[СХЕМА-N]` и точно восстанавливаются локально; публичные скриншоты показывают актуальный чистый интерфейс без пользовательских данных.
+- «Предыдущее»/«Следующее» сохраняют выбранный форматированный или текстовый вид, синхронизируют обе форматированные панели по структурному anchor и прокручивают точный выбранный диапазон в видимую область при первом выборе, позднем рендере, повторах и fallback без anchor.
+- Статус форматированного предпросмотра занимает отдельную строку, а все пять кнопок остаются вместе на следующей строке во время подготовки и после готовности, включая узкие RU/EN-компоновки.
+- Обычный текст, структурированные документы и очередь ручной проверки используют одинаковый приоритет детекторов: вложенная спорная подсказка не ставится в очередь, если более сильное правило заменяет всю логическую запись.
+- Карточка текущего спорного места сохраняет стабильную адаптивную высоту в состояниях `off`, `review` и `auto`; краткий отключённый статус сохраняет полное локализованное объяснение в подсказке и доступном имени.
+- Консервативное распознавание инфраструктуры теперь покрывает структурированные имена машин и сервисных учётных записей с внутренними дефисами/подчёркиваниями, смешанными разделителями или регистром, компактными буквенно-цифровыми формами и цифровым префиксом, сохраняя защиту обычной прозы и строк программ/версий.
 - Расширены регрессионные проверки компоновки, эквивалентности локализаций, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и нативных platform smoke checks.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).

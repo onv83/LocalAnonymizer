@@ -25,6 +25,10 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - All collapsible section headers now show a right-pointing arrow when closed and a downward arrow when open.
 - Compacted the desktop header controls into one row, kept the complete explanation on a slim second line, and enlarged the document preview panes in low-height windows.
 - Increased the preferred desktop window width from 1440 to 1600 pixels so long preview-status text and the two document panes have more horizontal space, while clamping the launch size and position to the primary monitor's working area on constrained displays.
+- Replaced the uncertain-mode dropdown with two explicit, mutually consistent checkboxes backed by the compatible `off` / `review` / `auto` states, and removed both duplicate `Additional modes` headings while retaining an accessible fieldset name.
+- Kept the manual-review candidate card at a stable responsive height in all three uncertain-mode states. Disabled states use a compact visible summary while preserving the complete localized reason in the tooltip and accessible label.
+- Made the formatted-preview toolbar deterministic: status occupies its own row and all five controls remain together on the following row during loading and ready states across responsive RU/EN layouts.
+- Refreshed the public RU/EN interface screenshots from the current bundled UI in a synthetic empty state with no user document or values.
 
 #### Fixed
 
@@ -49,6 +53,9 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Russian street-first and street-suffix forms such as `ул. Энтузиастов, д.5, к.6` and `Профсоюзная улица, 125А` are now redacted without hiding generic mentions of streets or avenues.
 - Document headings, the phrase `в том числе`, contract defect wording, and payment deadlines in working days no longer seed false organization, disk, person, or money replacements across a document.
 - English `Contact:`, `Address:`, and `Software:` fields now redact labelled names, postal addresses and software values in plain text and DOCX while preserving formatting and exact restoration.
+- Previous/Next navigation now preserves the user's formatted or text view, maps both formatted panes through the same structural anchor, and scrolls the exact current range into view for initial selection, delayed readiness, repeated values, and safe missing-anchor fallback without stale callbacks overriding newer choices.
+- Plain text, structured-document analysis, exported output, and the manual-review queue now share logical-record boundary and precedence semantics, preventing an obsolete nested uncertain hint when a stronger rule replaces the complete record.
+- Conservative infrastructure matching now covers bounded machine and service identifiers with internal hyphens or underscores, mixed separators/case, compact letter-number forms, and digit-led inventory values while retaining prose, path, host, email, URL, and software/version safeguards.
 
 ### Русский
 
@@ -69,6 +76,10 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Во всех заголовках сворачиваемых разделов теперь показывается стрелка вправо в закрытом состоянии и вниз в открытом.
 - Элементы управления верхней панели собраны в одну строку, полное пояснение сохранено отдельной компактной строкой, а области предпросмотра документов в невысоких окнах увеличены.
 - Предпочтительная начальная ширина окна увеличена с 1440 до 1600 пикселей, чтобы длинный статус предпросмотра и две панели документов получали больше места по горизонтали; на ограниченных дисплеях размер и положение запуска ограничиваются рабочей областью основного монитора.
+- Выпадающий список режима спорных фрагментов заменён двумя явными взаимосогласованными флажками поверх совместимых состояний `off` / `review` / `auto`; оба дублирующихся заголовка «Дополнительные режимы» удалены, доступное имя группы сохранено.
+- Карточка текущего спорного места сохраняет стабильную адаптивную высоту во всех трёх состояниях. При отключении виден краткий статус, а полная локализованная причина остаётся в подсказке и доступном имени.
+- Раскладка форматированного предпросмотра стала детерминированной: статус занимает отдельную строку, а все пять кнопок остаются вместе на следующей строке во время подготовки и после готовности во всех адаптивных RU/EN-вариантах.
+- Публичные RU/EN-скриншоты интерфейса обновлены из текущих встроенных ресурсов только на синтетическом пустом состоянии без пользовательского документа и значений.
 
 #### Исправлено
 
@@ -93,6 +104,9 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Теперь обезличиваются русские адреса с типом улицы до или после названия, например `ул. Энтузиастов, д.5, к.6` и `Профсоюзная улица, 125А`; обычные упоминания улиц и проспектов не затрагиваются.
 - Заголовки документов, оборот `в том числе`, формулировки о недостатках по договору и сроки оплаты в рабочих днях больше не создают ложные замены организаций, дисков, ФИО и денежных сумм по всему документу.
 - В английских полях `Contact:`, `Address:` и `Software:` теперь обезличиваются подписанные имена, почтовые адреса и названия программ в обычном тексте и DOCX с сохранением форматирования и точным восстановлением.
+- «Предыдущее»/«Следующее» теперь сохраняют выбранный форматированный или текстовый вид, сопоставляют обе форматированные панели по одному структурному anchor и прокручивают точный текущий диапазон в видимую область при первом выборе, поздней готовности, повторах и безопасном fallback без anchor; устаревший callback не отменяет более новый выбор.
+- Анализ обычного текста и структурированных документов, экспортируемый результат и очередь ручной проверки используют одинаковые границы логической записи и приоритет правил, поэтому более сильная замена всей записи не оставляет устаревшую вложенную спорную подсказку.
+- Консервативное распознавание инфраструктуры теперь покрывает ограниченные имена машин и сервисных учётных записей с внутренними дефисами или подчёркиваниями, смешанными разделителями/регистром, компактными буквенно-цифровыми формами и цифровым префиксом, сохраняя защиту обычной прозы, путей, хостов, почты, URL и строк программ/версий.
 
 ## [0.2.8] — 2026-10-15
 
