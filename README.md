@@ -18,15 +18,15 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ## Ready-to-use Windows build
 
-1. Download `LocalAnonymizer-0.2.8-windows-x64.zip` from [Releases](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Check the [Releases](https://github.com/onv83/LocalAnonymizer/releases) page for publication of `v0.2.9`; when available, download `LocalAnonymizer-0.2.9-windows-x64.zip` from that release.
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Version status:** `v0.2.8` is the current verified Windows release. The changes listed below are available on `main` and are being prepared for `v0.2.9`; native Linux and macOS packages are not published or declared supported yet.
+> **Version status:** this source tree is prepared for `v0.2.9`. The authoritative publication status and verified Windows package are shown on the [Releases](https://github.com/onv83/LocalAnonymizer/releases) page. Native Linux and macOS packages are not published or declared supported yet.
 
-## Changes on `main` since `v0.2.8`
+## What is new in `v0.2.9`
 
 - Added native Linux/macOS CI and packaged smoke gates, including fail-closed checks for secure storage and clipboard integration. Windows remains the primary supported platform, and the existing Word COM path for high-fidelity DOC/DOCX handling is unchanged.
 - Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
@@ -55,6 +55,7 @@ The packaged application does not require Python, `uv`, pip, or manually install
 - The current-review card keeps a stable responsive height in `off`, `review`, and `auto` states; compact disabled summaries retain the complete localized explanation in the tooltip and accessible label.
 - Conservative infrastructure detection now covers structured machine and service identifiers with internal hyphens/underscores, mixed separators or case, compact letter-number forms, and digit-led inventory values while retaining prose and software/version safeguards.
 - Text can now be selected with the mouse and copied with `Ctrl+C` directly from either source or anonymized pane. This works in plain-text and formatted DOCX views without disabling replacement-marker clicks, navigation, or scrolling.
+- Equivalent interface sections now share explicit typography roles for typeface, size, weight, line height, letter spacing, and casing in both languages and at responsive widths. Formatted DOCX previews continue to preserve the document's original typography.
 - Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
@@ -126,15 +127,15 @@ For the detailed workflow, limitations, engine coverage, and security model, see
 
 ## Запуск готовой версии — без Python и установки пакетов
 
-1. Скачайте архив `LocalAnonymizer-0.2.8-windows-x64.zip` из раздела [выпусков](https://github.com/onv83/LocalAnonymizer/releases/latest).
+1. Проверьте на странице [выпусков](https://github.com/onv83/LocalAnonymizer/releases) публикацию `v0.2.9`; после появления выпуска скачайте из него архив `LocalAnonymizer-0.2.9-windows-x64.zip`.
 2. Распакуйте архив в обычную папку.
 3. Запустите `LocalAnonymizer\LocalAnonymizer.exe`.
 
 Python, `uv`, pip и установка зависимостей для готовой версии **не нужны**. Папку `_internal` рядом с `.exe` нельзя удалять или переносить отдельно: в ней уже находятся Python и все необходимые библиотеки приложения. На Windows 11 используется системный Microsoft Edge WebView2.
 
-> **Состояние версии:** `v0.2.8` — текущий проверенный выпуск для Windows. Перечисленные ниже изменения уже находятся в `main` и готовятся для `v0.2.9`; пакеты Linux и macOS пока не опубликованы и не объявлены поддерживаемыми.
+> **Состояние версии:** эта редакция исходного кода подготовлена для `v0.2.9`. Фактическое состояние публикации и проверенный пакет Windows указаны на странице [выпусков](https://github.com/onv83/LocalAnonymizer/releases). Пакеты Linux и macOS не публикуются и не объявляются поддерживаемыми.
 
-## Изменения в `main` по сравнению с `v0.2.8`
+## Что нового в `v0.2.9`
 
 - Добавлены автоматические сборки Linux/macOS и проверки готовых пакетов, включая проверки защищённого хранилища и буфера обмена с безопасным отказом. Windows остаётся основной поддерживаемой платформой, существующая цепочка точной обработки DOC/DOCX через Word COM не изменена.
 - В готовые сборки включены служебные шаблоны `python-docx`, необходимые для создания и экспорта DOCX.
@@ -158,6 +159,7 @@ Python, `uv`, pip и установка зависимостей для гото
 - Карточка текущего спорного места сохраняет стабильную адаптивную высоту во всех трёх внутренних состояниях (`off`, `review` и `auto`); при отключении краткое сообщение сохраняет полное переведённое объяснение в подсказке и доступном имени.
 - Консервативное распознавание инфраструктуры теперь покрывает структурированные имена машин и сервисных учётных записей с внутренними дефисами/подчёркиваниями, смешанными разделителями или регистром, компактными буквенно-цифровыми формами и цифровым префиксом, сохраняя защиту обычной прозы и строк программ/версий.
 - В левой и правой областях теперь можно выделить мышью произвольную часть текста и скопировать её через `Ctrl+C`. Это работает в текстовом и форматированном представлении DOCX, не отключая щелчки по маркерам, переходы и прокрутку.
+- Равнозначные разделы интерфейса получили общие типографические роли: гарнитуру, размер, насыщенность, межстрочный и межбуквенный интервалы и регистр. Правила одинаковы для русского и английского интерфейсов и адаптивных ширин; форматированный предпросмотр DOCX по-прежнему сохраняет исходную типографику документа.
 - Расширены проверки компоновки, согласованности переводов, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и быстрого запуска на целевых платформах.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
