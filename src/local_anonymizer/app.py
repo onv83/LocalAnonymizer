@@ -745,9 +745,10 @@ def _service_account_self_test(anonymizer=None) -> bool:
 def _directory_identifiers_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     account = "synthetic_demo_user"
-    distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
+    distinguished_name = r"CN=Doe\, John, OU=Users, DC=alpha, DC=example"
     login_result = detector.anonymize(f"Учётная запись\ufdd0{account}")
     english_login_result = detector.anonymize(f"Account\ufdd0{account}")
+    ordinary_english_result = detector.anonymize("Account manager handles billing")
     dn_result = detector.anonymize(distinguished_name)
     return (
         login_result.text == "Учётная запись\ufdd0[ЛОГИН-1]"
@@ -755,6 +756,8 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
         and login_result.counts == {"ЛОГИН": 1}
         and english_login_result.text == "Account\ufdd0[ЛОГИН-1]"
         and english_login_result.mapping == {"[ЛОГИН-1]": account}
+        and ordinary_english_result.text == "Account manager handles billing"
+        and ordinary_english_result.mapping == {}
         and dn_result.text == "[DN-1]"
         and dn_result.mapping == {"[DN-1]": distinguished_name}
         and dn_result.counts == {"DN": 1}

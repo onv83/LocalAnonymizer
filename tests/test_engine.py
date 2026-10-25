@@ -851,6 +851,16 @@ def test_english_account_label_in_adjacent_docx_table_cell_is_redacted():
     assert result.mapping == {"[ЛОГИН-1]": account}
 
 
+def test_english_account_requires_an_explicit_label_separator():
+    ordinary = "Account manager handles billing"
+    labelled = "Account: synthetic_demo_user"
+
+    assert Anonymizer().anonymize(ordinary).text == ordinary
+    result = Anonymizer().anonymize(labelled)
+    assert result.text == "Account: [ЛОГИН-1]"
+    assert result.mapping == {"[ЛОГИН-1]": "synthetic_demo_user"}
+
+
 def test_distinguished_name_wins_over_nested_domain_and_abbreviations():
     distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
 
@@ -862,6 +872,24 @@ def test_distinguished_name_wins_over_nested_domain_and_abbreviations():
     disabled = Anonymizer(disabled_categories={"DN"}).anonymize(distinguished_name)
     assert disabled.text == distinguished_name
     assert disabled.mapping == {}
+
+
+def test_distinguished_name_accepts_spaces_between_rdns():
+    distinguished_name = "CN=Alpha User, OU=Users, DC=alpha, DC=example"
+
+    result = Anonymizer().anonymize(distinguished_name)
+
+    assert result.text == "[DN-1]"
+    assert result.mapping == {"[DN-1]": distinguished_name}
+
+
+def test_distinguished_name_accepts_escaped_commas_inside_rdn_values():
+    distinguished_name = r"CN=Doe\, John, OU=Users, DC=alpha, DC=example"
+
+    result = Anonymizer().anonymize(distinguished_name)
+
+    assert result.text == "[DN-1]"
+    assert result.mapping == {"[DN-1]": distinguished_name}
 
 
 def test_service_account_with_site_code_is_one_bounded_login_marker():

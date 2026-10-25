@@ -1425,8 +1425,12 @@ class Anonymizer:
         aliases.extend((m.group(1), self._canon(m.group(1)), "ПРОИЗВОДИТЕЛЬ") for m in vendor_matches)
         add(r"(?<![\w-])(?:[A-Za-z0-9]+-){1,5}(?:DC\d*|ADC\d*|CA)(?:-[A-Za-z0-9]+)*(?![\w-])",
             "УЗЕЛ", 86, canonical=lambda m: m.group().casefold())
-        add(r"(?<!\w)(?:(?:CN|OU|DC)=[^,\r\n\ufdd0]{1,80})(?:,(?:CN|OU|DC)=[^,\r\n\ufdd0]{1,80})+(?!\w)",
-            "DN", 95, canonical=lambda m: re.sub(r"\s+", "", m.group().casefold()))
+        dn_value = r"(?:\\.|[^,\r\n\ufdd0]){1,80}"
+        add(
+            rf"(?<!\w)(?:(?:CN|OU|DC)={dn_value})"
+            rf"(?:,[ \t]*(?:CN|OU|DC)={dn_value})+(?!\w)",
+            "DN", 95, canonical=lambda m: re.sub(r"\s+", "", m.group().casefold()),
+        )
         add(r"(?<![\w-])([A-Za-z][A-Za-z0-9-]{2,31})(?=/(?:\d{1,3}\.){3}\d{1,3}(?!\d))",
             "УЗЕЛ", 85, group=1, canonical=lambda m: m.group(1).casefold())
         add(r"(?<!\w)@[A-Za-z][A-Za-z0-9_]{3,31}\b", "АККАУНТ", 80, canonical=lambda m: m.group().casefold())
@@ -2206,8 +2210,14 @@ class Anonymizer:
             ))
         add(r"\b[A-Za-z][\w.-]{1,20}\\[A-Za-z][\w.-]{1,30}\b", "ЛОГИН", 63, canonical=lambda m: m.group().casefold())
         add(
-            r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|account|уч[её]тк[а-яё]+)"
+            r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|уч[её]тк[а-яё]+)"
             r"\s*[:=—-]?\s*(?:\ufdd0\s*)?([A-Za-z][\w.@-]{2,30})",
+            "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold(),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\baccount\s*(?:(?:[:=—-]\s*(?:\ufdd0\s*)?)|(?:\ufdd0\s*))"
+            r"([A-Za-z][\w.@-]{2,30})",
             "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold(),
             allow_boundary_context=True,
         )

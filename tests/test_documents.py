@@ -820,7 +820,7 @@ def test_docx_table_redacts_labelled_login_and_complete_distinguished_name(tmp_p
     anonymized = tmp_path / "directory-inventory-anonymized.docx"
     restored = tmp_path / "directory-inventory-restored.docx"
     account = "synthetic_demo_user"
-    distinguished_name = "CN=alpha.example,CN=System,DC=rf,DC=alpha,DC=example"
+    distinguished_name = r"CN=Doe\, John, OU=Users, DC=alpha, DC=example"
     document = Document()
     table = document.add_table(rows=2, cols=2)
     table.cell(0, 0).text = "Учётная запись"
