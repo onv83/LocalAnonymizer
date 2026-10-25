@@ -54,6 +54,7 @@ The packaged application does not require Python, `uv`, pip, or manually install
 - Plain text, structured documents, and the manual-review queue now use the same detector precedence, so a nested uncertain hint is not queued when a stronger rule replaces the complete logical record.
 - The current-review card keeps a stable responsive height in `off`, `review`, and `auto` states; compact disabled summaries retain the complete localized explanation in the tooltip and accessible label.
 - Conservative infrastructure detection now covers structured machine and service identifiers with internal hyphens/underscores, mixed separators or case, compact letter-number forms, and digit-led inventory values while retaining prose and software/version safeguards.
+- Text can now be selected with the mouse and copied with `Ctrl+C` directly from either source or anonymized pane. This works in plain-text and formatted DOCX views without disabling replacement-marker clicks, navigation, or scrolling.
 - Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
@@ -63,6 +64,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
 - Reversible anonymization with encrypted local mappings and portable recovery files.
 - DOCX formatting is preserved by OOXML-aware processing; legacy DOC conversion uses Microsoft Word COM on Windows.
 - Local formatted, read-only DOCX preview and text review workflow.
+- Native partial-text selection and copying from either preview pane.
 - Support for DOCX, legacy DOC on Windows, ODT, XLSX, and text-based formats.
 - English and Russian interfaces with persistent language selection.
 - No cloud processing: document content remains on the local computer.
@@ -155,6 +157,7 @@ Python, `uv`, pip и установка зависимостей для гото
 - Обычный текст, структурированные документы и очередь ручной проверки используют одинаковый приоритет детекторов: вложенная спорная подсказка не ставится в очередь, если более сильное правило заменяет всю логическую запись.
 - Карточка текущего спорного места сохраняет стабильную адаптивную высоту во всех трёх внутренних состояниях (`off`, `review` и `auto`); при отключении краткое сообщение сохраняет полное переведённое объяснение в подсказке и доступном имени.
 - Консервативное распознавание инфраструктуры теперь покрывает структурированные имена машин и сервисных учётных записей с внутренними дефисами/подчёркиваниями, смешанными разделителями или регистром, компактными буквенно-цифровыми формами и цифровым префиксом, сохраняя защиту обычной прозы и строк программ/версий.
+- В левой и правой областях теперь можно выделить мышью произвольную часть текста и скопировать её через `Ctrl+C`. Это работает в текстовом и форматированном представлении DOCX, не отключая щелчки по маркерам, переходы и прокрутку.
 - Расширены проверки компоновки, согласованности переводов, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и быстрого запуска на целевых платформах.
 
 История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
@@ -195,7 +198,7 @@ Python, `uv`, pip и установка зависимостей для гото
 ## Работа
 
 1. Вставьте текст либо выберите или перетащите файл. Текст анализируется автоматически с небольшой задержкой. Для DOCX левая панель по умолчанию показывает локальный форматированный предпросмотр только для чтения (порядок абзацев и таблиц, заголовки, базовое форматирование и колонтитулы); переключатель **«Текст и подсветка»** открывает обычный текстовый анализ. Для других форматов сохраняется текстовый предпросмотр.
-2. Просмотрите синие обратимые замены, серые необратимые удаления и жёлтые подсказки. Стрелки переходят по всем отметкам; строка таблицы соответствий ведёт к маркеру.
+2. Просмотрите синие обратимые замены, серые необратимые удаления и жёлтые подсказки. Стрелки переходят по всем отметкам; строка таблицы соответствий ведёт к маркеру. Произвольную часть текста можно выделить мышью непосредственно в любой области и скопировать через `Ctrl+C`.
 3. Для жёлтой подсказки выберите **Оставить** или **Скрыть**. Щелчок по синему маркеру возвращает значение только в текущем тексте; решение можно отменить кнопкой рядом с восстановленным значением. Для файла после решений снова нажмите **Обезличить**, чтобы применить временные правила к выходному файлу.
 4. Экспортируйте обезличенный файл либо все готовые файлы одним ZIP без карт замен. Карту в CSV экспортируйте только после явного предупреждения: она содержит чувствительные значения.
 5. Для DOCX порядок такой: скачайте обезличенный файл, отредактируйте его в Word без удаления служебного свойства, нажмите **«Восстановить исправленный файл…»**, выберите этот файл и затем место сохранения восстановленной копии. Новые правки, таблицы и форматирование сохраняются. Файл должен сохранить служебную привязку к операции (OPC `identifier` для DOCX/XLSX или служебную строку для текстовых форматов); чужой, старый либо лишённый привязки файл отклоняется до создания результата. Неизвестные маркеры сохраняются и перечисляются; необратимо удалённые секреты не восстанавливаются.

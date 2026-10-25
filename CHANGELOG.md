@@ -31,6 +31,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Kept the manual-review candidate card at a stable responsive height in all three uncertain-mode states. Disabled states use a compact visible summary while preserving the complete localized reason in the tooltip and accessible label.
 - Made the formatted-preview toolbar deterministic: status occupies its own row and all five controls remain together on the following row during loading and ready states across responsive RU/EN layouts.
 - Refreshed the public RU/EN interface screenshots from the current bundled UI with a fully synthetic document containing text, an image, an address, and other detected values; no user document or real personal data was used.
+- Enabled native mouse selection and `Ctrl+C` for only the selected fragment in both source and anonymized panes, including plain-text and formatted DOCX views. Selection no longer triggers a replacement-marker action, while marker clicks without a drag, navigation, scrolling, highlighting, and file drag-and-drop remain available.
 
 #### Fixed
 
@@ -83,6 +84,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Карточка текущего спорного места сохраняет стабильную адаптивную высоту во всех трёх состояниях. При отключении видно краткое сообщение, а полная переведённая причина остаётся в подсказке и доступном имени.
 - Компоновка форматированного предпросмотра стала предсказуемой: сообщение о состоянии занимает отдельную строку, а все пять кнопок остаются вместе на следующей строке во время подготовки и после готовности во всех адаптивных русских и английских вариантах.
 - Публичные снимки русского и английского интерфейсов обновлены из текущих встроенных ресурсов с полностью вымышленным документом, рисунком, адресом и другими распознанными значениями; пользовательские документы и реальные персональные сведения не использовались.
+- В исходной и обезличенной областях включено обычное выделение мышью и копирование через `Ctrl+C` только выбранного фрагмента, включая текстовое и форматированное представление DOCX. Выделение больше не запускает действие маркера замены; обычный щелчок по маркеру, переходы, прокрутка, подсветка и перетаскивание файлов сохранены.
 
 #### Исправлено
 

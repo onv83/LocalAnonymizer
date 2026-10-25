@@ -1,4 +1,6 @@
 :root{--text-primary:#17283b;--text-secondary:#4d647a;--surface:#ffffff;--surface-raised:#f7fafc;--border:#647c92;--action-primary:#075a9c;--action-primary-hover:#06487d;--danger:#9b1c1c;--warning:#7a5400;--success:#146c43;--focus:#0069c0}
+.editor-stack textarea,.editor-stack .mirror,.rich-output,.rich-output *,.docx-preview-host,.docx-preview-host *{user-select:text;-webkit-user-select:text}
+.editor-stack textarea,.rich-output,.docx-preview-host{cursor:text}
 html[data-theme="dark"]{--text-primary:#f3f7fb;--text-secondary:#c7d5e3;--surface:#18232e;--surface-raised:#202f3d;--border:#688198;--action-primary:#3da9fc;--action-primary-hover:#70c1ff;--danger:#ff7f7f;--warning:#ffd36b;--success:#65d49b;--focus:#ffd166}
 body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;line-height:1.45;max-width:1920px;margin:auto;padding:8px 20px 90px}
 body[data-design="new"] header{order:0;position:sticky;top:0;z-index:80;background:var(--surface-raised);padding:3px 0 5px;margin-bottom:6px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title actions" "explanation explanation";align-items:center;gap:2px 12px}

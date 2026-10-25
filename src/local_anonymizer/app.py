@@ -1584,6 +1584,7 @@ def main(argv: list[str] | None = None) -> int:
         entry_url,
         js_api=api,
         min_size=(720, 700),
+        text_select=True,
         **geometry,
     )
     api.set_window(window)

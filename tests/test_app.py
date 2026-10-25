@@ -1953,6 +1953,97 @@ def test_desktop_window_opens_at_1600px_for_two_preview_panes(tmp_path, monkeypa
     assert captured["width"] == 1600
     assert captured["height"] == 920
     assert captured["min_size"] == (720, 700)
+    assert captured["text_select"] is True
+
+
+@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+def test_preview_marker_click_does_not_override_a_mouse_selection(asset_name):
+    javascript = asset_path(asset_name).read_text(encoding="utf-8")
+
+    assert "function hasSelectionInside(root)" in javascript
+    assert "if(!mark||hasSelectionInside($('#richOutput')))return;" in javascript
+
+
+def test_both_text_and_formatted_preview_layers_explicitly_allow_selection():
+    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+
+    assert ".editor-stack textarea,.editor-stack .mirror,.rich-output,.rich-output *,.docx-preview-host,.docx-preview-host *{user-select:text;-webkit-user-select:text}" in css
+    assert ".editor-stack textarea,.rich-output,.docx-preview-host{cursor:text}" in css
+
+
+def test_mouse_selection_and_ctrl_c_work_in_both_preview_panes_and_languages(tmp_path: Path):
+    import socket
+    import time
+    import urllib.request
+
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the mouse-selection regression")
+
+    verifier = Path(__file__).parents[1] / "scripts" / "verify_text_selection.mjs"
+    for language_index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+        for workspace_width in (390, 700, 900):
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1", 0))
+                port = reservation.getsockname()[1]
+            profile = tmp_path / f"edge-selection-{language_index}-{workspace_width}"
+            browser = subprocess.Popen(
+                [
+                    str(edge),
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--allow-file-access-from-files",
+                    "--remote-allow-origins=*",
+                    f"--remote-debugging-port={port}",
+                    f"--user-data-dir={profile}",
+                    f"--window-size={workspace_width},900",
+                    asset_path(html_name).as_uri(),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                targets = None
+                for _ in range(100):
+                    try:
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+                            targets = json.load(response)
+                        break
+                    except Exception:
+                        time.sleep(0.05)
+                assert targets, {"language": html_name, "width": workspace_width, "error": "No Edge DevTools target"}
+                page = next(target for target in targets if target.get("type") == "page")
+                result = subprocess.run(
+                    ["node", str(verifier), page["webSocketDebuggerUrl"], str(workspace_width)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                assert result.returncode == 0, {
+                    "language": html_name,
+                    "width": workspace_width,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                }
+                outcome = json.loads(result.stdout.strip())
+                assert outcome["ok"], {"language": html_name, **outcome}
+                assert outcome["systemClipboard"] is False
+            finally:
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    browser.terminate()
+                    browser.wait(timeout=5)
 
 
 def test_desktop_window_clamps_preferred_size_to_primary_work_area(tmp_path, monkeypatch):

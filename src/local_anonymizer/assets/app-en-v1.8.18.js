@@ -514,7 +514,12 @@ $('#showAnonymizedFormatted').onclick=()=>switchPreviewMode(setAnonymizedPreview
 $('#docxPreview').addEventListener('scroll',syncFormattedSourceScroll);
 $('#anonymizedDocxPreview').addEventListener('scroll',syncFormattedAnonymizedScroll);
 window.addEventListener('resize',()=>{invalidatePreviewAnchors($('#docxPreview'));invalidatePreviewAnchors($('#anonymizedDocxPreview'));});
-$('#richOutput').onclick=e=>{const mark=e.target.closest('.mark-replacement,.mark-secret,.mark-hint');if(!mark)return;const i=Number(mark.dataset.part);if(mark.classList.contains('mark-hint'))focusMark(hintMarks().indexOf(mark));if(mark.classList.contains('mark-replacement'))restoreReplacement(i);};
+function hasSelectionInside(root){
+ const selection=window.getSelection?.();
+ if(!root||!selection||selection.isCollapsed||!selection.rangeCount)return false;
+ return [selection.anchorNode,selection.focusNode].some(node=>node&&(node===root||root.contains(node)));
+}
+$('#richOutput').onclick=e=>{const mark=e.target.closest('.mark-replacement,.mark-secret,.mark-hint');if(!mark||hasSelectionInside($('#richOutput')))return;const i=Number(mark.dataset.part);if(mark.classList.contains('mark-hint'))focusMark(hintMarks().indexOf(mark));if(mark.classList.contains('mark-replacement'))restoreReplacement(i);};
 $('#undoChips').onclick=e=>{const b=e.target.closest('[data-undo]');if(b){const i=Number(b.dataset.undo);removeDecisionLine('#whitelist',last.parts[i]?.orig||'');restoredParts.delete(i);settingsGeneration++;if(filePreview)fileDirty=true;renderOutput();}};
 $('#reviewPrev').onclick=()=>focusMark(reviewIndex-1);$('#reviewNext').onclick=()=>focusMark(reviewIndex+1);$('#hideCandidate').onclick=hideHint;$('#keepCandidate').onclick=keepHint;
 $('#choose').onclick=async()=>{const ticket=++importGeneration;generation++;previewGeneration++;const r=await pywebview.api.choose_files();if(ticket!==importGeneration)return;showLibrary(r.documents||[]);if(r.ok&&r.ids?.length){selected=r.ids[0];$('#library').value=selected;await loadDocumentPreview();}else $('#fileStatus').textContent=bridgeErrorText('import');};$('#dropChoose').onclick=$('#choose').onclick;
