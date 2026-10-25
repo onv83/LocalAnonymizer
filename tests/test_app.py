@@ -588,7 +588,7 @@ def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languag
 
 
 def test_settings_navigation_chevrons_are_right_facing_and_do_not_steal_accessibility_names():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert ".settings-nav-chevron" in css
     assert "margin-inline-start:auto" in css
     assert "flex:0 0 auto" in css
@@ -598,7 +598,7 @@ def test_settings_navigation_chevrons_are_right_facing_and_do_not_steal_accessib
 
 
 def test_mobile_library_controls_collapse_to_one_bounded_column():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     mobile = css[css.index("@media(max-width:800px)") :]
     assert ".source-library>.compact-library{grid-template-columns:minmax(0,1fr)}" in mobile
     assert ".source-library>.compact-library>*{min-width:0;max-width:100%;width:100%}" in mobile
@@ -646,7 +646,7 @@ def test_manual_review_intro_is_an_accessible_on_demand_tooltip_in_both_language
         assert '<span class="review-heading-help" aria-hidden="true">?</span>' in content
         assert re.search(r'<span id="reviewIntroHelp" class="sr-only">[^<]+(?:<b>.*?</b>[^<]*)?</span>', content)
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert ".review-heading h2:focus-visible::after" in css
     assert ".review-heading h2:hover::after" not in css
 
@@ -876,9 +876,9 @@ def test_open_file_button_is_first_source_action_with_localized_tooltip():
 
 def test_new_design_styles_define_contrast_actions_targets_and_focus():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8") if asset_path("new-design-v1.11.css").exists() else ""
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8") if asset_path("new-design-v1.12.css").exists() else ""
 
-    assert 'new-design-v1.11.css' in html
+    assert 'new-design-v1.12.css' in html
     for token in ("--text-primary", "--text-secondary", "--surface", "--border", "--action-primary", "--danger", "--warning", "--success"):
         assert token in css
     assert ":focus-visible" in css
@@ -893,9 +893,9 @@ def test_new_design_styles_define_contrast_actions_targets_and_focus():
 def test_all_collapsible_sections_show_right_or_down_disclosure_arrow():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
-        assert 'new-design-v1.11.css' in html
+        assert 'new-design-v1.12.css' in html
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert 'body[data-design="new"] details>summary{list-style:none' in css
     assert 'body[data-design="new"] details>summary::-webkit-details-marker{display:none}' in css
     assert 'body[data-design="new"] details:not([open])>summary::before{content:"▶"}' in css
@@ -922,7 +922,7 @@ def test_source_pane_omits_redundant_visible_label_and_storage_notice():
         assert storage_notice not in html
         assert '<div class="drop">' not in html
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert '.sr-label{' not in css
 
 
@@ -937,7 +937,7 @@ def test_empty_undo_row_collapses_only_when_empty(tmp_path):
 
     for html_name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(html_name).read_text(encoding="utf-8")
-        assert 'new-design-v1.11.css' in html
+        assert 'new-design-v1.12.css' in html
         assert 'id="undoChips" class="undo-chips"' in html
 
     for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
@@ -947,7 +947,7 @@ def test_empty_undo_row_collapses_only_when_empty(tmp_path):
 
     links = "".join(
         f'<link rel="stylesheet" href="{asset_path(name).as_uri()}">'
-        for name in ("style-v1.1.css", "new-design-v1.11.css")
+        for name in ("style-v1.1.css", "new-design-v1.12.css")
     )
     for width in (320, 1430):
         probe = tmp_path / f"empty-undo-row-{width}.html"
@@ -1008,23 +1008,27 @@ def test_entity_summary_uses_the_free_space_above_output_preview_in_both_languag
 
         assert chips < alignment < preview < undo
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert 'body[data-design="new"] .pane>.chips{' in css
     assert "flex-wrap:nowrap" in css
     assert 'body[data-design="new"] .pane>.chips span{' in css
 
 
 def test_new_design_uses_compact_interface_text_without_scaling_document_preview():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
-    assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;' in css
+    assert '--font-interface:"Segoe UI",Arial,sans-serif' in css
+    assert '--type-section-title:15px' in css
+    assert '--type-body:13px' in css
+    assert 'font-family:var(--font-interface);font-size:var(--type-body);line-height:var(--line-body)' in css
+    assert ':is(#anonymizationSettings>summary,#reviewTitle,#restoreFileHeading,.usage-guide>summary,#selftestSection>summary,#detectionCategories>summary){font-family:var(--font-interface);font-size:var(--type-section-title);font-weight:700;line-height:var(--line-section-title);letter-spacing:normal;text-transform:none}' in css
     assert 'body[data-design="new"] textarea{font-size:13px;' in css
     assert 'body[data-design="new"] h2{font-size:16px;' in css
     assert 'body[data-design="new"] .docx-preview{' not in css
 
 
 def test_new_design_aligns_remaining_header_controls_on_one_level():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
 
@@ -1039,10 +1043,10 @@ def test_new_design_aligns_remaining_header_controls_on_one_level():
 def test_compact_header_reclaims_height_for_document_previews():
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
-        assert 'new-design-v1.11.css' in html
+        assert 'new-design-v1.12.css' in html
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
-    assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-size:13px;line-height:1.45;max-width:1920px;margin:auto;padding:8px 20px 90px}' in css
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
+    assert 'body[data-design="new"]{display:flex;flex-direction:column;background:var(--surface-raised);color:var(--text-primary);font-family:var(--font-interface);font-size:var(--type-body);line-height:var(--line-body);max-width:1920px;margin:auto;padding:8px 20px 90px}' in css
     assert 'body[data-design="new"] header{order:0;position:sticky;top:0;z-index:80;background:var(--surface-raised);padding:3px 0 5px;margin-bottom:6px;' in css
     assert 'grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title actions" "explanation explanation";align-items:center;gap:2px 12px' in css
     assert 'body[data-design="new"] header>div:first-child{display:contents}' in css
@@ -1147,7 +1151,7 @@ def test_compact_header_renders_complete_without_horizontal_overflow(tmp_path):
 
 
 def test_dark_new_design_stat_chips_have_explicit_readable_colors():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'html[data-theme="dark"] body[data-design="new"] .chips span{' in css
     assert "background:var(--surface-raised)" in css
@@ -1158,13 +1162,13 @@ def test_dark_new_design_stat_chips_have_explicit_readable_colors():
 
 
 def test_new_design_current_review_text_has_explicit_readable_color():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] #reviewCurrent{color:var(--text-primary)}' in css
 
 
 def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .review-candidate{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border)}' in css
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:46px;max-height:none;overflow:visible;padding:6px 8px;box-sizing:border-box;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
@@ -1172,7 +1176,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
 
 
 def test_settings_and_manual_review_are_below_their_respective_preview_panes():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
         html = asset_path(name).read_text(encoding="utf-8")
@@ -1200,11 +1204,11 @@ def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     assert 'body[data-design="new"] .review-candidate{height:auto;min-height:46px;max-height:none;overflow:visible;padding:6px 8px;box-sizing:border-box;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px;align-items:center}' in css
     assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
     assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
-    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
+    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:var(--line-control)}' in css
 
 
 def test_review_candidate_and_toolbar_span_the_output_review_width():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .columns{column-gap:14px;row-gap:6px}' in css
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;display:flex;min-width:0;flex-direction:column;gap:8px}' in css
@@ -1278,7 +1282,7 @@ def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
 
 
 def test_populated_review_keeps_heading_and_remaining_action_compact():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     base_css = css.split("@media", 1)[0]
     assert 'body[data-design="new"] .workflow-status{position:fixed;left:20px;right:20px;bottom:0;z-index:70;' in base_css
@@ -1297,7 +1301,7 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
 
 
 def test_restore_steps_stack_on_narrow_screens_in_both_languages():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     ru = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
     en = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
 
@@ -1307,7 +1311,7 @@ def test_restore_steps_stack_on_narrow_screens_in_both_languages():
 
 
 def test_new_design_hides_empty_review_result_status():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] #resultStatus:empty{display:none}' in css
 
@@ -1353,7 +1357,7 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     assert "`“${all[reviewIndex].textContent.trim()}” · ${hintKindText(all[reviewIndex].dataset.kind)" in en_js
     assert "`${occurrences} match(es) · Rules: “${profileDisplayName($('#profile').value||'Общий')}”`" in en_js
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert 'body[data-design="new"] .review-candidate .review-help{grid-column:3;margin:0}' in css
     assert 'body[data-design="new"] .review-candidate small' not in css
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
@@ -1405,7 +1409,7 @@ def test_formatted_preview_controls_keep_one_button_row_while_loading_and_ready(
         pytest.skip("Microsoft Edge is required for the Windows preview-controls regression")
 
     base_css_uri = asset_path("style-v1.1.css").as_uri()
-    design_css_uri = asset_path("new-design-v1.11.css").as_uri()
+    design_css_uri = asset_path("new-design-v1.12.css").as_uri()
     for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
         source = asset_path(html_name).read_text(encoding="utf-8")
         controls = [
@@ -1602,14 +1606,14 @@ def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_
             re.S,
         )
 
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
     assert "grid-template-columns:auto minmax(0,2fr) minmax(0,1fr);gap:4px 10px" in css
     assert ".review-candidate small" not in css
 
 
 def test_production_manual_review_dom_reclaims_reason_column_at_responsive_widths(tmp_path: Path):
     base_css_uri = asset_path("style-v1.1.css").as_uri()
-    css_uri = asset_path("new-design-v1.11.css").as_uri()
+    css_uri = asset_path("new-design-v1.12.css").as_uri()
     edge = next(
         (
             candidate
@@ -1738,7 +1742,7 @@ frame.addEventListener('load',()=>setTimeout(()=>{try{
 
 def test_production_workspace_lower_panels_share_one_horizontal_line(tmp_path: Path):
     base_css_uri = asset_path("style-v1.1.css").as_uri()
-    css_uri = asset_path("new-design-v1.11.css").as_uri()
+    css_uri = asset_path("new-design-v1.12.css").as_uri()
     edge = next(
         (
             candidate
@@ -1796,12 +1800,12 @@ setTimeout(()=>{{const box=element=>element.getBoundingClientRect(),sourcePane=d
 
 
 def test_manual_review_layout_is_bound_to_workspace_width_and_contains_long_copy():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .workspace-column{container-type:inline-size;' in css
     assert 'body[data-design="new"] .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}' in css
     assert 'body[data-design="new"] .review-navigation,body[data-design="new"] .review-actions{display:contents}' in css
-    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}' in css
+    assert 'body[data-design="new"] .review-toolbar button{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px;white-space:normal;overflow-wrap:anywhere;line-height:var(--line-control)}' in css
     assert '@container(max-width:719px)' in css
     assert '@container(max-width:519px)' in css
     assert 'body[data-design="new"] .review{grid-template-columns:minmax(0,1fr)}' in css
@@ -1818,7 +1822,7 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
 
     links = "".join(
         f'<link rel="stylesheet" href="{asset_path(name).as_uri()}">'
-        for name in ("style-v1.1.css", "new-design-v1.11.css")
+        for name in ("style-v1.1.css", "new-design-v1.12.css")
     )
     localized = (
         ("ru", "Что проверяется", "Синтетический спорный фрагмент с длинным безопасным значением", "Почему требуется решение", "Скрыть и запомнить правило", "Оставить и добавить в исключения"),
@@ -1965,7 +1969,7 @@ def test_preview_marker_click_does_not_override_a_mouse_selection(asset_name):
 
 
 def test_both_text_and_formatted_preview_layers_explicitly_allow_selection():
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert ".editor-stack textarea,.editor-stack .mirror,.rich-output,.rich-output *,.docx-preview-host,.docx-preview-host *{user-select:text;-webkit-user-select:text}" in css
     assert ".editor-stack textarea,.rich-output,.docx-preview-host{cursor:text}" in css
@@ -2038,6 +2042,79 @@ def test_mouse_selection_and_ctrl_c_work_in_both_preview_panes_and_languages(tmp
                 outcome = json.loads(result.stdout.strip())
                 assert outcome["ok"], {"language": html_name, **outcome}
                 assert outcome["systemClipboard"] is False
+            finally:
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    browser.terminate()
+                    browser.wait(timeout=5)
+
+
+def test_interface_typography_roles_match_in_both_languages_at_real_viewport_widths(tmp_path: Path):
+    import socket
+    import time
+    import urllib.request
+
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the typography regression")
+
+    verifier = Path(__file__).parents[1] / "scripts" / "verify_typography.mjs"
+    for language_index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+        for viewport_width in (390, 700, 900):
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1", 0))
+                port = reservation.getsockname()[1]
+            profile = tmp_path / f"edge-typography-{language_index}-{viewport_width}"
+            browser = subprocess.Popen(
+                [
+                    str(edge),
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--allow-file-access-from-files",
+                    "--remote-allow-origins=*",
+                    f"--remote-debugging-port={port}",
+                    f"--user-data-dir={profile}",
+                    f"--window-size={viewport_width},900",
+                    asset_path(html_name).as_uri(),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                targets = None
+                for _ in range(100):
+                    try:
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+                            targets = json.load(response)
+                        break
+                    except Exception:
+                        time.sleep(0.05)
+                assert targets, {"language": html_name, "width": viewport_width, "error": "No Edge DevTools target"}
+                page = next(target for target in targets if target.get("type") == "page")
+                result = subprocess.run(
+                    ["node", str(verifier), page["webSocketDebuggerUrl"], str(viewport_width)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                outcome = json.loads(result.stdout.strip())
+                assert result.returncode == 0 and outcome["ok"], {
+                    "language": html_name,
+                    "width": viewport_width,
+                    "outcome": outcome,
+                    "stderr": result.stderr,
+                }
             finally:
                 try:
                     browser.wait(timeout=5)
@@ -2645,7 +2722,7 @@ def test_settings_and_primary_action_explain_their_real_effect():
 
 def test_new_design_shows_only_one_apply_and_one_export_action():
     html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    css = asset_path("new-design-v1.11.css").read_text(encoding="utf-8")
+    css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'id="exportNow" title="Сохранить обезличенный документ и переносимый файл восстановления рядом">Сохранить документ и файл восстановления</button>' in html
     assert 'body[data-design="new"] #anonymize,body[data-design="new"] #downloadAnon{display:none!important}' in css

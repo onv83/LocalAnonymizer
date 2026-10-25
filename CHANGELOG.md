@@ -32,6 +32,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Made the formatted-preview toolbar deterministic: status occupies its own row and all five controls remain together on the following row during loading and ready states across responsive RU/EN layouts.
 - Refreshed the public RU/EN interface screenshots from the current bundled UI with a fully synthetic document containing text, an image, an address, and other detected values; no user document or real personal data was used.
 - Enabled native mouse selection and `Ctrl+C` for only the selected fragment in both source and anonymized panes, including plain-text and formatted DOCX views. Selection no longer triggers a replacement-marker action, while marker clicks without a drag, navigation, scrolling, highlighting, and file drag-and-drop remain available.
+- Unified interface typography through shared roles for application titles, section headings, panel headings, body copy, supporting text, and controls. Equivalent RU/EN sections now use the same typeface, size, weight, line height, letter spacing, and casing at 390, 700, and 900 pixel viewports; formatted DOCX previews retain the document's original typography.
 
 #### Fixed
 
@@ -85,6 +86,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Компоновка форматированного предпросмотра стала предсказуемой: сообщение о состоянии занимает отдельную строку, а все пять кнопок остаются вместе на следующей строке во время подготовки и после готовности во всех адаптивных русских и английских вариантах.
 - Публичные снимки русского и английского интерфейсов обновлены из текущих встроенных ресурсов с полностью вымышленным документом, рисунком, адресом и другими распознанными значениями; пользовательские документы и реальные персональные сведения не использовались.
 - В исходной и обезличенной областях включено обычное выделение мышью и копирование через `Ctrl+C` только выбранного фрагмента, включая текстовое и форматированное представление DOCX. Выделение больше не запускает действие маркера замены; обычный щелчок по маркеру, переходы, прокрутка, подсветка и перетаскивание файлов сохранены.
+- Типографика интерфейса приведена к общим ролям для названия программы, заголовков разделов и панелей, основного и поясняющего текста и элементов управления. Равнозначные блоки RU/EN теперь используют одинаковые гарнитуру, размер, насыщенность, межстрочный и межбуквенный интервалы и регистр при ширинах окна 390, 700 и 900 пикселей; форматированный предпросмотр DOCX сохраняет исходную типографику документа.
 
 #### Исправлено
 
@@ -306,8 +308,8 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Сохранение форматирования DOCX, преобразование старых DOC через Microsoft Word COM, обработка XLSX и текстовых форматов.
 - Консервативная обработка неопределённых вариантов фамилий.
 
-[Unreleased]: https://github.com/onv83/LocalAnonymizer/commits/main
-[0.2.9]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.8...main
+[Unreleased]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.9...main
+[0.2.9]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/onv83/LocalAnonymizer/compare/v0.2.5...v0.2.6
