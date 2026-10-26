@@ -145,6 +145,12 @@ def test_platform_build_wrappers_share_the_pyinstaller_spec():
         assert duplicated_setting not in posix
 
 
+def test_native_package_contains_apache_license():
+    spec = (ROOT / "LocalAnonymizer.spec").read_text(encoding="utf-8")
+
+    assert "('LICENSE', '.')" in spec
+
+
 def test_posix_scripts_are_forced_to_lf_in_git():
     attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
     assert "*.sh text eol=lf" in attributes
