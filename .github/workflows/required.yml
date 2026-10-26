@@ -44,4 +44,4 @@ jobs:
         run: uv lock --check
 
       - name: Проверить синтаксис Python
-        run: uv run python -m compileall -q src scripts tests
+        run: python -m compileall -q src scripts tests
