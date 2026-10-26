@@ -3,7 +3,10 @@ import sys
 
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('src/local_anonymizer/assets', 'local_anonymizer/assets')]
+datas = [
+    ('src/local_anonymizer/assets', 'local_anonymizer/assets'),
+    ('LICENSE', '.'),
+]
 binaries = []
 hiddenimports = []
 
