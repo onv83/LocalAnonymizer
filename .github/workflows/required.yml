@@ -1,0 +1,47 @@
+name: Обязательные проверки репозитория
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  repository-check:
+    name: Проверка репозитория
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Проверить изменения Git
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$BASE_SHA..$CURRENT_SHA"
+          elif [[ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            git diff --check "$BEFORE_SHA..$CURRENT_SHA"
+          else
+            git diff-tree --check --root "$CURRENT_SHA"
+          fi
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Проверить файл блокировки
+        run: uv lock --check
+
+      - name: Проверить синтаксис Python
+        run: uv run python -m compileall -q src scripts tests
