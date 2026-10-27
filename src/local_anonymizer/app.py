@@ -39,8 +39,8 @@ except ImportError:
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
 APP_VERSION = "1.8"
-INDEX_ASSET = "index-v1.8.18.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.18.html"
+INDEX_ASSET = "index-v1.8.19.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.19.html"
 
 
 def _read_clipboard_text() -> str:
@@ -825,6 +825,48 @@ def _audit_secret_marker_self_test() -> bool:
     return restored == source and "audit.person@example.test" not in result.text
 
 
+def _word_settings_restore_self_test() -> bool:
+    """Exercise Word's saved zoom on the real fallback restoration path."""
+    from lxml import etree
+    from docx.oxml.ns import qn
+
+    secret = "SyntheticZoomCanary73!"
+    email = "audit.zoom@example.test"
+    try:
+        with tempfile.TemporaryDirectory(prefix="local-anonymizer-word-settings-") as directory:
+            root = Path(directory)
+            source, anonymized, edited, restored = [root / name for name in (
+                "source.docx", "anonymized.docx", "edited.docx", "restored.docx"
+            )]
+            document = Document()
+            document.add_paragraph().add_run(email).bold = True
+            document.add_paragraph("password: " + secret)
+            table = document.add_table(rows=2, cols=2)
+            table.cell(0, 0).merge(table.cell(1, 0)).text = "Ordinary text"
+            document.save(source)
+            processor = DocxProcessor()
+            result = processor.anonymize(source, anonymized)
+            with ZipFile(anonymized) as archive:
+                payloads = [(info, archive.read(info.filename)) for info in archive.infolist()]
+            with ZipFile(edited, "w") as archive:
+                for info, payload in payloads:
+                    if info.filename == "word/settings.xml":
+                        settings = etree.fromstring(payload, etree.XMLParser(resolve_entities=False, no_network=True))
+                        for zoom in list(settings.findall(qn("w:zoom"))):
+                            settings.remove(zoom)
+                        etree.SubElement(settings, qn("w:zoom")).set(qn("w:percent"), "160")
+                        payload = etree.tostring(settings, encoding="UTF-8", xml_declaration=True)
+                    archive.writestr(info, payload)
+            unknown = processor.restore(edited, restored, result.mapping, package_archive=result.package_archive)
+            output = Document(restored)
+            text = "\n".join(paragraph.text for paragraph in output.paragraphs)
+            return bool(result.ready and not unknown and email in text and secret not in text
+                        and output.paragraphs[0].runs[0].bold
+                        and output.tables[0].cell(0, 0)._tc.xpath(".//w:vMerge"))
+    except Exception:
+        return False
+
+
 class AppApi:
     _PREVIEW_TTL_SECONDS = 120
     _PREVIEW_CACHE_LIMIT = 8
@@ -1348,6 +1390,7 @@ class AppApi:
         service_account_ok = _service_account_self_test()
         split_service_account_ok = _split_service_account_self_test()
         directory_identifiers_ok = _directory_identifiers_self_test()
+        word_settings_restore_ok = _word_settings_restore_self_test()
         audit_secret_marker_ok = _audit_secret_marker_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
@@ -1383,6 +1426,7 @@ class AppApi:
                 and service_account_ok
                 and split_service_account_ok
                 and directory_identifiers_ok
+                and word_settings_restore_ok
                 and audit_secret_marker_ok
                 and graphics_roundtrip_ok
             ),
@@ -1422,6 +1466,7 @@ class AppApi:
             "service_account_ok": service_account_ok,
             "split_service_account_ok": split_service_account_ok,
             "directory_identifiers_ok": directory_identifiers_ok,
+            "word_settings_restore_ok": word_settings_restore_ok,
             "audit_secret_marker_ok": audit_secret_marker_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,

@@ -36,7 +36,7 @@ if (useSystemClipboard) {
   await send('Browser.setPermission', { permission: { name: 'clipboard-read' }, setting: 'granted' });
   await send('Browser.setPermission', { permission: { name: 'clipboard-write' }, setting: 'granted' });
 }
-await evaluate(`new Promise((resolve,reject)=>{let attempts=0;const ready=()=>{if(document.querySelector('#source')&&document.querySelector('#richOutput'))return resolve(true);if(++attempts>100)return reject(new Error('preview DOM did not load'));setTimeout(ready,25)};ready()})`);
+await evaluate(`new Promise((resolve,reject)=>{let attempts=0;const ready=()=>{if(['source','richOutput','docxPreview','anonymizedDocxPreview'].every(id=>document.querySelector('#'+id))&&typeof last!=='undefined'&&last&&typeof restoredParts!=='undefined'&&typeof restoredParts.clear==='function')return resolve(true);if(++attempts>100)return reject(new Error('preview DOM did not load'));setTimeout(ready,25)};ready()})`);
 await evaluate(`(() => {
   const source=document.querySelector('#source');
   source.value='AAA SELECTED BBB';

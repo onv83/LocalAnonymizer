@@ -1319,6 +1319,29 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
         if expected_root == "document":
             etree.SubElement(clean_root, f"{{{_WML_NS}}}body")
         return clean_root, True
+    # Word saves the user's view zoom in settings. It is session metadata,
+    # not formatting: discard it rather than widening retained value trust.
+    # Only the exact leaf shape and Word's UI range (10..500 percent) are
+    # benign. Malformed/lookalike constructs still produce a blocker.
+    if name == "word/settings.xml":
+        for zoom in list(root.findall(f"{{{_WML_NS}}}zoom")):
+            percent = zoom.get(f"{{{_WML_NS}}}percent", "")
+            valid_zoom = (
+                (
+                    dict(zoom.attrib) == {f"{{{_WML_NS}}}val": "bestFit"}
+                    or (
+                        set(zoom.attrib) == {f"{{{_WML_NS}}}percent"}
+                        and re.fullmatch(r"[1-9][0-9]{1,2}", percent) is not None
+                        and 10 <= int(percent) <= 500
+                    )
+                )
+                and len(zoom) == 0
+                and not (zoom.text or "").strip()
+                and not (zoom.tail or "").strip()
+            )
+            root.remove(zoom)
+            if not valid_zoom:
+                found = True
     allowed_elements_by_ns: dict[str, set[str] | frozenset[str] | None] = {
         allowed_element_ns: supported_elements
     }

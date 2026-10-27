@@ -85,6 +85,7 @@ def validate_smoke(payload: dict) -> None:
         "abbreviation_single_two_letter_ok",
         "graphics_roundtrip_ok",
         "audit_secret_marker_ok",
+        "word_settings_restore_ok",
     ):
         _require_true(engine, key, "smoke.engine")
     _require_digest(engine, "source_snapshot_sha256", "smoke.engine")
