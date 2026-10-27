@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import getpass
+import hashlib
 import os
 import secrets
 import shutil
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Callable, Protocol
 
@@ -109,13 +111,44 @@ class KeyringAesGcmProtector:
         self._aesgcm_cls = aesgcm_cls
         self._random_bytes = random_bytes
 
+    @contextmanager
+    def _creation_lock(self):
+        # The credential identity, not the configurable data directory, defines
+        # the lock. Atomic mkdir works across processes and keeps keys in keyring.
+        identity = f"{self._SERVICE}\0{self._account}".encode("utf-8")
+        path = Path.home() / (".local-anonymizer-keyring-" + hashlib.sha256(identity).hexdigest() + ".lock")
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                path.mkdir(mode=0o700)
+                break
+            except FileExistsError:
+                if time.monotonic() >= deadline:
+                    raise DataProtectionUnavailable("Не удалось получить блокировку системного keyring")
+                time.sleep(0.05)
+            except OSError as exc:
+                raise DataProtectionUnavailable("Не удалось создать блокировку системного keyring") from exc
+        try:
+            yield
+        finally:
+            # Never steal a stale lock: a paused owner may still be creating its
+            # key. A crash before creation requires manual recovery of this empty
+            # directory after all application processes have been stopped.
+            path.rmdir()
+
     def _cipher(self, *, create: bool):
         try:
             encoded = self._backend.get_password(self._SERVICE, self._account)
             if encoded is None and create:
-                generated = base64.urlsafe_b64encode(self._random_bytes(32)).decode("ascii")
-                self._backend.set_password(self._SERVICE, self._account, generated)
-                encoded = self._backend.get_password(self._SERVICE, self._account)
+                with self._creation_lock():
+                    encoded = self._backend.get_password(self._SERVICE, self._account)
+                    if encoded is None:
+                        key = self._random_bytes(32)
+                        if len(key) != 32:
+                            raise DataProtectionUnavailable("Некорректный источник криптографической случайности")
+                        generated = base64.urlsafe_b64encode(key).decode("ascii")
+                        self._backend.set_password(self._SERVICE, self._account, generated)
+                        encoded = self._backend.get_password(self._SERVICE, self._account)
             if encoded is None:
                 raise DataProtectionUnavailable("Ключ шифрования не найден в системном keyring")
             key = base64.b64decode(encoded.encode("ascii"), altchars=b"-_", validate=True)

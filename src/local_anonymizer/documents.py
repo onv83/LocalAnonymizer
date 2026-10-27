@@ -254,6 +254,52 @@ def _restore_text(text: str, mapping: dict[str, str]) -> str:
     return re.sub(MARKER_PATTERN, lambda m: mapping.get(m.group(), m.group()), text)
 
 
+def _source_archive_is_reversible(source: bytes, engine: Anonymizer) -> bool:
+    """Check hidden XML too before retaining a byte-for-byte source snapshot.
+
+    Parsing exposes entity-encoded values; attributes and comments are not
+    necessarily part of the displayed text processed by the document adapter.
+    No detection mappings from this eligibility check are retained.
+    """
+    with ZipFile(BytesIO(source)) as package:
+        for name in package.namelist():
+            if not name.lower().endswith((".xml", ".rels")):
+                continue
+            try:
+                root = etree.fromstring(package.read(name), parser=etree.XMLParser(
+                    resolve_entities=False, no_network=True,
+                ))
+            except etree.XMLSyntaxError:
+                return False
+            values = []
+            for element in root.iter():
+                for attribute, value in element.attrib.items():
+                    # Schema identifiers are not user text; feeding standard
+                    # namespace URIs/QNames to credential rules yields false hits.
+                    if (element.tag == "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+                            and attribute == "Type"
+                            and value in {
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/" + kind
+                                for kind in ("extended-properties", "officeDocument", "styles", "settings",
+                                             "webSettings", "fontTable", "theme", "customXml", "numbering",
+                                             "customXmlProps", "image", "header", "footer", "hyperlink")
+                            } | {"http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects"}):
+                        continue
+                    if (attribute == "{http://www.w3.org/2001/XMLSchema-instance}type"
+                            and value == "dcterms:W3CDTF"):
+                        continue
+                    values.append(value)
+                if element.text:
+                    values.append(element.text)
+                if element.tail:
+                    values.append(element.tail)
+            text = "\n".join(values)
+            result = engine.anonymize(text)
+            if any(part.get("secret") for part in result.parts):
+                return False
+    return True
+
+
 class DocxProcessor:
     def __init__(self, engine: Anonymizer | None = None):
         self.engine = engine or Anonymizer()
@@ -265,6 +311,7 @@ class DocxProcessor:
         original_hash = source.read_bytes()
         document_boundary = "\ufdd0\ufdd1\ufdd0"
         result_holder = []
+        exact_source_safe = True
 
         def transform_all(texts: list[str], separators: list[str]) -> list[str]:
             if not texts:
@@ -274,7 +321,11 @@ class DocxProcessor:
             combined = texts[0] + "".join(
                 separator + text for separator, text in zip(separators, texts[1:])
             )
+            nonlocal exact_source_safe
             result = self.engine.anonymize(document_boundary + combined + document_boundary)
+            # Use explicit irreversible flags, not textual round-tripping:
+            # reversible aliases and structural separators may be normalized.
+            exact_source_safe = not any(part.get("secret") for part in result.parts)
             result_holder.append(result)
             transformed = result.text.removeprefix(document_boundary).removesuffix(document_boundary)
             return re.split(r"\ufdd0(?:[\ufdd1\ufdd2]\ufdd0)?|\ufdd3", transformed)
@@ -300,9 +351,10 @@ class DocxProcessor:
                 "content_types": [],
             }
         anonymized_bytes = output.read_bytes()
-        package_archive["exact_source_b64"] = base64.b64encode(original_hash).decode("ascii")
-        package_archive["exact_source_sha256"] = hashlib.sha256(original_hash).hexdigest()
-        package_archive["exact_anonymized_sha256"] = hashlib.sha256(anonymized_bytes).hexdigest()
+        if exact_source_safe and _source_archive_is_reversible(original_hash, self.engine):
+            package_archive["exact_source_b64"] = base64.b64encode(original_hash).decode("ascii")
+            package_archive["exact_source_sha256"] = hashlib.sha256(original_hash).hexdigest()
+            package_archive["exact_anonymized_sha256"] = hashlib.sha256(anonymized_bytes).hexdigest()
         result = result_holder[0]
         warnings = list(result.warnings) + warnings
         return DocumentResult(result.mapping, result.candidates, warnings,

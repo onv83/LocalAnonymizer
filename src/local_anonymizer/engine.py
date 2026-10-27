@@ -802,9 +802,9 @@ class Anonymizer:
         add(r"-----BEGIN [A-Z ]{1,48}-----.*?-----END [A-Z ]{1,48}-----", "SECRET", 110,
             flags=re.I | re.S, irreversible=True, fixed="(удалено: ключ/сертификат)")
         secret_word = r"(?:парол(?:ь|я|ю|ем|и)|password|passwd|pwd|passphrase|секрет(?:ная фраза)?|secret|token|токен|api[ _-]?key|apikey|access[ _-]?key|private[ _-]?key|client[ _-]?secret|ключ доступа)"
-        quoted_or_token = r'(?:"[^"\r\n\ufdd0]+"|\'[^\'\r\n\ufdd0]+\'|«[^»\r\n\ufdd0]+»|[^\s,;"\'«»\ufdd0]+)'
-        add(rf"\b{secret_word}\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1, irreversible=True, fixed="(удалено)")
-        add(rf"\b[A-Za-z_][A-Za-z0-9_]*(?:PASS|PASSWD|PASSWORD|PWD|PSWD|PSW|SECRET|TOKEN|APIKEY|API_KEY|ACCESSKEY|ACCESS_KEY|PRIVATE_KEY|CRED|CREDS|AUTH)[A-Za-z0-9_]*\s*[:=]\s*({quoted_or_token})", "SECRET", 109, group=1,
+        quoted_or_token = r'(?:"(?:\\[^\r\n\ufdd0]|[^"\\\r\n\ufdd0])+"|\'(?:\\[^\r\n\ufdd0]|[^\'\\\r\n\ufdd0])+\'|«[^»\r\n\ufdd0]+»|[^\s,;"\'«»\ufdd0]+)'
+        add(rf"\b{secret_word}[\"']?\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1, irreversible=True, fixed="(удалено)")
+        add(rf"\b[A-Za-z_][A-Za-z0-9_]*(?:PASS|PASSWD|PASSWORD|PWD|PSWD|PSW|SECRET|TOKEN|APIKEY|API_KEY|ACCESSKEY|ACCESS_KEY|PRIVATE_KEY|CRED|CREDS|AUTH)[A-Za-z0-9_]*[\"']?\s*[:=]\s*({quoted_or_token})", "SECRET", 109, group=1,
             validate=lambda m: not (re.search(r"TOKENS\s*[:=]", m.group(0), re.I) and m.group(1).rstrip(";,)").isdigit()), irreversible=True, fixed="(удалено)")
         add(r"\b(?:парол[а-яё]*|password|пасс[а-яё]*|pwd|секретн[а-яё]+\s+фраз[а-яё]+|кодов[а-яё]+\s+слов[а-яё]*)\s+(?:(?:от|для|к|на)\s+)?(?:[а-яё]+\s+){0,3}((?=[^\s]*[\d!@#$%^&*_+])[A-Za-zА-Яа-яЁё0-9!@#$%^&*_+.\-]{4,})", "SECRET", 108, group=1, irreversible=True, fixed="(удалено)")
         add(r"(?<![\w./@-])[a-z][a-z0-9_-]{2,20}:[A-Za-z0-9!@#$%^&*_+.\-]{4,40}(?![\w/@])", "SECRET", 107,
@@ -816,7 +816,9 @@ class Anonymizer:
                     and _valid_port(m.group().split(":", 1)[1])
                 )
             ), irreversible=True, fixed="(удалено: учётные данные)")
-        add(r"\b(?:Bearer|Basic)\s+([A-Za-z0-9+/=_.~-]{8,})", "SECRET", 106, group=1,
+        add(r"\bBearer\s+([A-Za-z0-9+/=_.~-]+)", "SECRET", 106, group=1,
+            irreversible=True, fixed="(удалено)")
+        add(r"\bBasic\s+([A-Za-z0-9+/=_.~-]{8,})", "SECRET", 106, group=1,
             validate=lambda m: bool(re.search(r"[\d=.]", m.group(1)) or (len(m.group(1)) >= 12 and re.search(r"[a-z]", m.group(1)) and re.search(r"[A-Z]", m.group(1)))), irreversible=True, fixed="(удалено)")
         add(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]{4,})?", "SECRET", 106, irreversible=True, fixed="(удалено: токен)")
         add(r"\b(?:ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{15,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|rk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ya29\.[A-Za-z0-9_-]{20,})\b", "SECRET", 106, irreversible=True, fixed="(удалено: токен)")
@@ -2670,6 +2672,7 @@ class Anonymizer:
         warnings = self._warnings(source)
         counts: dict[str, int] = {}
         counters: dict[str, int] = {}
+        reserved_markers = {m.group() for m in literal_markers}
         mapping: dict[str, str] = {}
         by_key: dict[tuple[str, str], str] = {}
         for m in literal_markers:
@@ -2705,8 +2708,17 @@ class Anonymizer:
                             if self.compact_markers
                             else item.category
                         )
-                        counters[marker_label] = counters.get(marker_label, 0) + 1
-                        replacement = f"[{marker_label}-{counters[marker_label]}]"
+                        # Keep the shared 1..9-digit parser contract. On overflow,
+                        # wrap into free slots, never reusing a source literal or
+                        # a marker already allocated in this operation.
+                        for _ in range(min(len(reserved_markers) + 1, 999999999)):
+                            counters[marker_label] = counters.get(marker_label, 0) % 999999999 + 1
+                            replacement = f"[{marker_label}-{counters[marker_label]}]"
+                            if replacement not in reserved_markers:
+                                break
+                        else:
+                            raise ValueError("Reversible marker namespace exhausted")
+                        reserved_markers.add(replacement)
                         by_key[key] = replacement
                         mapping[replacement] = item.value
                         legend.append({"ph": replacement, "orig": item.value, "cat": item.category})
