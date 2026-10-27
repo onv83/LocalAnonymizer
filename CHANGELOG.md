@@ -17,6 +17,17 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Изолированы параллельные предпросмотры, запись настроек и временные файлы восстановления; усилена согласованность экспорта пары документов.
 - Добавлены регрессионные проверки и обязательное подтверждение новых правил в проверке готового пакета.
 
+### English
+
+- Restoring Word-edited documents now accepts narrowly validated view-zoom settings; unknown structures remain blocked.
+- Both interfaces report restore failures without exposing internal paths instead of leaving a pending-looking status.
+- Hardened hidden-data checks for XLSX and ODT; unsupported or sensitive hidden structures block publication instead of silently retaining source values.
+- XLSX text beginning with `=` remains text, and cached formula results are cleared.
+- Irreversibly removed secrets are excluded from exact DOCX/ODT recovery archives. Documents containing these removals intentionally do not restore byte-for-byte to their original source; reversible values and supported formatting remain recoverable.
+- Fixed quoted JSON secret fields, explicit Bearer tokens and marker-counter boundaries.
+- Isolated concurrent previews, settings writes and restore scratch files; strengthened paired-export consistency.
+- Added regression coverage and a mandatory audit proof in packaged-build verification.
+
 ## [0.2.9] — 2026-10-25
 
 ### English

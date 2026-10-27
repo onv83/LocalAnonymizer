@@ -18,20 +18,20 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ## Ready-to-use Windows build
 
-1. Откройте [страницу выпуска `v0.2.10`](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10). После публикации скачайте с неё архив `LocalAnonymizer-0.2.10-windows-x64.zip`.
+1. Download `LocalAnonymizer-0.2.10-windows-x64.zip` from the [v0.2.10 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10) once it is published.
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Состояние версии:** `v0.2.10` готовится к публикации. Готовые файлы появятся на странице выпуска после завершения проверок. Пакеты Linux и macOS пока не публикуются и не объявляются поддерживаемыми.
+> **Version status:** `v0.2.10` is being prepared. Verified files will appear on the release page after acceptance checks. Native Linux and macOS packages are not published or declared supported yet.
 
-## Что нового в `v0.2.10`
+## What is new in `v0.2.10`
 
-- Исправлено восстановление документов после изменения масштаба просмотра в Word; при отказе интерфейс показывает понятное сообщение без внутренних путей.
-- Усилены проверки скрытых данных XLSX и ODT. Необратимо удалённые секреты не включаются в точный архив восстановления DOCX/ODT.
-- Исправлено распознавание секретов и границ маркеров; изолированы параллельные предпросмотры и временные файлы, усилена согласованность экспорта пары.
-- Подробности приведены в [журнале изменений](CHANGELOG.md#0210--2026-10-27).
+- Restoring Word-edited documents now accepts narrowly validated view-zoom settings. Restore failures display a clear message without internal paths.
+- Hardened hidden-data checks for XLSX and ODT. Irreversibly removed secrets are excluded from exact DOCX/ODT recovery archives.
+- Fixed secret detection and marker boundaries, isolated concurrent previews and temporary files, and strengthened paired-export consistency.
+- See the [changelog](CHANGELOG.md#0210--2026-10-27) for details.
 
 ## What is new in `v0.2.9`
 
