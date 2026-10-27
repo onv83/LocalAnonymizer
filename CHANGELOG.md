@@ -4,30 +4,18 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain the verified Windows packages and matching checksums.
 
-## [Unreleased]
+## [0.2.10] — 2026-10-27
 
-### Русский
+### Исправления и безопасность
 
 - Исправлено восстановление после сохранения документа в Word с изменённым масштабом просмотра; допускаются только проверенные настройки масштаба, неизвестные конструкции по-прежнему блокируются.
 - При отказе восстановления интерфейс на русском и английском показывает явное сообщение без внутренних путей вместо незавершённого статуса.
-
 - Усилены проверки скрытых данных XLSX и ODT. Неподдерживаемые либо чувствительные скрытые структуры блокируют выдачу готового результата вместо молчаливого сохранения исходных данных.
 - Текстовые ячейки XLSX, начинающиеся с `=`, остаются текстом; кэшированные результаты формул очищаются.
 - Необратимо удалённые секреты исключаются из точного архива восстановления DOCX/ODT. Для документов с такими удалениями побайтное совпадение с исходником намеренно не обещается; обратимые значения и поддерживаемое оформление сохраняются.
 - Исправлено распознавание секретов в полях JSON и явно обозначенных токенов Bearer, а также выделение маркеров на границе счётчика.
 - Изолированы параллельные предпросмотры, запись настроек и временные файлы восстановления; усилена согласованность экспорта пары документов.
 - Добавлены регрессионные проверки и обязательное подтверждение новых правил в проверке готового пакета.
-
-### English
-
-- Restoring Word-edited documents now accepts narrowly validated view-zoom settings; unknown structures remain blocked.
-- Both interfaces report restore failures without exposing internal paths instead of leaving a pending-looking status.
-- Hardened hidden-data checks for XLSX and ODT; unsupported or sensitive hidden structures block publication instead of silently retaining source values.
-- XLSX text beginning with `=` remains text, and cached formula results are cleared.
-- Irreversibly removed secrets are excluded from exact DOCX/ODT recovery archives. Documents containing these removals intentionally do not restore byte-for-byte to their original source; reversible values and supported formatting remain recoverable.
-- Fixed quoted JSON secret fields, explicit Bearer tokens and marker-counter boundaries.
-- Isolated concurrent previews, settings writes and restore scratch files; strengthened paired-export consistency.
-- Added regression coverage and a mandatory audit proof in packaged-build verification.
 
 ## [0.2.9] — 2026-10-25
 
