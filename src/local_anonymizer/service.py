@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from collections.abc import Callable
@@ -181,6 +182,49 @@ def _verify_artifact_stamp(path: Path, document_id: str, operation_id: str) -> s
     return None
 
 
+@contextmanager
+def _private_scratch(parent: Path, suffix: str):
+    """Own all scratch names inside an exclusively created private directory."""
+    with tempfile.TemporaryDirectory(prefix=".local-anonymizer-", dir=parent) as folder:
+        yield Path(folder) / ("payload" + suffix)
+
+
+_DESTINATION_LOCK_TIMEOUT = 10.0
+
+
+@contextmanager
+def _destination_locks(*paths: Path):
+    """Serialize cooperating publishers, including separate service processes.
+
+    Exclusive directories are never reclaimed as stale: an interrupted writer
+    leaves a fail-closed lock requiring manual investigation. Acquire both path
+    identities in a global order and hold them through backup and rollback.
+    """
+    identities = sorted({os.path.normcase(str(path.resolve())) for path in paths})
+    acquired = []
+    deadline = time.monotonic() + _DESTINATION_LOCK_TIMEOUT
+    try:
+        for identity in identities:
+            digest = hashlib.sha256(os.fsencode(identity)).hexdigest()
+            lock = Path(identity).parent / (".local-anonymizer-lock-" + digest)
+            while True:
+                try:
+                    lock.mkdir(mode=0o700)
+                except FileExistsError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Destination publication is busy") from None
+                    time.sleep(0.025)
+                else:
+                    acquired.append(lock)
+                    break
+        yield
+    finally:
+        for lock in reversed(acquired):
+            # Only remove directories this call exclusively created; never
+            # unlink an existing file or recursively delete a lock's contents.
+            lock.rmdir()
+
+
 class AnonymizerService:
     def __init__(self, root: str | Path | None = None, *, storage: Storage | None = None,
                  legacy_document_converter: Callable[[Path, Path], Path] | None = None):
@@ -350,18 +394,19 @@ class AnonymizerService:
 
     def restore(self, document_id: str, edited: str | Path,
                 destination: str | Path | None = None) -> dict:
-        row = self.storage.get_document(document_id)
-        operation_id = row.get("operation_id")
-        if not operation_id:
-            raise RuntimeError("Документ ещё не обезличен")
-        mapping, package_archive = self.storage.load_restore_bundle(document_id, operation_id)
-        edited = Path(edited)
-        output = (Path(destination) if destination is not None else
-                  self.storage.documents_dir / document_id /
-                  (edited.stem + ".restored" + edited.suffix.lower()))
-        return self._restore_with_bundle(
-            edited, output, document_id, operation_id, mapping, package_archive
-        )
+        with self._document_lock(document_id):
+            row = self.storage.get_document(document_id)
+            operation_id = row.get("operation_id")
+            if not operation_id:
+                raise RuntimeError("Документ ещё не обезличен")
+            mapping, package_archive = self.storage.load_restore_bundle(document_id, operation_id)
+            edited = Path(edited)
+            output = (Path(destination) if destination is not None else
+                      self.storage.documents_dir / document_id /
+                      (edited.stem + ".restored" + edited.suffix.lower()))
+            return self._restore_with_bundle(
+                edited, output, document_id, operation_id, mapping, package_archive
+            )
 
     def _restore_with_bundle(self, edited: Path, output: Path, document_id: str,
                              operation_id: str, mapping: dict[str, str],
@@ -381,23 +426,22 @@ class AnonymizerService:
                 target.flush()
                 os.fsync(target.fileno())
             text_body = _verify_artifact_stamp(snapshot, document_id, operation_id)
-            if suffix == ".docx":
-                unknown = DocxProcessor().restore(
-                    snapshot, output, mapping, package_archive=package_archive
-                )
-            elif suffix == ".odt":
-                unknown = OdtProcessor().restore(
-                    snapshot, output, mapping, package_archive=package_archive
-                )
-            elif suffix == ".xlsx":
-                unknown = XlsxProcessor().restore(snapshot, output, mapping)
-            else:
-                unstamped = output.with_name(f".{output.stem}.validated{suffix}")
-                try:
-                    unstamped.write_text(text_body or "", encoding="utf-8")
-                    unknown = restore_text_file(unstamped, output, mapping)
-                finally:
-                    unstamped.unlink(missing_ok=True)
+            with _private_scratch(output.parent, suffix) as staged:
+                if suffix == ".docx":
+                    unknown = DocxProcessor().restore(
+                        snapshot, staged, mapping, package_archive=package_archive
+                    )
+                elif suffix == ".odt":
+                    unknown = OdtProcessor().restore(
+                        snapshot, staged, mapping, package_archive=package_archive
+                    )
+                elif suffix == ".xlsx":
+                    unknown = XlsxProcessor().restore(snapshot, staged, mapping)
+                else:
+                    with _private_scratch(self.storage.temp_dir, suffix) as unstamped:
+                        unstamped.write_text(text_body or "", encoding="utf-8")
+                        unknown = restore_text_file(unstamped, staged, mapping)
+                os.replace(staged, output)
         finally:
             snapshot.unlink(missing_ok=True)
         return {"output_path": str(output), "unknown_markers": unknown}
@@ -462,21 +506,34 @@ class AnonymizerService:
 
     def export_pair(self, document_id: str, destination: str | Path,
                     *, confirmation: bool = False) -> dict[str, Path]:
-        row = self.storage.get_document(document_id)
-        anonymized = Path(destination)
-        recovery = anonymized.with_name(self._recovery_name(anonymized))
-        if anonymized.resolve() == recovery.resolve():
-            raise ValueError("Имена файлов пары должны различаться")
-        recovery.parent.mkdir(parents=True, exist_ok=True)
-        temporary = recovery.with_name("." + recovery.name + ".tmp")
-        try:
-            temporary.write_bytes(self._recovery_payload(row, anonymized.name))
-            self.export_anonymized(document_id, anonymized, confirmation=confirmation)
-            os.replace(temporary, recovery)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
-        return {"anonymized_path": anonymized, "recovery_path": recovery}
+        with self._document_lock(document_id):
+            row = self.storage.get_document(document_id)
+            anonymized = Path(destination)
+            recovery = anonymized.with_name(self._recovery_name(anonymized))
+            if anonymized.resolve() == recovery.resolve():
+                raise ValueError("Имена файлов пары должны различаться")
+            recovery.parent.mkdir(parents=True, exist_ok=True)
+            with (_destination_locks(anonymized, recovery),
+                  _private_scratch(recovery.parent, ".larecovery") as temporary):
+                temporary.write_bytes(self._recovery_payload(row, anonymized.name))
+                staged = temporary.with_name("anonymized" + anonymized.suffix)
+                self._export_anonymized_locked(row, staged, confirmation=confirmation)
+                backup = temporary.with_name("previous" + anonymized.suffix)
+                had_previous = anonymized.exists()
+                if had_previous:
+                    shutil.copy2(anonymized, backup)
+                os.replace(staged, anonymized)
+                try:
+                    os.replace(temporary, recovery)
+                except Exception:
+                    # A two-file publication cannot be filesystem-atomic. Roll
+                    # back the first rename if publishing its companion fails.
+                    if had_previous:
+                        os.replace(backup, anonymized)
+                    else:
+                        anonymized.unlink(missing_ok=True)
+                    raise
+            return {"anonymized_path": anonymized, "recovery_path": recovery}
 
     def find_recovery_companion(self, anonymized: str | Path) -> Path:
         anonymized = Path(anonymized)
@@ -527,7 +584,12 @@ class AnonymizerService:
 
     def export_anonymized(self, document_id: str, destination: str | Path,
                           *, confirmation: bool = False) -> Path:
-        row = self.storage.get_document(document_id)
+        with self._document_lock(document_id):
+            row = self.storage.get_document(document_id)
+            return self._export_anonymized_locked(row, destination, confirmation=confirmation)
+
+    def _export_anonymized_locked(self, row: dict, destination: str | Path,
+                                   *, confirmation: bool = False) -> Path:
         status = row["status"]
         if status == "Требуется ручная проверка" and not confirmation:
             raise PermissionError("Экспорт требует явного подтверждения ручной проверки")
@@ -536,58 +598,59 @@ class AnonymizerService:
         source = Path(row["output_path"])
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        with _private_scratch(destination.parent, destination.suffix) as staged:
+            shutil.copy2(source, staged)
+            os.replace(staged, destination)
         return destination
 
     def export_mapping(self, document_id: str, destination: str | Path) -> Path:
-        row = self.storage.get_document(document_id)
-        mapping = self.storage.load_mapping(document_id, row["operation_id"])
-        return export_mapping_csv(mapping, destination)
+        with self._document_lock(document_id):
+            row = self.storage.get_document(document_id)
+            mapping = self.storage.load_mapping(document_id, row["operation_id"])
+            return export_mapping_csv(mapping, destination)
 
     def export_all_ready(self, destination: str | Path) -> Path:
         """Export every ready document as an independently restorable pair."""
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temp = destination.with_name("." + destination.name + ".tmp")
         used: set[str] = set()
-        try:
+        with _private_scratch(destination.parent, ".zip") as temp:
             with ZipFile(temp, "w", compression=ZIP_DEFLATED) as archive:
-                for row in self.storage.list_documents():
-                    if row.get("status") != "Готов" or not row.get("output_path"):
-                        continue
-                    try:
-                        output = self.storage._owned(row["output_path"])
-                    except ValueError:
-                        continue
-                    if not output.is_file():
-                        continue
-                    original = Path(row["display_name"])
-                    pair_stem, index = original.stem, 2
-                    anonymous_name = f"{pair_stem} — обезличенный{output.suffix.lower()}"
-                    recovery_name = f"{pair_stem} — информация для восстановления.larecovery"
-                    while (anonymous_name.casefold() in used
-                           or recovery_name.casefold() in used):
-                        pair_stem = f"{original.stem}-{index}"
+                for listed in self.storage.list_documents():
+                    with self._document_lock(listed["id"]):
+                        row = self.storage.get_document(listed["id"])
+                        if row.get("status") != "Готов" or not row.get("output_path"):
+                            continue
+                        try:
+                            output = self.storage._owned(row["output_path"])
+                        except ValueError:
+                            continue
+                        if not output.is_file():
+                            continue
+                        original = Path(row["display_name"])
+                        pair_stem, index = original.stem, 2
                         anonymous_name = f"{pair_stem} — обезличенный{output.suffix.lower()}"
                         recovery_name = f"{pair_stem} — информация для восстановления.larecovery"
-                        index += 1
-                    used.update({anonymous_name.casefold(), recovery_name.casefold()})
-                    archive.write(output, anonymous_name)
-                    archive.writestr(
-                        recovery_name,
-                        self._recovery_payload(row, anonymous_name),
-                    )
+                        while (anonymous_name.casefold() in used
+                               or recovery_name.casefold() in used):
+                            pair_stem = f"{original.stem}-{index}"
+                            anonymous_name = f"{pair_stem} — обезличенный{output.suffix.lower()}"
+                            recovery_name = f"{pair_stem} — информация для восстановления.larecovery"
+                            index += 1
+                        used.update({anonymous_name.casefold(), recovery_name.casefold()})
+                        archive.write(output, anonymous_name)
+                        archive.writestr(
+                            recovery_name,
+                            self._recovery_payload(row, anonymous_name),
+                        )
             temp.replace(destination)
-        finally:
-            temp.unlink(missing_ok=True)
         return destination
 
 
 def export_mapping_csv(mapping: dict[str, str], destination: str | Path) -> Path:
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temp = destination.with_name("." + destination.name + ".tmp")
-    try:
+    with _private_scratch(destination.parent, ".csv") as temp:
         with temp.open("w", encoding="utf-8-sig", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(["Маркер", "Исходное значение"])
@@ -597,6 +660,4 @@ def export_mapping_csv(mapping: dict[str, str], destination: str | Path) -> Path
                 writer.writerow([marker, value])
             stream.flush()
         temp.replace(destination)
-    finally:
-        temp.unlink(missing_ok=True)
     return destination

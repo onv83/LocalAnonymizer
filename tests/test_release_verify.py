@@ -10,7 +10,7 @@ from scripts import release_verify as rv
 from scripts.release_verify import build_acceptance_source
 
 
-def test_release_acceptance_document_contains_visible_graphic_and_round_trips_exactly(tmp_path):
+def test_release_acceptance_document_preserves_graphics_without_restoring_secrets(tmp_path):
     source = tmp_path / "acceptance-source.docx"
     anonymized = tmp_path / "acceptance-anonymized.docx"
     restored = tmp_path / "acceptance-restored.docx"
@@ -61,7 +61,9 @@ def test_release_acceptance_document_contains_visible_graphic_and_round_trips_ex
         package_archive=result.package_archive,
     )
 
-    assert restored.read_bytes() == source.read_bytes()
+    rv.verify_restored_docx(source, restored)
+    with pytest.raises(rv.ReleaseVerificationError, match="irreversible"):
+        rv.verify_restored_docx(source, source)
     with ZipFile(restored) as package:
         restored_images = [
             package.read(name)

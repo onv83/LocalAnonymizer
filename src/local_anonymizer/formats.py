@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 
 from .documents import DocumentResult, _preflight_docx_package
 from .engine import Anonymizer, MARKER_PATTERN, warnings_require_review
-from .xlsx_package import rewrite_xlsx_package, xlsx_sheet_parts
+from .xlsx_package import rewrite_xlsx_package, xlsx_sheet_parts, xlsx_style_strings
 
 
 def _read_text(path: Path) -> str:
@@ -92,7 +92,7 @@ def _dangerous_formula(formula: str) -> bool:
     # Ignore quoted string values while inspecting executable formula syntax.
     code = _formula_with_replacements(formula, [(start, end, "") for start, end, _ in _formula_literals(formula)])
     return bool(
-        re.search(r"(?i)(?:^|[^A-Z0-9_.])WEBSERVICE\s*\(", code)
+        re.search(r"(?i)(?:^|[^A-Z0-9_.])(?:_xlfn\.)?WEBSERVICE\s*\(", code)
         or re.search(r"\|[^!\r\n]*!", code)
         or re.search(r"\[[^\]\r\n]+\][^!\r\n]*!", code)
     )
@@ -118,7 +118,7 @@ class XlsxProcessor:
                     if cell.__class__.__name__ != "MergedCell":
                         originals[(sheet_parts[ws.title], cell.coordinate)] = cell.value
                     value = cell.value
-                    if isinstance(value, str) and value.startswith("="):
+                    if cell.data_type == "f" and isinstance(value, str):
                         if _dangerous_formula(value):
                             cell.value = "[BLOCKED-FORMULA]"
                             warnings.append({
@@ -196,6 +196,13 @@ class XlsxProcessor:
             if cell.__class__.__name__ != "MergedCell"
             and cell.value != originals.get((sheet_parts[ws.title], cell.coordinate))
         }
+        # Renaming sheets also requires rewriting all reference-bearing surfaces.
+        # Until that operation is supported, do not publish sensitive sheet names.
+        for title in sheet_parts:
+            title_result = self.engine.anonymize(title)
+            if title_result.text != title or warnings_require_review(title_result.warnings):
+                raise ValueError("Чувствительное имя листа XLSX: публикация запрещена")
+        self._validate_style_strings(source)
         rewrite_xlsx_package(source, output, changes)
         warnings = list(result.warnings) + warnings
         return DocumentResult(result.mapping, result.candidates, warnings,
@@ -225,7 +232,7 @@ class XlsxProcessor:
                         for marker in re.findall(MARKER_PATTERN, value):
                             if marker not in mapping:
                                 unknown.add(marker)
-                        if value.startswith("="):
+                        if cell.data_type == "f":
                             replacements = [
                                 (start, end, re.sub(MARKER_PATTERN, lambda m: mapping.get(m.group(), m.group()), literal))
                                 for start, end, literal in _formula_literals(value)
@@ -243,8 +250,17 @@ class XlsxProcessor:
             if cell.__class__.__name__ != "MergedCell"
             and cell.value != originals.get((sheet_parts[ws.title], cell.coordinate))
         }
+        self._validate_style_strings(source)
         rewrite_xlsx_package(source, output, changes)
         return sorted(unknown)
+
+    def _validate_style_strings(self, source: Path) -> None:
+        # Do not rename style identifiers or format strings: references and
+        # rendering depend on them. Reject detector findings before publication.
+        for value in xlsx_style_strings(source):
+            checked = self.engine.anonymize(value)
+            if checked.text != value or warnings_require_review(checked.warnings):
+                raise ValueError("Чувствительное значение стиля XLSX: публикация запрещена")
 
     @staticmethod
     def _sanitize_hidden_surfaces(wb) -> list[dict[str, str]]:
@@ -265,14 +281,9 @@ class XlsxProcessor:
                     if section.text:
                         section.text = None
                         found_header_footer = True
-            for validation in ws.data_validations.dataValidation:
-                values = (validation.prompt, validation.promptTitle, validation.error, validation.errorTitle)
-                if any(values):
-                    validation.prompt = None
-                    validation.promptTitle = None
-                    validation.error = None
-                    validation.errorTitle = None
-                    found_validation = True
+            if ws.data_validations.dataValidation:
+                found_validation = True
+                ws.data_validations.dataValidation.clear()
         categories = (
             (found_hyperlink, "XLSX_HYPERLINK", "Цели гиперссылок удалены; требуется ручная проверка."),
             (found_header_footer, "XLSX_HEADER_FOOTER", "Колонтитулы очищены; требуется ручная проверка."),

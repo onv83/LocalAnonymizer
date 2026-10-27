@@ -26,6 +26,7 @@ def test_packaged_smoke_rejects_a_stale_executable_without_port_gate():
             "abbreviation_unicode_ok": True,
             "domain_toc_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
         },
     }
 
@@ -66,6 +67,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "split_service_account_ok": True,
             "directory_identifiers_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
             "domain_inventory_subject_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
@@ -97,7 +99,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
     "underscored_dns_fqdn_ok",
     "domain_inventory_subject_ok", "domain_inventory_row_ok",
     "device_inventory_identifier_ok", "service_account_ok", "split_service_account_ok",
-    "directory_identifiers_ok", "address_review_parity_ok",
+    "directory_identifiers_ok", "address_review_parity_ok", "audit_secret_marker_ok",
 ))
 def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
     required = (
@@ -116,7 +118,7 @@ def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
         "underscored_dns_fqdn_ok", "service_account_ok",
         "split_service_account_ok", "directory_identifiers_ok",
         "graphics_roundtrip_ok", "domain_inventory_subject_ok", "domain_inventory_row_ok",
-        "device_inventory_identifier_ok",
+        "device_inventory_identifier_ok", "audit_secret_marker_ok",
     )
     engine = {key: True for key in required if key != missing}
     engine.update({
@@ -140,6 +142,7 @@ def test_packaged_smoke_rejects_stale_build_without_address_inventory_proof():
             "domain_toc_ok": True,
             "port_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
         },
     }
 
@@ -159,6 +162,7 @@ def test_packaged_smoke_rejects_stale_build_without_complete_postal_address_proo
             "port_ok": True,
             "address_inventory_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
             "git_diff_sha256": "c" * 64,
@@ -185,6 +189,7 @@ def test_packaged_smoke_rejects_stale_build_without_contextual_address_proof():
             "server_inventory_name_ok": True,
             "abbreviation_single_two_letter_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
             "git_diff_sha256": "c" * 64,
@@ -218,6 +223,7 @@ def test_packaged_smoke_rejects_stale_build_without_server_inventory_name_proof(
             "dotted_version_compound_abbreviation_ok": True,
             "contextual_location_table_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
             "git_diff_sha256": "c" * 64,
@@ -261,6 +267,7 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "split_service_account_ok": True,
             "directory_identifiers_ok": True,
             "graphics_roundtrip_ok": True,
+            "audit_secret_marker_ok": True,
             "source_snapshot_sha256": "a" * 64,
             "git_revision": "b" * 40,
             "git_diff_sha256": "c" * 64,

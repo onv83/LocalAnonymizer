@@ -7,6 +7,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -807,7 +809,26 @@ def _single_two_letter_abbreviation_self_test(anonymizer=None) -> bool:
     )
 
 
+def _audit_secret_marker_self_test() -> bool:
+    import re
+
+    secret = "syntheticlowercasetoken"
+    for sample in (json.dumps({"password": secret}), "Authorization: Bearer " + secret):
+        result = Anonymizer().anonymize(sample)
+        if secret in result.text or any(secret in value for value in result.mapping.values()):
+            return False
+    source = "[ПОЧТА-999999999] audit.person@example.test"
+    result = Anonymizer().anonymize(source)
+    if not result.mapping or any(re.fullmatch(MARKER_PATTERN, key) is None for key in result.mapping):
+        return False
+    restored = re.sub(MARKER_PATTERN, lambda match: result.mapping.get(match.group(), match.group()), result.text)
+    return restored == source and "audit.person@example.test" not in result.text
+
+
 class AppApi:
+    _PREVIEW_TTL_SECONDS = 120
+    _PREVIEW_CACHE_LIMIT = 8
+
     def __init__(
         self,
         root=None,
@@ -821,7 +842,8 @@ class AppApi:
         self._clipboard_reader = clipboard_reader
         self._window = None
         self._restore_pair: tuple[Path, Path] | None = None
-        self._ui_preview: dict | None = None
+        self._ui_previews: dict[str, dict] = {}
+        self._preview_lock = threading.RLock()
         if not self.service.storage.connection.execute("select 1 from profiles where name='Общий'").fetchone():
             self.service.storage.save_profile("Общий", {}, [], paranoid=False)
 
@@ -849,21 +871,38 @@ class AppApi:
         clipboard.write_text(text)
         return {"ok": True}
 
+    # Shared across API instances: WebView bridge calls run on worker threads.
+    _settings_lock = threading.RLock()
+
     def _read_ui_settings(self) -> dict:
-        path = self.service.storage.root / "ui-settings.json"
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
-            return {}
-        return value if isinstance(value, dict) else {}
+        with self._settings_lock:
+            path = self.service.storage.root / "ui-settings.json"
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                return {}
+            return value if isinstance(value, dict) else {}
 
     def _write_ui_settings(self, **changes) -> None:
-        path = self.service.storage.root / "ui-settings.json"
-        settings = self._read_ui_settings()
-        settings.update(changes)
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(settings, ensure_ascii=False), encoding="utf-8")
-        temporary.replace(path)
+        with self._settings_lock:
+            path = self.service.storage.root / "ui-settings.json"
+            settings = self._read_ui_settings()
+            settings.update(changes)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=path.parent,
+                    prefix=".ui-settings-", suffix=".tmp", delete=False,
+                ) as stream:
+                    temporary = Path(stream.name)
+                    json.dump(settings, stream, ensure_ascii=False)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # Close before replacement (required on Windows).
+                temporary.replace(path)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
 
     def get_theme(self) -> str | None:
         theme = self._read_ui_settings().get("theme")
@@ -908,8 +947,7 @@ class AppApi:
         rich_html = preview.pop("rich_html", "")
         if not isinstance(text, str) or not isinstance(rich_html, str):
             raise TypeError("Некорректный предпросмотр документа")
-        token = os.urandom(16).hex()
-        self._ui_preview = {"token": token, "text": text, "rich_html": rich_html}
+        token = self._cache_preview(text, rich_html)
         return {
             **preview,
             "token": token,
@@ -923,26 +961,47 @@ class AppApi:
         rich_html = preview.pop("rich_html", "")
         if not isinstance(rich_html, str):
             raise TypeError("Некорректный форматированный предпросмотр")
-        token = os.urandom(16).hex()
-        self._ui_preview = {"token": token, "text": "", "rich_html": rich_html}
+        token = self._cache_preview("", rich_html)
         return {**preview, "token": token, "rich_html_length": len(rich_html)}
 
+    def _cache_preview(self, text: str, rich_html: str) -> str:
+        token = os.urandom(16).hex()
+        with self._preview_lock:
+            for old_token, cached in list(self._ui_previews.items()):
+                if time.monotonic() >= cached["expires"]:
+                    self.finish_document_preview(old_token)
+            while len(self._ui_previews) >= self._PREVIEW_CACHE_LIMIT:
+                self.finish_document_preview(next(iter(self._ui_previews)))
+            timer = threading.Timer(
+                self._PREVIEW_TTL_SECONDS, self.finish_document_preview, args=(token,)
+            )
+            timer.daemon = True
+            self._ui_previews[token] = {
+                "text": text, "rich_html": rich_html,
+                "expires": time.monotonic() + self._PREVIEW_TTL_SECONDS,
+                "timer": timer,
+            }
+            timer.start()
+        return token
+
     def read_document_preview_chunk(self, token: str, field: str, offset: int) -> dict:
-        cached = self._ui_preview
-        if cached is None or token != cached["token"]:
-            raise ValueError("Предпросмотр устарел")
         if field not in {"text", "rich_html"}:
             raise ValueError("Неизвестная часть предпросмотра")
         if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
             raise ValueError("Некорректное смещение предпросмотра")
-        value = cached[field]
-        chunk_size = 16_384
-        chunk = value[offset:offset + chunk_size]
+        with self._preview_lock:
+            cached = self._ui_previews.get(token)
+            if cached is None or time.monotonic() >= cached["expires"]:
+                self.finish_document_preview(token)
+                raise ValueError("Предпросмотр устарел")
+            chunk = cached[field][offset:offset + 16_384]
         return {"chunk": chunk, "next_offset": offset + len(chunk)}
 
     def finish_document_preview(self, token: str) -> dict:
-        if self._ui_preview is not None and token == self._ui_preview["token"]:
-            self._ui_preview = None
+        with self._preview_lock:
+            cached = self._ui_previews.pop(token, None)
+            if cached is not None:
+                cached["timer"].cancel()
         return {"ok": True}
 
     def preview_anonymized_document(self, document_id: str, paranoid=False, rules="", whitelist="", disabled=None,
@@ -964,8 +1023,7 @@ class AppApi:
         rich_html = preview.pop("rich_html", "")
         if not isinstance(rich_html, str):
             raise TypeError("Некорректный форматированный предпросмотр")
-        token = os.urandom(16).hex()
-        self._ui_preview = {"token": token, "text": "", "rich_html": rich_html}
+        token = self._cache_preview("", rich_html)
         return {**preview, "token": token, "rich_html_length": len(rich_html)}
 
     def import_paths(self, paths: list[str]) -> dict:
@@ -1290,6 +1348,7 @@ class AppApi:
         service_account_ok = _service_account_self_test()
         split_service_account_ok = _split_service_account_self_test()
         directory_identifiers_ok = _directory_identifiers_self_test()
+        audit_secret_marker_ok = _audit_secret_marker_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
         return {
             "ok": (
@@ -1324,6 +1383,7 @@ class AppApi:
                 and service_account_ok
                 and split_service_account_ok
                 and directory_identifiers_ok
+                and audit_secret_marker_ok
                 and graphics_roundtrip_ok
             ),
             "vm_node_ok": vm_node_ok,
@@ -1362,6 +1422,7 @@ class AppApi:
             "service_account_ok": service_account_ok,
             "split_service_account_ok": split_service_account_ok,
             "directory_identifiers_ok": directory_identifiers_ok,
+            "audit_secret_marker_ok": audit_secret_marker_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,
             "source_snapshot_sha256": BUILD_SOURCE_SNAPSHOT_SHA256,
             "git_revision": BUILD_GIT_REVISION,

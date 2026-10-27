@@ -19,6 +19,7 @@ from .documents import (
     DocumentResult,
     _preflight_docx_package,
     _restore_text,
+    _source_archive_is_reversible,
     _unknown_markers,
 )
 from .engine import Anonymizer, warnings_require_review
@@ -201,6 +202,25 @@ def _preflight_odt_package(path: Path) -> None:
                             raise ValueError(f"ODT содержит внешние ссылки: {name}")
 
 
+def _validate_identifiers(root, engine: Anonymizer, checked: set[str]) -> None:
+    # Names form a cross-part reference graph. Changing only a definition or a
+    # consumer silently breaks formatting; reject sensitive names before writing.
+    # Match by local name so table/draw/list styles and extension consumers are
+    # checked too, not just style:style and text:p.
+    for element in root.iter():
+        for key, value in element.attrib.items():
+            local = etree.QName(key).localname
+            if not (local == "name" or local.endswith(("-name", "-names"))):
+                continue
+            if value in checked:
+                continue
+            result = engine.anonymize(value)
+            if result.text != value or warnings_require_review(result.warnings):
+                # Never echo the sensitive identifier in errors/UI/logs.
+                raise ValueError("ODT содержит чувствительный идентификатор стиля или ссылки")
+            checked.add(value)
+
+
 def _sanitize_external_text_links(root) -> bool:
     changed = False
     href_key = f"{{{XLINK_NS}}}href"
@@ -224,6 +244,12 @@ def _remove_annotations(root) -> bool:
     annotation_tags = {
         f"{{{OFFICE_NS}}}annotation",
         f"{{{OFFICE_NS}}}annotation-end",
+        f"{{{TEXT_NS}}}bookmark",
+        f"{{{TEXT_NS}}}bookmark-start",
+        f"{{{TEXT_NS}}}bookmark-end",
+        f"{{{TEXT_NS}}}reference-mark",
+        f"{{{TEXT_NS}}}reference-mark-start",
+        f"{{{TEXT_NS}}}reference-mark-end",
     }
     for element in list(root.iter()):
         if element.tag not in annotation_tags:
@@ -379,19 +405,10 @@ def extract_odt_text(path: str | Path) -> str:
 
 
 def _sanitized_meta(payload: bytes | None) -> bytes:
-    if payload:
-        root = etree.fromstring(payload, parser=_parser())
-    else:
-        root = etree.Element(f"{{{OFFICE_NS}}}document-meta", nsmap={"office": OFFICE_NS, "meta": META_NS})
-        root.set(f"{{{OFFICE_NS}}}version", "1.3")
-    metadata = root.find(f"{{{OFFICE_NS}}}meta")
-    if metadata is None:
-        metadata = etree.SubElement(root, f"{{{OFFICE_NS}}}meta")
-    for element in metadata.iter():
-        if element.text:
-            element.text = ""
-        if element is not metadata and element.tail:
-            element.tail = ""
+    # Rebuild rather than blank text: names, attributes and namespaces can leak too.
+    root = etree.Element(f"{{{OFFICE_NS}}}document-meta", nsmap={"office": OFFICE_NS})
+    root.set(f"{{{OFFICE_NS}}}version", "1.3")
+    etree.SubElement(root, f"{{{OFFICE_NS}}}meta")
     return etree.tostring(root, encoding="UTF-8", xml_declaration=True)
 
 
@@ -533,6 +550,9 @@ class OdtProcessor:
             for name, root in roots.items()
             if _sanitize_external_text_links(root) | _remove_annotations(root)
         }
+        checked_identifiers: set[str] = set()
+        for root in roots.values():
+            _validate_identifiers(root, self.engine, checked_identifiers)
         records: list[tuple[str, object, list[_TextSlot], str]] = []
         for name, root in roots.items():
             for block in _content_blocks(root):
@@ -551,6 +571,17 @@ class OdtProcessor:
                 _replace_slots(group, replacement)
                 changed_parts.add(name)
         updates = {"meta.xml": _sanitized_meta(payloads["meta.xml"])}
+        with ZipFile(source) as package:
+            if "settings.xml" in package.namelist():
+                # Application/view settings are not document formatting.
+                settings = etree.Element(
+                    f"{{{OFFICE_NS}}}document-settings", nsmap={"office": OFFICE_NS}
+                )
+                settings.set(f"{{{OFFICE_NS}}}version", "1.3")
+                etree.SubElement(settings, f"{{{OFFICE_NS}}}settings")
+                updates["settings.xml"] = etree.tostring(
+                    settings, encoding="UTF-8", xml_declaration=True
+                )
         for name in changed_parts:
             updates[name] = etree.tostring(
                 roots[name], encoding="UTF-8", xml_declaration=True
@@ -559,7 +590,12 @@ class OdtProcessor:
         if source.read_bytes() != source_bytes:
             raise RuntimeError("Исходный файл был изменён")
         warnings = list(result.warnings)
-        archive = _exact_archive(source_bytes, output.read_bytes())
+        archive = (
+            _exact_archive(source_bytes, output.read_bytes())
+            if (not any(part.get("secret") for part in result.parts)
+                and _source_archive_is_reversible(source_bytes, self.engine))
+            else None
+        )
         return DocumentResult(
             result.mapping,
             result.candidates,

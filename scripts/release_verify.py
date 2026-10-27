@@ -57,6 +57,34 @@ def verify_anonymized_docx(path: Path, original_image_bytes: bytes) -> None:
         )
 
 
+def verify_restored_docx(source: Path, restored: Path) -> None:
+    """Acceptance fixture: preserve safe originals, never resurrect removed secrets."""
+    from lxml import etree
+    from local_anonymizer.engine import Anonymizer
+
+    source_text = "\n".join(p.text for p in Document(source).paragraphs)
+    result = Anonymizer().anonymize(source_text)
+    secrets = [source_text[part["s0"]:part["s1"]] for part in result.parts if part.get("secret")]
+    if not secrets:
+        require(restored.read_bytes() == source.read_bytes(), "Safe DOCX did not restore byte-for-byte")
+        return
+    with ZipFile(restored) as package:
+        payloads = [package.read(name) for name in package.namelist()]
+    texts = []
+    for payload in payloads:
+        try:
+            root = etree.fromstring(payload, etree.XMLParser(resolve_entities=False, no_network=True))
+        except etree.XMLSyntaxError:
+            continue
+        texts.append("".join(root.itertext()))
+    for secret in secrets:
+        require(
+            all(secret.encode("utf-8") not in payload for payload in payloads)
+            and all(secret not in text for text in texts),
+            "Restored DOCX contains an irreversible secret",
+        )
+
+
 def verify_pair_mapping_fail_closed(
     service: AnonymizerService,
     document_id: str,
@@ -179,16 +207,14 @@ def main() -> int:
         destination=root / "acceptance-restored-exact.docx",
     )
     exact_restored = Path(exact_restored_report["output_path"])
-    require(
-        exact_restored.read_bytes() == source.read_bytes(),
-        "Unedited anonymized DOCX did not restore byte-for-byte to its source",
-    )
+    verify_restored_docx(source, exact_restored)
 
     edited = root / "acceptance-edited.docx"
     edit = Document(anonymized); edit.add_paragraph("Редактура [ФИО-1] [ФИО-999]"); edit.save(edited)
     restored_report = service.restore(document_id, edited)
     restored = Path(restored_report["output_path"])
     restored_document = Document(restored)
+    verify_restored_docx(source, restored)
     require(
         "Иванов Сергей Петрович" in "\n".join(p.text for p in restored_document.paragraphs),
         "Known text marker did not restore",
@@ -229,7 +255,8 @@ def main() -> int:
           "replacement_count": report["replacement_count"], "candidate_count": report["candidate_count"],
           "public_values_preserved": public, "unknown_markers": restored_report["unknown_markers"],
           "graphic_removed": True, "graphic_restored_exactly": True,
-          "document_restored_byte_exactly": True,
+          "document_restored_byte_exactly": exact_restored.read_bytes() == source.read_bytes(),
+          "irreversible_secrets_not_restored": True,
           "external_relationships": 0, "python_docx_open": True,
           **mapping_checks, "word_com_opened": opened}, ensure_ascii=False))
     return 0

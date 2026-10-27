@@ -35,6 +35,25 @@ def xlsx_sheet_parts(source: Path) -> dict[str, str]:
     return result
 
 
+def xlsx_style_strings(source: Path) -> list[str]:
+    """Read reference-bearing names and display strings from original styles.
+
+    This is a bounded detector input, not a generic styles.xml sanitizer.
+    Include unused and differential styles that openpyxl may not expose.
+    """
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+    with ZipFile(source) as archive:
+        if "xl/styles.xml" not in archive.namelist():
+            return []
+        root = etree.fromstring(archive.read("xl/styles.xml"), parser)
+    return list(root.xpath(
+        ".//x:cellStyle/@name|.//x:tableStyle/@name|"
+        ".//x:tableStyles/@defaultTableStyle|.//x:tableStyles/@defaultPivotStyle|"
+        ".//x:font/x:name/@val|.//x:numFmt/@formatCode",
+        namespaces={"x": SHEET_NS},
+    ))
+
+
 def _replace_text_nodes(nodes, value: str) -> None:
     old_lengths = [len(node.text or "") for node in nodes]
     cursor = 0
@@ -59,9 +78,8 @@ def _set_cell_value(cell, value: object, rich_source=None) -> None:
         if etree.QName(child).localname in {"v", "is"}:
             cell.remove(child)
     formula = cell.find(f"{{{SHEET_NS}}}f")
-    if isinstance(value, str) and value.startswith("="):
-        if formula is None:
-            formula = etree.SubElement(cell, f"{{{SHEET_NS}}}f")
+    # Formula provenance is the source XML, never a string's first character.
+    if formula is not None and isinstance(value, str) and value.startswith("="):
         formula.text = value[1:]
         cell.attrib.pop("t", None)
         return
@@ -114,6 +132,19 @@ def rewrite_xlsx_package(
             removed = {
                 member for member in names if member.startswith(removed_prefixes)
             } | comment_vml | {"docProps/custom.xml", "xl/sharedStrings.xml"}
+            supported = {
+                "[Content_Types].xml", "_rels/.rels", "xl/workbook.xml",
+                "xl/_rels/workbook.xml.rels", "xl/styles.xml", "xl/theme/theme1.xml",
+                "docProps/core.xml", "docProps/app.xml",
+            } | worksheet_parts | removed
+            supported.update(
+                str(Path(part).parent / "_rels" / (Path(part).name + ".rels")).replace("\\", "/")
+                for part in worksheet_parts
+            )
+            if names - supported:
+                # Unsupported caches, drawings, custom XML and binary payloads
+                # cannot be certified by visible-cell anonymization.
+                raise ValueError("Неподдерживаемая скрытая часть XLSX")
             for info in incoming.infolist():
                 if info.filename in removed:
                     continue
@@ -125,7 +156,22 @@ def rewrite_xlsx_package(
                 changed = False
                 if info.filename in worksheet_parts:
                     ns = {"x": SHEET_NS}
+                    unsupported = {"extLst", "autoFilter", "conditionalFormatting"}
+                    for element in root.iter():
+                        if not isinstance(element.tag, str):
+                            raise ValueError("Неподдерживаемая скрытая структура XLSX")
+                        tag = etree.QName(element)
+                        if (tag.namespace != SHEET_NS or tag.localname in unsupported
+                                or "codeName" in element.attrib):
+                            raise ValueError("Неподдерживаемая скрытая структура XLSX")
                     for cell in root.xpath(".//x:c", namespaces=ns):
+                        # Cached results are independent, potentially sensitive data.
+                        # Never carry them through, even when formula text is unchanged.
+                        if cell.find(f"{{{SHEET_NS}}}f") is not None:
+                            for cached in cell.findall(f"{{{SHEET_NS}}}v"):
+                                cell.remove(cached)
+                            cell.attrib.pop("t", None)
+                            changed = True
                         key = (info.filename, cell.get("r", ""))
                         rich_source = None
                         shared_value = None
@@ -166,7 +212,7 @@ def rewrite_xlsx_package(
                             pending_changes.discard(key)
                             changed = True
                     for element in root.xpath(
-                        ".//x:hyperlinks|.//x:legacyDrawing|.//x:legacyDrawingHF",
+                        ".//x:hyperlinks|.//x:legacyDrawing|.//x:legacyDrawingHF|.//x:dataValidations",
                         namespaces=ns,
                     ):
                         element.getparent().remove(element)
@@ -183,10 +229,24 @@ def rewrite_xlsx_package(
                             if attribute in validation.attrib:
                                 validation.attrib.pop(attribute)
                                 changed = True
+                elif info.filename == "docProps/app.xml":
+                    # Extended properties can contain company, manager, paths,
+                    # sheet-title copies and arbitrary producer metadata.
+                    root.clear()
+                    changed = True
                 elif info.filename == "xl/workbook.xml":
+                    for element in root.iter():
+                        if (not isinstance(element.tag, str)
+                                or etree.QName(element).namespace != SHEET_NS
+                                or etree.QName(element).localname == "extLst"
+                                or "codeName" in element.attrib):
+                            raise ValueError("Неподдерживаемая скрытая структура XLSX")
                     ns = {"x": SHEET_NS}
                     for element in root.xpath(
-                        ".//x:definedNames|.//x:externalReferences", namespaces=ns
+                        # Drop identity-bearing metadata as whole records, not
+                        # just today's known userName/name attributes.
+                        ".//x:definedNames|.//x:externalReferences|.//x:fileSharing|"
+                        ".//x:fileVersion|.//x:customWorkbookViews", namespaces=ns
                     ):
                         element.getparent().remove(element)
                         changed = True
