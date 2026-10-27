@@ -18,13 +18,13 @@ A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xls
 
 ## Ready-to-use Windows build
 
-1. Download `LocalAnonymizer-0.2.10-windows-x64.zip` from the [v0.2.10 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10) once it is published.
+1. Download `LocalAnonymizer-0.2.10-windows-x64.zip` from the [v0.2.10 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10).
 2. Extract the complete archive.
 3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
 
 The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
 
-> **Version status:** `v0.2.10` is being prepared. Verified files will appear on the release page after acceptance checks. Native Linux and macOS packages are not published or declared supported yet.
+> **Version status:** `v0.2.10` is published with a verified Windows archive, SHA-256 checksums and a file manifest. Native Linux and macOS packages are not published or declared supported yet.
 
 ## What is new in `v0.2.10`
 
@@ -138,13 +138,13 @@ LocalAnonymizer is licensed under the [Apache License 2.0](LICENSE). Contributio
 
 ## Запуск готовой версии — без Python и установки пакетов
 
-1. Откройте [страницу выпуска `v0.2.10`](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10). После публикации скачайте с неё архив `LocalAnonymizer-0.2.10-windows-x64.zip`.
+1. Откройте [страницу выпуска `v0.2.10`](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10). Скачайте с неё архив `LocalAnonymizer-0.2.10-windows-x64.zip`.
 2. Распакуйте архив в обычную папку.
 3. Запустите `LocalAnonymizer\LocalAnonymizer.exe`.
 
 Python, `uv`, pip и установка зависимостей для готовой версии **не нужны**. Папку `_internal` рядом с `.exe` нельзя удалять или переносить отдельно: в ней уже находятся Python и все необходимые библиотеки приложения. На Windows 11 используется системный Microsoft Edge WebView2.
 
-> **Состояние версии:** `v0.2.10` готовится к публикации. Готовые файлы появятся на странице выпуска после завершения проверок. Пакеты Linux и macOS пока не публикуются и не объявляются поддерживаемыми.
+> **Состояние версии:** `v0.2.10` опубликована: проверенный Windows-архив, контрольные суммы SHA-256 и пофайловый состав доступны на странице выпуска. Пакеты Linux и macOS пока не публикуются и не объявляются поддерживаемыми.
 
 ## Что нового в `v0.2.10`
 
