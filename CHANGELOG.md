@@ -8,6 +8,9 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### Русский
 
+- Исправлено восстановление после сохранения документа в Word с изменённым масштабом просмотра; допускаются только проверенные настройки масштаба, неизвестные конструкции по-прежнему блокируются.
+- При отказе восстановления интерфейс на русском и английском показывает явное сообщение без внутренних путей вместо незавершённого статуса.
+
 - Усилены проверки скрытых данных XLSX и ODT. Неподдерживаемые либо чувствительные скрытые структуры блокируют выдачу готового результата вместо молчаливого сохранения исходных данных.
 - Текстовые ячейки XLSX, начинающиеся с `=`, остаются текстом; кэшированные результаты формул очищаются.
 - Необратимо удалённые секреты исключаются из точного архива восстановления DOCX/ODT. Для документов с такими удалениями побайтное совпадение с исходником намеренно не обещается; обратимые значения и поддерживаемое оформление сохраняются.
@@ -17,6 +20,8 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### English
 
+- Restoring Word-edited documents now accepts narrowly validated view-zoom settings; unknown structures remain blocked.
+- Both interfaces report restore failures without exposing internal paths instead of leaving a pending-looking status.
 - Hardened hidden-data checks for XLSX and ODT; unsupported or sensitive hidden structures block publication instead of silently retaining source values.
 - XLSX text beginning with `=` remains text, and cached formula results are cleared.
 - Irreversibly removed secrets are excluded from exact DOCX/ODT recovery archives. Documents containing these removals intentionally do not restore byte-for-byte to their original source; reversible values and supported formatting remain recoverable.

@@ -205,7 +205,7 @@ def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode
 
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    index = asset_path("index-v1.8.18.html")
+    index = asset_path("index-v1.8.19.html")
     assert index.exists()
     html = index.read_text(encoding="utf-8")
     for label in ("Исходный текст", "Обезличенный текст", "Вернуть исходные значения", "Настройки", "Проверка движка"):
@@ -388,18 +388,18 @@ def test_profile_json_import_reports_invalid_file_without_overwriting_profile(tm
 
 def test_uncertain_fragments_use_two_visible_checkboxes_without_duplicate_heading():
     labels = {
-        "index-v1.8.18.html": (
+        "index-v1.8.19.html": (
             "Искать спорные места для ручной проверки",
             "Автоматически скрывать спорное без подтверждения",
         ),
-        "index-en-v1.8.18.html": (
+        "index-en-v1.8.19.html": (
             "Find uncertain items for manual review",
             "Automatically hide uncertain items without confirmation",
         ),
     }
     forbidden_headings = {
-        "index-v1.8.18.html": ("<summary>Дополнительные режимы</summary>", "<legend>Дополнительные режимы</legend>"),
-        "index-en-v1.8.18.html": ("<summary>Additional modes</summary>", "<legend>Additional modes</legend>"),
+        "index-v1.8.19.html": ("<summary>Дополнительные режимы</summary>", "<legend>Дополнительные режимы</legend>"),
+        "index-en-v1.8.19.html": ("<summary>Additional modes</summary>", "<legend>Additional modes</legend>"),
     }
     for html_name, expected_labels in labels.items():
         html = asset_path(html_name).read_text(encoding="utf-8")
@@ -414,7 +414,7 @@ def test_uncertain_fragments_use_two_visible_checkboxes_without_duplicate_headin
         for heading in forbidden_headings[html_name]:
             assert heading not in html
 
-    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for js_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(js_name).read_text(encoding="utf-8")
         assert "const UNCERTAIN_MODES=new Set(['off','review','auto'])" in javascript
         assert "function applyUncertainMode(mode)" in javascript
@@ -426,7 +426,7 @@ def test_uncertain_fragments_use_two_visible_checkboxes_without_duplicate_headin
 
 
 def test_uncertain_mode_runtime_maps_all_three_states_and_legacy_profiles():
-    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for js_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(js_name).read_text(encoding="utf-8")
         runtime = javascript[:javascript.index("async function applyCurrentDesign")]
         harness = f"""
@@ -464,7 +464,7 @@ console.log(JSON.stringify(actual));
 
 
 def test_uncertain_mode_checkbox_changes_keep_three_state_model_consistent():
-    for js_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for js_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(js_name).read_text(encoding="utf-8")
         assert "function syncUncertainModeFromCheckboxes()" in javascript
         assert "$('#reviewHintsMode').onchange=async()=>" in javascript
@@ -545,7 +545,7 @@ def test_settings_and_manual_review_belong_to_their_preview_columns_in_both_lang
                     return True
             return False
 
-    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for filename in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         parser = LayoutParser()
         parser.feed(asset_path(filename).read_text(encoding="utf-8"))
 
@@ -565,7 +565,7 @@ def test_settings_and_manual_review_belong_to_their_preview_columns_in_both_lang
 
 
 def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languages():
-    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for filename in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         assert 'class="settings-workbench"' in html
         assert 'class="settings-nav" role="tablist"' in html
@@ -579,7 +579,7 @@ def test_settings_use_a_punto_style_navigation_and_editor_panels_in_both_languag
         assert html.count('class="settings-nav-chevron" aria-hidden="true"') == 3
         assert html.count('<span class="settings-nav-label">') == 3
 
-    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for script_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
         assert "function initSettingsTabs()" in javascript
         assert "tab.addEventListener('click'" in javascript
@@ -592,7 +592,7 @@ def test_settings_navigation_chevrons_are_right_facing_and_do_not_steal_accessib
     assert ".settings-nav-chevron" in css
     assert "margin-inline-start:auto" in css
     assert "flex:0 0 auto" in css
-    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for filename in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         assert html.count('aria-hidden="true">›</span>') == 3
 
@@ -605,7 +605,7 @@ def test_mobile_library_controls_collapse_to_one_bounded_column():
 
 
 def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
-    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for filename in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         toolbar = re.search(
             r'<div class="review-toolbar">(.*?)</div><div class="review-controls-disclosure">',
@@ -624,7 +624,7 @@ def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
         assert 'id="reviewDecision" class="review-decision sr-only"' in html
         assert re.search(r'id="reviewFinish" class="sr-only"', html)
 
-    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for script_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
         assert "const warning=$('#warning'),hasWarnings=items.length>0" in javascript
         assert "warning.classList.toggle('sr-only',!hasWarnings)" in javascript
@@ -632,7 +632,7 @@ def test_manual_review_uses_one_toolbar_and_hides_redundant_prompts():
 
 
 def test_manual_review_intro_is_an_accessible_on_demand_tooltip_in_both_languages():
-    for filename in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for filename in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(filename).read_text(encoding="utf-8")
         heading = re.search(r'<div class="review-heading">(.*?)<strong id="reviewPos"', html, re.S)
         assert heading is not None
@@ -652,7 +652,7 @@ def test_manual_review_intro_is_an_accessible_on_demand_tooltip_in_both_language
 
 
 def test_manual_review_warning_runtime_hides_only_empty_guidance(tmp_path):
-    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for script_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
         render_warnings = re.search(r"function renderWarnings\(\)\{.*?\n\}", javascript, re.S)
         assert render_warnings is not None
@@ -692,7 +692,7 @@ assert.strictEqual(warning.classList.contains('stop'), true);
 
 
 def test_settings_have_one_checkbox_per_actual_replacement_class():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
     controls = re.findall(
         r'<input class="category" data-categories="([^"]+)"[^>]*>\s*([^<]+)',
         html,
@@ -720,8 +720,8 @@ def test_settings_have_one_checkbox_per_actual_replacement_class():
     assert "Ссылка → <code>[ССЫЛКА-N]</code>" in html
     assert "Уязвимость → <code>[уязвимость]</code>" in html
     assert "Дополнительные правила → <code>[МЕТКА-N]</code>" in html
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
-    english_javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    english_javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
     assert "function updateCategoryMarkerExamples()" in javascript
     assert "updateCategoryMarkerExamples();markSettingsDirty()" in javascript
     assert "СОКРАЩЕНИЯ:'СОКР'" in javascript
@@ -757,7 +757,7 @@ def test_disabled_outer_class_is_not_partially_replaced_by_fallback_detectors():
 
 def test_interface_contains_current_collapsed_usage_and_restore_guide_in_both_languages():
     localized = {
-        "index-v1.8.18.html": (
+        "index-v1.8.19.html": (
             "Как пользоваться программой",
             "«Открыть»",
             "перетащите их в окно программы",
@@ -775,7 +775,7 @@ def test_interface_contains_current_collapsed_usage_and_restore_guide_in_both_la
             "2. Восстановить файл…",
             "Windows, Linux и macOS",
         ),
-        "index-en-v1.8.18.html": (
+        "index-en-v1.8.19.html": (
             "How to use the app",
             "“Open”",
             "drag them into the app window",
@@ -801,9 +801,9 @@ def test_interface_contains_current_collapsed_usage_and_restore_guide_in_both_la
         assert '<details class="card usage-guide">' in html
         assert '<details class="card usage-guide" open>' not in html
 
-    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    ru_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     assert "Нажмите <b>«Выбрать исходные файлы…»</b>" not in ru_html
     assert "Выберите документ в <b>«Локальной библиотеке»</b>" not in ru_html
     assert "Click <b>“Select source files…”</b>" not in en_html
@@ -816,7 +816,7 @@ def test_interface_contains_current_collapsed_usage_and_restore_guide_in_both_la
 
 
 def test_gui_loads_default_profile_rules_on_startup():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert (
         "showLibrary(await pywebview.api.list_documents());await refreshProfiles('Общий');"
@@ -834,7 +834,7 @@ def test_native_window_handle_is_private_to_avoid_pywebview_bridge_introspection
 
 
 def test_new_design_omits_redundant_workflow_steps_but_keeps_file_state():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
 
     assert 'id="workflowSteps"' not in html
     assert 'class="workflow-steps"' not in html
@@ -844,8 +844,8 @@ def test_new_design_omits_redundant_workflow_steps_but_keeps_file_state():
 
 
 def test_header_omits_redundant_sensitive_data_subtitle_in_both_languages():
-    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    ru_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
 
     assert "Персональные и другие чувствительные данные заменяются маркерами или удаляются." not in ru_html
     assert "Всё выполняется локально." not in ru_html
@@ -855,11 +855,11 @@ def test_header_omits_redundant_sensitive_data_subtitle_in_both_languages():
 
 def test_open_file_button_is_first_source_action_with_localized_tooltip():
     localized = {
-        "index-v1.8.18.html": (
+        "index-v1.8.19.html": (
             ">Открыть</button>",
             'title="Открыть документ или несколько файлов и импортировать их в локальную библиотеку"',
         ),
-        "index-en-v1.8.18.html": (
+        "index-en-v1.8.19.html": (
             ">Open</button>",
             'title="Open one or more documents and import them into the local library"',
         ),
@@ -875,7 +875,7 @@ def test_open_file_button_is_first_source_action_with_localized_tooltip():
 
 
 def test_new_design_styles_define_contrast_actions_targets_and_focus():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
     css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8") if asset_path("new-design-v1.12.css").exists() else ""
 
     assert 'new-design-v1.12.css' in html
@@ -891,7 +891,7 @@ def test_new_design_styles_define_contrast_actions_targets_and_focus():
 
 
 def test_all_collapsible_sections_show_right_or_down_disclosure_arrow():
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         assert 'new-design-v1.12.css' in html
 
@@ -904,11 +904,11 @@ def test_all_collapsible_sections_show_right_or_down_disclosure_arrow():
 
 def test_source_pane_omits_redundant_visible_label_and_storage_notice():
     localized_copy = {
-        "index-v1.8.18.html": (
+        "index-v1.8.19.html": (
             "Исходный текст или текст выбранного документа",
             "Исходник остаётся на компьютере; перед передачей нужна ручная проверка.",
         ),
-        "index-en-v1.8.18.html": (
+        "index-en-v1.8.19.html": (
             "Source text or text from the selected document",
             "The source stays on this computer. Review it manually before sharing.",
         ),
@@ -935,12 +935,12 @@ def test_empty_undo_row_collapses_only_when_empty(tmp_path):
     if edge is None:
         pytest.skip("Microsoft Edge is required for the Windows layout regression")
 
-    for html_name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for html_name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(html_name).read_text(encoding="utf-8")
         assert 'new-design-v1.12.css' in html
         assert 'id="undoChips" class="undo-chips"' in html
 
-    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for script_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(script_name).read_text(encoding="utf-8")
         assert "$('#undoChips').innerHTML=" in javascript
         assert "$('#undoChips').onclick=" in javascript
@@ -997,7 +997,7 @@ def test_empty_undo_row_collapses_only_when_empty(tmp_path):
 
 
 def test_entity_summary_uses_the_free_space_above_output_preview_in_both_languages():
-    for html_name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for html_name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(html_name).read_text(encoding="utf-8")
         output = html[html.index('aria-labelledby="outputHeading"'):html.index('id="manualReview"')]
 
@@ -1029,8 +1029,8 @@ def test_new_design_uses_compact_interface_text_without_scaling_document_preview
 
 def test_new_design_aligns_remaining_header_controls_on_one_level():
     css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
-    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    ru_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
 
     assert 'body[data-design="new"] .language-switch{display:flex;align-items:center;gap:6px;white-space:nowrap}' in css
     assert 'body[data-design="new"] .header-actions select,body[data-design="new"] #themeToggle{height:34px;min-height:34px;padding:4px 9px;box-sizing:border-box}' in css
@@ -1041,7 +1041,7 @@ def test_new_design_aligns_remaining_header_controls_on_one_level():
 
 
 def test_compact_header_reclaims_height_for_document_previews():
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         assert 'new-design-v1.12.css' in html
 
@@ -1061,15 +1061,15 @@ def test_compact_header_reclaims_height_for_document_previews():
 
 def test_drop_prompt_is_removed_but_window_drop_import_remains_available():
     for name, prompt in (
-        ("index-v1.8.18.html", "Перетащите файлы сюда"),
-        ("index-en-v1.8.18.html", "Drag files here"),
+        ("index-v1.8.19.html", "Перетащите файлы сюда"),
+        ("index-en-v1.8.19.html", "Drag files here"),
     ):
         html = asset_path(name).read_text(encoding="utf-8")
         assert '<div class="drop">' not in html
         assert prompt not in html
         assert 'id="dropChoose"' in html
 
-    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         script = asset_path(name).read_text(encoding="utf-8")
         assert "$('#dropChoose').onclick=$('#choose').onclick;" in script
         assert "document.addEventListener('drop',async e=>" in script
@@ -1085,8 +1085,8 @@ def test_compact_header_renders_complete_without_horizontal_overflow(tmp_path):
         pytest.skip("Microsoft Edge is required for the Windows layout regression")
 
     statuses = {
-        "index-v1.8.18.html": "Найдено замен: 374 · Требуют решения: 83 · Проверено: 0 из 83",
-        "index-en-v1.8.18.html": "Replacements found: 374 · Need review: 83 · Reviewed: 0 of 83",
+        "index-v1.8.19.html": "Найдено замен: 374 · Требуют решения: 83 · Проверено: 0 из 83",
+        "index-en-v1.8.19.html": "Replacements found: 374 · Need review: 83 · Reviewed: 0 of 83",
     }
     for html_name, status in statuses.items():
         page = asset_path(html_name).read_text(encoding="utf-8")
@@ -1178,7 +1178,7 @@ def test_new_design_manual_review_uses_dark_theme_surfaces_without_inner_scroll(
 def test_settings_and_manual_review_are_below_their_respective_preview_panes():
     css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         source_start = html.index('id="sourceColumn"')
         output_start = html.index('id="anonymizedColumn"')
@@ -1216,7 +1216,7 @@ def test_review_candidate_and_toolbar_span_the_output_review_width():
 
 
 def test_review_checkbox_modes_follow_the_four_button_toolbar_in_both_languages():
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         review = html.split('<section id="manualReview"', 1)[1].split("</section>", 1)[0]
 
@@ -1234,14 +1234,14 @@ def test_review_checkbox_modes_follow_the_four_button_toolbar_in_both_languages(
 def test_review_action_buttons_use_tooltips_and_are_grouped_beside_each_other():
     expectations = (
         (
-            "index-v1.8.18.html",
+            "index-v1.8.19.html",
             "Заменить все одинаковые вхождения маркерами и добавить это значение в дополнительные правила",
             "Оставить текущий фрагмент и добавить это значение в белый список",
             "Все одинаковые вхождения будут заменены маркерами; правило будет добавлено в текущие настройки.",
             "Текущий фрагмент останется без изменения; значение будет добавлено в белый список.",
         ),
         (
-            "index-en-v1.8.18.html",
+            "index-en-v1.8.19.html",
             "Replace all matching occurrences with markers and add this value to additional rules",
             "Keep the current item and add its value to the allowlist",
             "All matching occurrences will be replaced with markers; the rule will be added to the current settings.",
@@ -1302,8 +1302,8 @@ def test_populated_review_keeps_heading_and_remaining_action_compact():
 
 def test_restore_steps_stack_on_narrow_screens_in_both_languages():
     css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
-    ru = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    en = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
+    ru = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    en = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
 
     assert '@media(max-width:620px){body[data-design="new"] .restore-steps{grid-template-columns:minmax(0,1fr)}}' in css
     assert 'class="restore-steps"' in ru
@@ -1317,7 +1317,7 @@ def test_new_design_hides_empty_review_result_status():
 
 
 def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warnings():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
 
     assert '<label for="source"' in html
     assert re.search(r'<h2 id="reviewTitle"[^>]+>Ручная проверка спорных мест ', html)
@@ -1334,8 +1334,8 @@ def test_new_design_has_labels_headings_live_status_and_sensitive_artifact_warni
 
 
 def test_new_design_uses_plain_language_stats_review_context_and_operation_states():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert 'id="reviewMeta"' in html
     for text in ("Найдено замен:", "Требуют решения:", "Проверено:", "Создаётся предпросмотр", "Обрабатывается файл"):
@@ -1345,10 +1345,10 @@ def test_new_design_uses_plain_language_stats_review_context_and_operation_state
 
 
 def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
-    ru_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    en_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
-    ru_js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
-    en_js = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    ru_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    en_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
+    ru_js = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    en_js = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "Автопоиск не уверен — выберите действие." not in ru_html
     assert "Detection is uncertain — choose an action." not in en_html
@@ -1363,7 +1363,7 @@ def test_review_copy_stays_compact_when_a_candidate_appears_in_both_languages():
     assert 'body[data-design="new"] .review-context,body[data-design="new"] .review-toolbar{grid-column:1/-1;min-width:0}' in css
 
 
-@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+@pytest.mark.parametrize("asset_name", ["app-v1.8.19.js", "app-en-v1.8.19.js"])
 def test_review_navigation_preserves_formatted_mode_and_targets_both_previews(asset_name):
     javascript = asset_path(asset_name).read_text(encoding="utf-8")
     focus_mark = re.search(
@@ -1410,7 +1410,7 @@ def test_formatted_preview_controls_keep_one_button_row_while_loading_and_ready(
 
     base_css_uri = asset_path("style-v1.1.css").as_uri()
     design_css_uri = asset_path("new-design-v1.12.css").as_uri()
-    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+    for index, html_name in enumerate(("index-v1.8.19.html", "index-en-v1.8.19.html")):
         source = asset_path(html_name).read_text(encoding="utf-8")
         controls = [
             re.search(rf'<div id="{control_id}" class="preview-switch" hidden>.*?</div>', source, re.S)
@@ -1478,7 +1478,7 @@ frame.addEventListener('load',()=>setTimeout(()=>{try{
  finish({ok:formatted&&nextOffset===String(second)&&nextAnchors.length===2&&nextAnchors.every(anchor=>anchor==='body/p4')&&previousOffset===String(first)&&previousAnchors.length===2&&previousAnchors.every(anchor=>anchor==='body/p15'),formatted,nextOffset,previousOffset,nextAnchors,previousAnchors});
 }catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},4500);</script>'''
 
-    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+    for index, html_name in enumerate(("index-v1.8.19.html", "index-en-v1.8.19.html")):
         for workspace_width in (390, 700, 900):
             fixture = tmp_path / f"formatted-review-navigation-{index}-{workspace_width}.html"
             fixture.write_text(
@@ -1547,7 +1547,7 @@ frame.addEventListener('load',()=>setTimeout(async()=>{try{
  finish({ok:visited.size===3&&checks.every(check=>check.left&&check.right!==false),checks,visited:[...visited]});
 }catch(error){finish({ok:false,error:String(error)});}},1000));setTimeout(()=>{if(document.title==='pending')finish({ok:false,error:'timeout'});},6000);</script>'''
 
-    for index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+    for index, html_name in enumerate(("index-v1.8.19.html", "index-en-v1.8.19.html")):
         for workspace_width in (390, 700, 900):
             fixture = tmp_path / f"formatted-review-visible-{index}-{workspace_width}.html"
             fixture.write_text(
@@ -1569,7 +1569,7 @@ frame.addEventListener('load',()=>setTimeout(async()=>{try{
 
 
 def test_formatted_review_focus_is_bound_to_render_lifecycle_without_timeout():
-    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         script = asset_path(name).read_text(encoding="utf-8")
         render_output = script[script.index("function renderOutput()") : script.index("function marks()")]
         refresh_focus = script[
@@ -1592,7 +1592,7 @@ def test_formatted_review_focus_is_bound_to_render_lifecycle_without_timeout():
 
 
 def test_manual_review_candidate_removes_reason_copy_and_reclaims_its_column_in_both_languages():
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         candidate = re.search(r'<div class="review-candidate">(.*?)</div>', html, re.S)
         assert candidate is not None
@@ -1628,8 +1628,8 @@ def test_production_manual_review_dom_reclaims_reason_column_at_responsive_width
     if edge is None:
         pytest.skip("Microsoft Edge is required for the Windows layout regression")
     cases = (
-        ("index-v1.8.18.html", "«Синтетический фрагмент» · возможное имя", "2 вхожд. · Правила: «Общий»"),
-        ("index-en-v1.8.18.html", '"Synthetic fragment" · possible name', '2 occurrences · Rules: "General"'),
+        ("index-v1.8.19.html", "«Синтетический фрагмент» · возможное имя", "2 вхожд. · Правила: «Общий»"),
+        ("index-en-v1.8.19.html", '"Synthetic fragment" · possible name', '2 occurrences · Rules: "General"'),
     )
 
     for index, (html_name, current_text, meta_text) in enumerate(cases):
@@ -1684,12 +1684,12 @@ def test_review_candidate_keeps_active_height_for_off_review_and_auto_modes(tmp_
         pytest.skip("Microsoft Edge is required for the review-height regression")
 
     state_text = {
-        "index-v1.8.18.html": {
+        "index-v1.8.19.html": {
             "review": ("«SyntheticCandidate» · возможное имя собственное", "12 вхожд. · Правила: «Общий»"),
             "auto": ("Автоматическое скрытие включено", ""),
             "off": ("Поиск спорных мест выключен", ""),
         },
-        "index-en-v1.8.18.html": {
+        "index-en-v1.8.19.html": {
             "review": ("“SyntheticCandidate” · possible proper name", "12 matches · Rules: “General”"),
             "auto": ("Automatic hiding is enabled", ""),
             "off": ("Uncertain-item detection is off", ""),
@@ -1732,7 +1732,7 @@ frame.addEventListener('load',()=>setTimeout(()=>{try{
             outcome = json.loads(html_module.unescape(match.group(1)))
             assert outcome["ok"], {"language": language, "width": workspace_width, **outcome}
 
-    for script_name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for script_name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         script = asset_path(script_name).read_text(encoding="utf-8")
         update_review = script[script.index("function updateReviewPosition()") : script.index("function restoreReplacement(")]
         assert "reviewDisabledSummary" in update_review
@@ -1758,7 +1758,7 @@ def test_production_workspace_lower_panels_share_one_horizontal_line(tmp_path: P
         pytest.skip("Microsoft Edge is required for the Windows layout regression")
 
     for index, (html_name, javascript_name) in enumerate(
-        (("index-v1.8.18.html", "app-v1.8.18.js"), ("index-en-v1.8.18.html", "app-en-v1.8.18.js"))
+        (("index-v1.8.19.html", "app-v1.8.19.js"), ("index-en-v1.8.19.html", "app-en-v1.8.19.js"))
     ):
         source = asset_path(html_name).read_text(encoding="utf-8")
         workspace = re.search(r'<main class="columns">.*?</main>', source, re.S)
@@ -1901,8 +1901,8 @@ def test_manual_review_browser_geometry_has_no_panel_overlap(tmp_path):
 
 
 def test_document_preview_errors_are_reported_in_both_interfaces():
-    russian = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
-    english = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    russian = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    english = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "Ошибка предпросмотра:" in russian
     assert "Preview error:" in english
@@ -1911,7 +1911,7 @@ def test_document_preview_errors_are_reported_in_both_interfaces():
 
 
 def test_generated_markers_use_native_buttons():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert 'class="maprow"' not in javascript
     assert '<button type="button" class="mark-hint' in javascript
@@ -1921,8 +1921,8 @@ def test_generated_markers_use_native_buttons():
 
 
 def test_fullscreen_preview_uses_modal_semantics_and_restores_focus():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert 'id="docxPreviewSurface"' in html
     assert 'id="anonymizedPreviewSurface"' in html
@@ -1960,7 +1960,7 @@ def test_desktop_window_opens_at_1600px_for_two_preview_panes(tmp_path, monkeypa
     assert captured["text_select"] is True
 
 
-@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+@pytest.mark.parametrize("asset_name", ["app-v1.8.19.js", "app-en-v1.8.19.js"])
 def test_preview_marker_click_does_not_override_a_mouse_selection(asset_name):
     javascript = asset_path(asset_name).read_text(encoding="utf-8")
 
@@ -1995,7 +1995,7 @@ def test_mouse_selection_and_ctrl_c_work_in_both_preview_panes_and_languages(tmp
         pytest.skip("Microsoft Edge is required for the mouse-selection regression")
 
     verifier = Path(__file__).parents[1] / "scripts" / "verify_text_selection.mjs"
-    for language_index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+    for language_index, html_name in enumerate(("index-v1.8.19.html", "index-en-v1.8.19.html")):
         for workspace_width in (390, 700, 900):
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
@@ -2070,7 +2070,7 @@ def test_interface_typography_roles_match_in_both_languages_at_real_viewport_wid
         pytest.skip("Microsoft Edge is required for the typography regression")
 
     verifier = Path(__file__).parents[1] / "scripts" / "verify_typography.mjs"
-    for language_index, html_name in enumerate(("index-v1.8.18.html", "index-en-v1.8.18.html")):
+    for language_index, html_name in enumerate(("index-v1.8.19.html", "index-en-v1.8.19.html")):
         for viewport_width in (390, 700, 900):
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
@@ -2159,17 +2159,17 @@ def test_desktop_window_clamps_preferred_size_to_primary_work_area(tmp_path, mon
 
 
 def test_double_escape_no_longer_silently_clears_user_work():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "now-lastEscape<800" not in javascript
     assert "confirm('Очистить введённый текст" in javascript
 
 
 def test_ui_uses_current_design_without_legacy_selector():
-    russian_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    english_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
-    russian_javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
-    english_javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    russian_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    english_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
+    russian_javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    english_javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     for html in (russian_html, english_html):
         assert 'id="designMode"' not in html
@@ -2187,15 +2187,15 @@ def test_ui_uses_current_design_without_legacy_selector():
 
 
 def test_ui_offers_complete_persistent_english_interface():
-    russian_html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    english_html = asset_path("index-en-v1.8.18.html").read_text(encoding="utf-8")
-    russian_js = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
-    english_js = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    russian_html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    english_html = asset_path("index-en-v1.8.19.html").read_text(encoding="utf-8")
+    russian_js = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    english_js = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert '<html lang="ru">' in russian_html
     assert '<html lang="en">' in english_html
-    assert '<script src="app-v1.8.18.js"></script>' in russian_html
-    assert '<script src="app-en-v1.8.18.js"></script>' in english_html
+    assert '<script src="app-v1.8.19.js"></script>' in russian_html
+    assert '<script src="app-en-v1.8.19.js"></script>' in english_html
     assert 'id="languageMode"' in russian_html and 'id="languageMode"' in english_html
     assert "Anonymize text or a document" in english_html
     assert "Manual review of uncertain items" in english_html
@@ -2209,7 +2209,7 @@ def test_ui_offers_complete_persistent_english_interface():
 
 
 def test_english_interface_localizes_backend_statuses_profile_and_review_kinds():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "function documentStatusText(status)" in javascript
     assert "`${d.display_name} — ${documentStatusText(d.status)}`" in javascript
@@ -2222,14 +2222,14 @@ def test_english_interface_localizes_backend_statuses_profile_and_review_kinds()
 
 
 def test_english_interface_never_falls_back_to_raw_unknown_backend_status():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "||status;" not in javascript
     assert "'Unknown status'" in javascript
 
 
 def test_english_interface_localizes_profile_names_in_result_messages():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "`Profile “${profileDisplayName(n)}” saved.`" in javascript
     assert "`Profile “${profileDisplayName(n)}” exported.`" in javascript
@@ -2237,7 +2237,7 @@ def test_english_interface_localizes_profile_names_in_result_messages():
 
 
 def test_english_interface_localizes_backend_warning_messages_without_changing_contract_keys():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     for warning_kind in (
         "ГОСТАЙНА", "ДСП", "КИИ", "ЗАКУПКИ", "МАССИВ-ПДН",
@@ -2251,7 +2251,7 @@ def test_english_interface_localizes_backend_warning_messages_without_changing_c
 
 
 def test_english_interface_does_not_show_russian_profile_api_errors():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "function profileErrorText(operation)" in javascript
     assert "profileErrorText('export')" in javascript
@@ -2260,7 +2260,7 @@ def test_english_interface_does_not_show_russian_profile_api_errors():
 
 
 def test_english_interface_localizes_post_anonymization_status_and_review_profile():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "`${documentStatusText(r.status)}. The file was created" in javascript
     assert "`${documentStatusText(r.status)}. The anonymized file is ready" in javascript
@@ -2269,7 +2269,7 @@ def test_english_interface_localizes_post_anonymization_status_and_review_profil
 
 
 def test_english_interface_never_renders_raw_bridge_errors():
-    javascript = asset_path("app-en-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-en-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "function bridgeErrorText(operation)" in javascript
     assert "saved?.error||'Could not save profile'" not in javascript
@@ -2283,7 +2283,7 @@ def test_english_interface_never_renders_raw_bridge_errors():
 
 
 def test_language_variants_omit_redundant_workflow_steps():
-    for name in ("index-v1.8.18.html", "index-en-v1.8.18.html"):
+    for name in ("index-v1.8.19.html", "index-en-v1.8.19.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         assert 'id="workflowSteps"' not in html
         assert 'class="workflow-steps"' not in html
@@ -2304,7 +2304,7 @@ def test_language_choice_is_persisted_by_backend_and_preserves_other_ui_settings
 
 
 def test_rare_categories_are_forced_closed_on_every_launch():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "$('#detectionCategories').open=false" in javascript
 
@@ -2324,9 +2324,9 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
 
     assert app_module.main([]) == 0
-    assert captured["url"].endswith("/index-v1.8.18.html")
+    assert captured["url"].endswith("/index-v1.8.19.html")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.18.js"></script>' in html
+    assert '<script src="app-v1.8.19.js"></script>' in html
 
 
 def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
@@ -2345,7 +2345,7 @@ def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
     )
 
     assert app_module.main([]) == 0
-    assert captured["url"].endswith("/index-en-v1.8.18.html")
+    assert captured["url"].endswith("/index-en-v1.8.19.html")
     assert captured["title"] == "Local Document Anonymizer"
 
 
@@ -2369,8 +2369,8 @@ def test_app_api_exposes_compact_marker_mode(tmp_path):
 
 
 def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert 'id="compactMarkers"' in html
     assert "Сохранять компоновку" in html
@@ -2379,14 +2379,14 @@ def test_compact_marker_checkbox_is_wired_to_all_anonymization_paths():
 
 
 def test_paste_button_uses_native_api_instead_of_webview_clipboard_permission():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "pywebview.api.read_clipboard_text()" in javascript
     assert "navigator.clipboard.readText()" not in javascript
 
 
 def test_source_and_anonymized_previews_scroll_together_by_logical_blocks():
-    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(name).read_text(encoding="utf-8")
 
         # Text and formatted previews both synchronize in either direction.
@@ -2413,8 +2413,8 @@ def test_source_and_anonymized_previews_scroll_together_by_logical_blocks():
 
 def test_source_and_anonymized_preview_screens_stay_vertically_aligned():
     for html_name, javascript_name in (
-        ("index-v1.8.18.html", "app-v1.8.18.js"),
-        ("index-en-v1.8.18.html", "app-en-v1.8.18.js"),
+        ("index-v1.8.19.html", "app-v1.8.19.js"),
+        ("index-en-v1.8.19.html", "app-en-v1.8.19.js"),
     ):
         html = asset_path(html_name).read_text(encoding="utf-8")
         javascript = asset_path(javascript_name).read_text(encoding="utf-8")
@@ -2441,7 +2441,7 @@ def test_source_and_anonymized_preview_screens_stay_vertically_aligned():
         assert javascript.count("schedulePreviewTopAlignment();}") >= 2
 
 
-@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+@pytest.mark.parametrize("asset_name", ["app-v1.8.19.js", "app-en-v1.8.19.js"])
 def test_preview_top_alignment_runtime_handles_dynamic_and_stacked_layouts(tmp_path, asset_name):
     import json
     import subprocess
@@ -2490,7 +2490,7 @@ if(sourcePanelSpacer.style.height!=='0px'||outputPanelSpacer.style.height!=='0px
     assert completed.returncode == 0, completed.stderr
 
 
-@pytest.mark.parametrize("asset_name", ["app-v1.8.18.js", "app-en-v1.8.18.js"])
+@pytest.mark.parametrize("asset_name", ["app-v1.8.19.js", "app-en-v1.8.19.js"])
 def test_preview_scroll_runtime_handles_unequal_blocks_cache_and_hidden_panes(tmp_path, asset_name):
     import json
     import subprocess
@@ -2544,7 +2544,7 @@ if(elements.docxPreview.scrollTop!==135)throw new Error('real reverse scroll was
 
 
 def test_preview_mode_changes_preserve_visible_position_and_invalidate_dom_cache():
-    for name in ("app-v1.8.18.js", "app-en-v1.8.18.js"):
+    for name in ("app-v1.8.19.js", "app-en-v1.8.19.js"):
         javascript = asset_path(name).read_text(encoding="utf-8")
         assert "function switchPreviewMode" in javascript
         assert "switchPreviewMode(setAnonymizedPreviewMode,true)" in javascript
@@ -2565,7 +2565,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
             if tag == "button":
                 self.buttons.append(dict(attrs))
 
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
     parser = ButtonParser()
     parser.feed(html)
 
@@ -2587,7 +2587,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
                if len(button.get("title", "").strip()) < 12]
     assert missing == []
 
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     assert 'class="undo-chip"' in javascript
     assert 'title="Отменить возврат значения' in javascript
 
@@ -2599,7 +2599,7 @@ def test_every_button_has_a_meaningful_hover_tooltip():
 
 
 def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_preview():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     focus_mark = javascript[javascript.index("function focusMark("):javascript.index("function reviewDisabledReason(")]
@@ -2613,8 +2613,8 @@ def test_manual_review_next_keeps_button_stationary_and_scrolls_only_the_text_pr
 
 
 def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     assert "await anonymizeText()" in hide_hint
@@ -2624,7 +2624,7 @@ def test_hide_and_remember_reanonymizes_all_exact_repetitions_immediately():
 
 
 def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing_preview():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     hide_hint = javascript[javascript.index("async function hideHint("):javascript.index("async function anonymizeText(")]
 
     save = "await pywebview.api.save_profile($('#profile').value,$('#rules').value,$('#whitelist').value,$('#paranoid').checked,$('#uncertainMode').value)"
@@ -2634,8 +2634,8 @@ def test_hide_and_remember_persists_rule_in_the_active_profile_before_refreshing
 
 
 def test_gui_has_persistent_light_and_dark_theme_switch():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     assert 'id="themeToggle"' in html
@@ -2678,7 +2678,7 @@ def test_design_choice_is_persisted_by_backend_and_preserves_theme(tmp_path):
 
 
 def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
 
     assert "Секреты и ключи защищаются всегда" in html
     assert "checkbox\" checked disabled" not in html
@@ -2701,14 +2701,14 @@ def test_settings_offer_docx_graphics_as_an_explicit_checkbox():
     ):
         assert explanation in html
 
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     assert "$('#redactDocxGraphics').checked" in javascript
     assert "['#rules','#whitelist','#redactDocxGraphics']" in javascript
 
 
 def test_settings_and_primary_action_explain_their_real_effect():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     settings_start = html.index("Настройки обезличивания")
     action_position = html.index('id="anonymize"')
@@ -2721,7 +2721,7 @@ def test_settings_and_primary_action_explain_their_real_effect():
 
 
 def test_new_design_shows_only_one_apply_and_one_export_action():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
     css = asset_path("new-design-v1.12.css").read_text(encoding="utf-8")
 
     assert 'id="exportNow" title="Сохранить обезличенный документ и переносимый файл восстановления рядом">Сохранить документ и файл восстановления</button>' in html
@@ -2729,7 +2729,7 @@ def test_new_design_shows_only_one_apply_and_one_export_action():
 
 
 def test_detection_categories_are_a_separate_collapsed_section_at_the_very_bottom():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
 
     section_start = html.index('<details class="card" id="detectionCategories">')
     section_end = html.index("</details>", section_start)
@@ -2749,7 +2749,7 @@ def test_detection_categories_are_a_separate_collapsed_section_at_the_very_botto
 
 
 def test_category_change_renders_text_result_before_slow_formatted_preview():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     text_await = "const result=await pywebview.api.anonymize_text(text,...settings);"
     formatted_await = "formattedPreview=await formatted"
@@ -2762,7 +2762,7 @@ def test_category_change_renders_text_result_before_slow_formatted_preview():
 
 
 def test_review_navigation_is_limited_to_actionable_yellow_hints():
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "function hintMarks()" in javascript
     assert "const all=hintMarks()" in javascript
@@ -2772,7 +2772,7 @@ def test_review_navigation_is_limited_to_actionable_yellow_hints():
 
 
 def test_local_library_is_compact_inside_the_source_editor():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
 
     source_start = html.index('aria-labelledby="sourceHeading"')
     source_end = html.index('</section>', source_start)
@@ -2789,8 +2789,8 @@ def test_local_library_is_compact_inside_the_source_editor():
 
 
 def test_pasted_text_restoration_reuses_the_main_source_editor():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     source_section = html[html.index('aria-labelledby="sourceHeading"'):html.index('</section>', html.index('aria-labelledby="sourceHeading"'))]
     assert 'id="restore"' in source_section
@@ -2807,8 +2807,8 @@ def test_pasted_text_restoration_reuses_the_main_source_editor():
 
 
 def test_legacy_mapping_table_and_csv_export_are_not_exposed_in_ui():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "Таблица соответствий" not in html
     assert "Экспорт CSV (чувствительные данные)" not in html
@@ -2823,7 +2823,7 @@ def test_legacy_mapping_table_and_csv_export_are_not_exposed_in_ui():
 
 
 def test_manual_review_owns_its_search_and_display_controls():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
     review_start = html.index('id="manualReview"')
     review_end = html.index("</section>", review_start)
     review = html[review_start:review_end]
@@ -2842,8 +2842,8 @@ def test_manual_review_owns_its_search_and_display_controls():
 
 
 def test_manual_review_panel_explains_actions_progress_result_and_completion():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     for text in (
         "Ручная проверка спорных мест",
@@ -2866,8 +2866,8 @@ def test_manual_review_panel_explains_actions_progress_result_and_completion():
 
 
 def test_manual_review_unified_mode_and_current_candidate_are_obvious():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "Автоматически скрывать спорное без подтверждения" in html
     assert "Искать спорные места для ручной проверки" in html
@@ -2879,8 +2879,8 @@ def test_manual_review_unified_mode_and_current_candidate_are_obvious():
 
 
 def test_document_export_has_a_visible_matching_restore_import_action():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
 
     assert "Сохранить два файла…" in html
     assert "информация для восстановления.larecovery" in html
@@ -3235,8 +3235,8 @@ def test_restore_document_cancelled_save_does_not_restore_or_leak_paths(tmp_path
 
 
 def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
-    html = asset_path("index-v1.8.18.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -3285,7 +3285,7 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     assert "requestAnonymizedDocumentPreview(selected,...settings" in javascript
     assert "preview_anonymized_document" in javascript
     assert "Версия 1.8" in html and "APP_VERSION='1.8'" in javascript
-    assert 'src="app-v1.8.18.js"' in html
+    assert 'src="app-v1.8.19.js"' in html
     assert "Текст документа загружен полностью" in javascript
     assert "Визуальные элементы без текста могут не отображаться" in javascript
     assert "rich.scrollTop=0" in javascript
