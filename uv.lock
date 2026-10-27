@@ -226,7 +226,7 @@ wheels = [
 
 [[package]]
 name = "local-anonymizer"
-version = "0.2.9"
+version = "0.2.10"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
