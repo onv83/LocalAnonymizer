@@ -2,7 +2,7 @@
 
 All notable changes to LocalAnonymizer are documented here.
 
-The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain the verified Windows packages and matching checksums.
+The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.11 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
 ## [0.2.11] — 2026-10-29
 
@@ -20,6 +20,24 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - CSP не ослаблена: `script-src 'self'`, без `unsafe-eval`. Совместимость pywebview достигается замыканиями вместо динамической генерации функций и нативным выполнением только служебных ответов bridge.
 - Добавлены автоматические проверки RU/EN интерфейсов и нативный smoke WebView/clipboard/restore для CI macOS ARM64. Результаты нативной проверки публикуются в выпуске; тесты Windows сами по себе не доказывают работу macOS.
 - Лицензии и NOTICE обоих словарей включаются рекурсивно в assets. Снимок географии — CC BY-SA 4.0; см. отдельные лицензии ресурсов.
+
+### Публикация и оставшиеся проверки
+
+- [v0.2.11 опубликована](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11): [Windows x64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-windows-x64.zip) и [macOS ARM64 ZIP — предварительная версия](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip). Python для готовых пакетов не нужен. [Пошаговая установка](README.md).
+- Windows проверена локально, включая GUI, синтетический DOCX с таблицами и точное восстановление; отчёт выпуска: 1177 passed. [Нативный macOS CI](https://github.com/onv83/LocalAnonymizer/actions/runs/40908065255): 1161 passed, 16 skipped; WebKit/bridge при строгой CSP, буфер, текстовое восстановление и проверки собранного `.app`.
+- **macOS предварительная:** на пользовательском Mac ещё нужны первый запуск/Gatekeeper, Cmd+Enter и копирование при фокусе на кнопке, RU→EN→RU с сохранением выбора, открытие/обработка/экспорт/восстановление реального DOCX с таблицами, форматированием и правками Word, буфер обмена и файловые диалоги. Автоматические UI-контракты не заменяют эту ручную приёмку.
+- Intel Mac и Developer ID/notarization не подтверждены; B65 (конкурентное создание первого ключа реального keyring) остаётся открытым. Нет открытого резервного хранения локальных карт. Переносимый `.larecovery` намеренно не зашифрован и содержит исходные значения.
+- Исправление публичной документации после выпуска не меняет архивы или метку `v0.2.11` (`a72e29f3a3a490908743b9511d5f77d4f6eda390`). README внутри Windows ZIP устарел; актуальная инструкция находится в `main` и описании GitHub Release. Отдельной инструкции в корне Mac ZIP нет.
+
+### English
+
+- Added the offline 10,275-base given-name dictionary with bounded case forms, both name orders and conservative identity separation. Rare names and ambiguous contexts can still be missed.
+- Added a pinned 2021 snapshot of 1,117 Russian cities and 85 regions with bounded inflections/context safeguards; it is not a complete current administrative register.
+- Improved labelled passport series/numbers and bounded metadata context, retaining exact tested source spellings and whitespace. Arbitrary passport layouts are not guaranteed.
+- Fixed abbreviated money/list contexts, hardware-capacity false positives, supplier headings, spaced phone numbers/extensions and administrative-group table-of-contents false positives.
+- Added native clipboard error reporting, Cmd+Enter/Ctrl+Enter primary actions and native RU/EN navigation; retained restore error messages and strict CSP without unsafe-eval/unsafe-inline in script-src.
+- Windows is locally verified. **macOS ARM64 is preliminary** despite successful native automated WebKit/clipboard/restore/package checks. Manual real-Mac acceptance remains pending for Gatekeeper, Cmd+Enter, both language directions/persistence, real DOCX tables/formatting and Word-edit restoration, clipboard and dialogs. Intel, Developer ID/notarization and B65 native first-key concurrency are not verified.
+- Both ZIPs are published with checksums; no Python is required. Follow the [current README](README.md) rather than the older README frozen inside the Windows ZIP. Published binaries/tag are unchanged by documentation corrections. Protect unencrypted recovery files and manually review every result.
 
 ## [0.2.10] — 2026-10-27
 
