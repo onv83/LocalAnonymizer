@@ -27,7 +27,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Windows проверена локально, включая GUI, синтетический DOCX с таблицами и точное восстановление; отчёт выпуска: 1177 passed. [Нативный macOS CI](https://github.com/onv83/LocalAnonymizer/actions/runs/40908065255): 1161 passed, 16 skipped; WebKit/bridge при строгой CSP, буфер, текстовое восстановление и проверки собранного `.app`.
 - **macOS предварительная:** на пользовательском Mac ещё нужны первый запуск/Gatekeeper, Cmd+Enter и копирование при фокусе на кнопке, RU→EN→RU с сохранением выбора, открытие/обработка/экспорт/восстановление реального DOCX с таблицами, форматированием и правками Word, буфер обмена и файловые диалоги. Автоматические UI-контракты не заменяют эту ручную приёмку.
 - Intel Mac и Developer ID/notarization не подтверждены; B65 (конкурентное создание первого ключа реального keyring) остаётся открытым. Нет открытого резервного хранения локальных карт. Переносимый `.larecovery` намеренно не зашифрован и содержит исходные значения.
-- Исправление публичной документации после выпуска не меняет архивы или метку `v0.2.11` (`a72e29f3a3a490908743b9511d5f77d4f6eda390`). README внутри Windows ZIP устарел; актуальная инструкция находится в `main` и описании GitHub Release. Отдельной инструкции в корне Mac ZIP нет.
+- Документационное переупаковывание v0.2.11: обновлены README и CHANGELOG в Windows ZIP, добавлена русская `README-macOS.md` в корне Mac ZIP и рядом с `.app`. Код, бинарники, ресурсы, манифесты приложения и метка `v0.2.11` (`a72e29f3a3a490908743b9511d5f77d4f6eda390`) не изменены; SHA-256 архивов пересчитаны. Это не новая сборка macOS и не завершение ручной приёмки.
 
 ### English
 
@@ -37,7 +37,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Fixed abbreviated money/list contexts, hardware-capacity false positives, supplier headings, spaced phone numbers/extensions and administrative-group table-of-contents false positives.
 - Added native clipboard error reporting, Cmd+Enter/Ctrl+Enter primary actions and native RU/EN navigation; retained restore error messages and strict CSP without unsafe-eval/unsafe-inline in script-src.
 - Windows is locally verified. **macOS ARM64 is preliminary** despite successful native automated WebKit/clipboard/restore/package checks. Manual real-Mac acceptance remains pending for Gatekeeper, Cmd+Enter, both language directions/persistence, real DOCX tables/formatting and Word-edit restoration, clipboard and dialogs. Intel, Developer ID/notarization and B65 native first-key concurrency are not verified.
-- Both ZIPs are published with checksums; no Python is required. Follow the [current README](README.md) rather than the older README frozen inside the Windows ZIP. Published binaries/tag are unchanged by documentation corrections. Protect unencrypted recovery files and manually review every result.
+- Both ZIPs are published with checksums; no Python is required. The documentation-only repack updates the Windows README/changelog and adds a Russian macOS install guide. ZIP checksums change; program binaries, application manifests and the source tag remain unchanged. Follow the [current README](README.md). Protect unencrypted recovery files and manually review every result.
 
 ## [0.2.10] — 2026-10-27
 
