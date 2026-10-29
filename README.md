@@ -1,239 +1,123 @@
-# Local Document Anonymizer
+# LocalAnonymizer — локальный обезличиватель документов
 
-A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md`, and `.log` files. The interface is available in English and Russian. The application does not use a network server, HTTP requests, CDNs, telemetry, or cloud models.
+Приложение обрабатывает документы на вашем компьютере, без облака, телеметрии, HTTP-сервера и передачи содержимого наружу. Интерфейс — русский и английский. Поддерживаются DOCX, ODT, XLSX, TXT, CSV, MD, LOG; старый DOC — только на Windows с Microsoft Word.
 
-## Изменения 0.2.11 и сборка macOS
+## Скачать v0.2.11 — Python не нужен
 
-В исходники включены B68–B74: контекстные исправления, большой офлайн-словарь имён со склонениями, города/регионы России и подписанные паспортные реквизиты. Подробности и ограничения — в [CHANGELOG.md](CHANGELOG.md). Данные не отправляются наружу; финальная ручная проверка результата обязательна.
+| Платформа | Скачать готовое приложение | Статус |
+| --- | --- | --- |
+| Windows x64 | [LocalAnonymizer-0.2.11-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-windows-x64.zip) | Проверено локально, включая GUI и синтетический DOCX |
+| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.2.11-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip) | **Предварительная версия для проверки на реальном Mac** |
 
-macOS теперь входит в разрешённый объём разработки. Для Apple Silicon предусмотрена нативная сборка на `macos-14` в GitHub Actions; x86_64 macOS не проверяется. Копирование использует нативный буфер обмена; Cmd+Enter и Ctrl+Enter копируют результат; выбор языка переключает локальную страницу через нативное окно. CSP не разрешает `unsafe-eval`. Сборка не подписана Developer ID и не нотарифицирована; это ограничение выпуска, а не рекомендация отключать Gatekeeper. Проверяйте SHA-256 и источник архива перед открытием.
+[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
-Статус конкретных Windows/macOS артефактов, выполненные проверки и оставшиеся ограничения указаны в соответствующем GitHub Release. Не считайте наличие исходников подтверждением нативного запуска. Для самостоятельной сборки macOS: `uv sync --extra dev --frozen`, `./build.sh`, `./verify-native.sh`; дополнительный GUI smoke: `uv run python scripts/native_ui_smoke.py`.
+**Для готовых ZIP не нужны Python, uv, pip или сборка из исходников.** Intel Mac не проверен; ARM64-архив не следует считать сборкой для Intel. Готовый Linux-пакет в этом выпуске не опубликован.
 
-Словарь имён и географический snapshot поставляются с собственными `LICENSE`/`NOTICE` в `src/local_anonymizer/assets/given_names` и `russian_geography`. География отражает upstream-снимок 2021 года и не является текущим исчерпывающим административным справочником.
+### Windows: установка и запуск
 
-## Screenshots
+1. Скачайте Windows ZIP по ссылке выше.
+2. Распакуйте **весь архив** в отдельную обычную папку.
+3. Откройте папку `LocalAnonymizer` и запустите `LocalAnonymizer.exe`.
+4. Не переносите EXE отдельно и не удаляйте папку `_internal`: она нужна для работы. Требуется Microsoft Edge WebView2 Runtime (на Windows 11 обычно уже установлен).
+
+### macOS: установка и первый запуск (предварительная версия)
+
+1. В меню Apple → «Об этом Mac» убедитесь, что указан чип Apple M-серии. Для Intel работоспособность не обещается.
+2. Скачайте **macOS ARM64 ZIP** по ссылке выше, а не GitHub `Source code`.
+3. Дважды щёлкните ZIP в Finder. В распакованной папке `native-macos-package` найдите `LocalAnonymizer.app` (Finder может скрывать расширение `.app`).
+4. Перетащите **LocalAnonymizer.app** в «Программы» (`Applications`). Не разбирайте пакет приложения и не запускайте отдельные файлы внутри него.
+5. Откройте приложение из «Программ» двойным щелчком.
+6. Если macOS заблокировала первый запуск: **только если вы доверяете именно этому скачанному файлу**, после неудачной попытки откройте «Системные настройки» → «Конфиденциальность и безопасность» (`Privacy & Security`), найдите сообщение о LocalAnonymizer и нажмите «Всё равно открыть» (`Open Anyway`), затем подтвердите открытие. Если такого пункта нет или система сообщает о вредоносном/повреждённом файле — остановитесь и сообщите точный текст ошибки, не обходите защиту командами.
+
+Не отключайте Gatekeeper глобально и не удаляйте карантин через `sudo xattr`. Подпись Developer ID и notarization не подтверждены этой проверкой документации. Сверьте источник загрузки и SHA-256 с файлом сумм на странице выпуска; совпадение хеша подтверждает целостность, но само по себе не доказывает безопасность приложения.
+
+### Что ещё нужно проверить на Mac
+
+**Это предварительная, а не полностью принятая macOS-версия.** Нативные автоматические проверки уже прошли, но ручная проверка на пользовательском Mac ещё нужна:
+
+- [ ] Первый запуск скачанного приложения, включая поведение Gatekeeper.
+- [ ] `Cmd+Enter`: основное действие и копирование готового результата, в том числе при фокусе на кнопке.
+- [ ] Переключение языка RU → EN и EN → RU, сохранение выбора после перезапуска.
+- [ ] Открытие, обработка, экспорт и восстановление реального DOCX с таблицами и форматированием; отдельно — восстановление после редактирования в Word.
+- [ ] Копирование и вставка через системный буфер, диалоги выбора/сохранения файлов, сообщения об ошибках и работа интерфейса.
+
+Проверяйте на копиях документов; не загружайте документы или `.larecovery` с чувствительными данными в публичные Issues. Для сообщения о проблеме достаточно версии macOS, модели/чипа, шагов и обезличенного текста ошибки.
+
+### Что уже проверено
+
+- Windows: по отчёту выпуска **1177 passed**, проверки собранного EXE (ядро, пара файлов восстановления, платформенные службы), обработка синтетического DOCX с таблицами и разорванными фрагментами через GUI; восстановление побайтно совпало с оригиналом.
+- [Нативный macOS ARM64 CI](https://github.com/onv83/LocalAnonymizer/actions/runs/40908065255): **1161 passed, 16 skipped**. WebKit проверил bridge при строгой CSP, системный буфер и текстовое восстановление; собранный `.app` прошёл проверки ядра, пары файлов и платформенных служб.
+- Cmd+Enter/Ctrl+Enter и маршрутизация RU/EN покрыты автоматическими UI-контрактами. Это **не** ручная приёмка клавиатуры, языка и полного DOCX-цикла на Mac.
+- Конкурентное создание первого ключа в реальном системном хранилище (B65) остаётся отдельной незакрытой проверкой. Проверки на Intel Mac и подтверждение Developer ID/notarization не выполнены.
+
+## Что изменилось в 0.2.11
+
+- **ФИО:** офлайн-словарь 10 275 основ имён, ограниченные падежные формы, оба порядка имени и фамилии, нетипичные фамилии рядом с известным именем, инициалы и защита от ложных совпадений. Неоднозначные личности не объединяются без достаточных оснований.
+- **География:** 1117 городов и 85 регионов из закреплённого снимка 2021 года, ограниченные склонения и контекст омонимов; сохранена ранее поддержанная география вне этого снимка. Это не текущий полный административный справочник.
+- **Паспорта:** подписанные серия и номер, слитная/раздельная запись, пробелы и переносы, ограниченный контекст реквизитов; точное восстановление проверенных исходных написаний. Произвольный макет паспорта не гарантируется.
+- **Суммы и телефоны:** исправлены денежные сокращения и перечисления, отрицательные контексты оборудования/ёмкости, телефоны с пробелом после плюса и добавочным номером.
+- **Контекст:** исправлены заголовки поставщиков и оглавления административных групп, чтобы не скрывать обычный текст как персоналию или секрет.
+- **Интерфейс macOS/RU/EN:** нативное копирование с явной ошибкой при отказе буфера; Cmd+Enter/Ctrl+Enter для основного действия; переключение языка через нативное окно. Bridge совместим с pywebview 6 без разрешения `unsafe-eval`/`unsafe-inline` в `script-src`; сообщения об ошибках восстановления сохранены.
+
+Словари включают собственные LICENSE/NOTICE; географический снимок — CC BY-SA 4.0. Редкие имена, омонимы, сложные объекты и нетипичные реквизиты могут быть пропущены. **Ручная проверка каждого результата обязательна.** Подробности и предыдущие версии: [CHANGELOG.md](CHANGELOG.md).
+
+## Защита данных
+
+- Обработка локальная; исходные значения не пишутся в журнал приложения.
+- Локальные карты замен и профили: Windows DPAPI; на macOS/Linux — AES-GCM с ключом в системном защищённом хранилище. Если оно недоступно, операция завершается отказом, **открытого резервного хранения нет**.
+- Экспортируемый `.larecovery`, в отличие от локального хранилища, **намеренно не зашифрован**, содержит исходные значения и должен защищаться как оригинал. Передавайте его только тем, кому разрешён доступ к исходным данным, отдельно от обезличенного документа.
+- Необратимо удалённые секреты не восстанавливаются. Копии оригиналов и восстановленные документы остаются чувствительными.
+
+## Скриншоты / Screenshots
+
+### Русский интерфейс
+
+![Русский интерфейс](docs/images/local-anonymizer-ru.png)
 
 ### English interface
 
-![Local Document Anonymizer — English interface](docs/images/local-anonymizer-en.png)
+![English interface](docs/images/local-anonymizer-en.png)
 
-*Current UI from `main` with a fully synthetic document. The screenshot shows text, an image, an address, and other detected values; no user document or real personal data was used.*
+Снимки с синтетическим документом; пользовательских данных нет. / Screenshots use synthetic data, not user documents.
 
-### Russian interface
+## English installation and status
 
-![Local Document Anonymizer — Russian interface](docs/images/local-anonymizer-ru.png)
+**v0.2.11 Windows x64 is locally verified. macOS ARM64 is a preliminary/test build, not fully manually accepted.** No Python, uv, pip or source build is needed for either ZIP. Intel Mac compatibility is not verified; no Linux package is published in this release.
 
-*Текущий интерфейс из `main` с полностью вымышленным документом. На снимке показаны текст, рисунок, адрес и другие распознанные данные; пользовательские документы и реальные персональные сведения не использовались.*
+- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
+- [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
+- If the first launch is blocked, and only if you trust this exact downloaded file, open System Settings → Privacy & Security → Open Anyway after the failed launch, then confirm. If unavailable, or macOS reports malware/damage, stop and report the error rather than bypassing protection. Do not disable Gatekeeper globally or remove quarantine with `sudo xattr`. Developer ID/notarization were not established by this documentation audit.
+- [Release evidence and checksums](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11): native ARM64 CI passed WebKit/strict-CSP bridge, clipboard, text restoration and packaged core/pair/platform checks. This is not manual end-user acceptance.
+- **Still to check on a real Mac:** first launch/Gatekeeper; Cmd+Enter copy including button focus; RU→EN→RU and persistence after restart; real DOCX open/process/export/restore with tables, formatting and Word edits; clipboard, file dialogs and error UI. Native first-key concurrency (B65) remains open separately.
+- Names, Russian geography, labelled passports, money/phone contexts and native UI fixes are described in the bilingual [changelog](CHANGELOG.md#0211--2026-10-29). Detection is not exhaustive; manually review every anonymized result.
+- Local mappings use OS-protected storage and fail closed without it. Exported `.larecovery` files are intentionally **unencrypted** and contain original values: protect them like the original document. Irreversibly removed secrets cannot be restored. Legacy `.doc` requires Word COM on Windows; macOS is not claimed equivalent.
 
-## Ready-to-use Windows build
+## Документация внутри архивов / Bundled documentation
 
-1. Download `LocalAnonymizer-0.2.10-windows-x64.zip` from the [v0.2.10 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10).
-2. Extract the complete archive.
-3. Run `LocalAnonymizer\LocalAnonymizer.exe`.
+ZIP-файлы v0.2.11 остаются неизменными. В Windows ZIP находится README со старой ссылкой на 0.2.10 и устаревшим статусом macOS; в корне macOS ZIP отдельной инструкции нет. **Используйте текущую инструкцию на этой странице и в GitHub Release.** Исправление документации не меняет бинарники, манифесты, контрольные суммы или метку v0.2.11.
 
-The packaged application does not require Python, `uv`, pip, or manually installed Python packages. Keep the `_internal` directory next to the executable. Windows 11 uses the system Microsoft Edge WebView2 runtime.
+The immutable v0.2.11 Windows ZIP contains an older README; the macOS ZIP has no top-level install guide. Use this current README and the release page instead. Documentation corrections do not change the published binaries or tag.
 
-> **Version status:** `v0.2.10` is published with a verified Windows archive, SHA-256 checksums and a file manifest. Native Linux and macOS packages are not published or declared supported yet.
+## Для разработчиков / Development
 
-## What is new in `v0.2.10`
-
-- Restoring Word-edited documents now accepts narrowly validated view-zoom settings. Restore failures display a clear message without internal paths.
-- Hardened hidden-data checks for XLSX and ODT. Irreversibly removed secrets are excluded from exact DOCX/ODT recovery archives.
-- Fixed secret detection and marker boundaries, isolated concurrent previews and temporary files, and strengthened paired-export consistency.
-- See the [changelog](CHANGELOG.md#0210--2026-10-27) for details.
-
-## What is new in `v0.2.9`
-
-- Added native Linux/macOS CI and packaged smoke gates, including fail-closed checks for secure storage and clipboard integration. Windows remains the primary supported platform, and the existing Word COM path for high-fidelity DOC/DOCX handling is unchanged.
-- Packaged builds now include the runtime `python-docx` templates required for DOCX creation and export.
-- Moved the manual-review workspace below the two preview panes, compacted its actions, and kept the apply panel visible while reviewing. Two explicit, mutually consistent checkboxes now control manual review and automatic concealment without the former dropdown or duplicate `Additional modes` headings.
-- Reworked the document workspace: `Open` is in the source header, the mapping chips sit above the anonymized preview, both previews are larger, and the redundant workflow strip, subtitle, source label, storage notice, and visible drop hint were removed. Window-level drag-and-drop remains available.
-- Increased the preferred Windows launch width to 1600 px while clamping it to the available screen, improved low-height layouts, and aligned the Russian and English interfaces in light and dark themes.
-- The formatted-preview toolbar now appears immediately while rendering, reserves its final position, reports that the view is being prepared, and enables formatted-only controls when ready.
-- Clearing a formatted document now removes both formatted-preview hosts before restoring the empty text panes, preventing a stale blank panel.
-- Rewrote the built-in English and Russian usage guide for the current preview, review, apply, export, and portable `.larecovery` workflow.
-- Improved anonymization of explicitly labelled postal addresses and five- or six-digit postal indexes while retaining negative checks for unrelated numbers.
-- Added a separate reversible `ПОРТ` / Port category: values from 1 through 65535 are anonymized after an explicit `порт`/`port` label, in ranges, TCP/UDP forms, and network endpoints such as `IP:port`, `domain:port`, `[IPv6]:port`, and infrastructure `host:port`. Bare numbers, times, versions, invalid values, and numeric credentials are not treated as ports; a URL containing a port remains one link marker.
-- Added a separate `СОКРАЩЕНИЯ` / Abbreviations category: complete two-letter uppercase Unicode tokens are redacted from their first occurrence, while tokens with at least three consecutive uppercase letters remain supported. Domains concatenated by Word with table-of-contents page numbers are fully redacted while the page number is preserved.
-- Compound policy/task identifiers with multiple uppercase code fields are now replaced as one bounded `СОКРАЩЕНИЯ` marker, including numeric dotted version fragments, split DOCX runs and intra-cell hard breaks; email, URL, filesystem and dotted-hostname contexts remain excluded.
-- Contextual and inventory addresses are grouped into one bounded `АДРЕС` marker, including postfix street types, ordinal names, building qualifiers, and DOCX split runs without consuming adjacent prose.
-- Location tables with paired `Название`/`Адрес` semantics now redact both the bounded site-name cell and its complete address cell. Hyphenated `пр-кт` and an optional parenthetical `проспект` expansion are supported without using a dictionary of individual regions.
-- Server names split by a hard break or paragraph boundary inside one DOCX inventory cell are grouped into one `УЗЕЛ` marker; in semantic server-capacity tables, the complete bounded node-name cell is redacted after the headings and row IP confirm its role, without relying on a fixed role-code dictionary. Unrelated prose and neighbouring cells are not joined.
-- Bounded service-account names, including assignments with internal underscores, are emitted as one `ЛОГИН` marker, and four-column inventory rows now cover administrative area, district abbreviation, city/branch, and full address with semantic precedence over abbreviations.
-- Both manual-review decisions are grouped under the anonymized side, with hover help retained and the permanent completion hint removed from the visible layout.
-- Dictionary-setting tabs in both languages now show a right-facing arrow while preserving the active state, keyboard tab behavior and accessible text labels.
-- On narrow screens the file-library controls collapse to one bounded column, so select/import/export/delete controls stay inside the viewport.
-- Equal DOCX location values with different hard-break topology keep separate reversible identities during edited-package restoration.
-- Embedded DOCX images and static diagrams are removed from the anonymized copy with a visible `[СХЕМА-N]` marker and restored exactly on the local computer; the public screenshots show a fully synthetic document with no user data.
-- Previous/Next navigation preserves the selected formatted or text view, aligns both formatted panes by structural anchor, and scrolls the exact selected range into view after initial selection, delayed rendering, repeated values, or a missing-anchor fallback.
-- The formatted-preview status occupies its own row and all five controls remain together on the next row during loading and ready states, including narrow RU/EN layouts.
-- Plain text, structured documents, and the manual-review queue now use the same detector precedence, so a nested uncertain hint is not queued when a stronger rule replaces the complete logical record.
-- The current-review card keeps a stable responsive height in `off`, `review`, and `auto` states; compact disabled summaries retain the complete localized explanation in the tooltip and accessible label.
-- Conservative infrastructure detection now covers structured machine and service identifiers with internal hyphens/underscores, mixed separators or case, compact letter-number forms, and digit-led inventory values while retaining prose and software/version safeguards.
-- Text can now be selected with the mouse and copied with `Ctrl+C` directly from either source or anonymized pane. This works in plain-text and formatted DOCX views without disabling replacement-marker clicks, navigation, or scrolling.
-- Equivalent interface sections now share explicit typography roles for typeface, size, weight, line height, letter spacing, and casing in both languages and at responsive widths. Formatted DOCX previews continue to preserve the document's original typography.
-- Added and expanded regression coverage for layout, localization parity, address/index detection, formatted-preview loading and clearing, packaging, secure storage, and native platform smoke checks.
-
-See [CHANGELOG.md](CHANGELOG.md) for the version history in English and Russian.
-
-## Highlights
-
-- Reversible anonymization with encrypted local mappings and portable recovery files.
-- DOCX formatting is preserved by OOXML-aware processing; legacy DOC conversion uses Microsoft Word COM on Windows.
-- Local formatted, read-only DOCX preview and text review workflow.
-- Native partial-text selection and copying from either preview pane.
-- Support for DOCX, legacy DOC on Windows, ODT, XLSX, and text-based formats.
-- English and Russian interfaces with persistent language selection.
-- No cloud processing: document content remains on the local computer.
-
-## Platform status
-
-Windows is the reference environment for `.doc` and `.docx` fidelity. Legacy `.doc` conversion uses Microsoft Word COM and is not presented as equivalent on other operating systems.
-
-Cross-platform foundations are included for Linux and macOS: native data directories, fail-closed AES-GCM storage backed by the system keyring, native clipboard adapters, an ODT processor, a shared PyInstaller specification, and target-OS verification scripts. These paths still require native GUI, keyring, clipboard, packaging, and recovery testing before Linux or macOS releases can be considered supported.
-
-Build and verify native packages on the target operating system:
+Python 3.11 и `uv` нужны только для разработки:
 
 ```sh
-./build.sh
-./verify-native.sh
+uv sync --extra dev --frozen
+uv run python -m pytest -q
 ```
 
-PyInstaller cross-building is not used. Linux produces `dist/LocalAnonymizer/LocalAnonymizer`; macOS produces `dist/LocalAnonymizer.app`. Successful CLI smoke tests do not replace a manual GTK/WebKit or Cocoa GUI check.
-
-## Security notes
-
-- Processing is local, and source values are not written to application logs.
-- Windows mappings and profiles are protected with DPAPI for the current user.
-- Non-Windows storage fails closed when a suitable system keyring is unavailable; there is no plaintext fallback.
-- Exported `.larecovery` files intentionally contain original values and must be protected like the source document.
-- Anonymized output still requires final manual review.
-
-## Development
-
-Use Python 3.11 and `uv`:
-
-```bat
-uv sync --extra dev --no-install-project
-uv run --no-project python -m pytest -q
-build.bat
-```
-
-For the detailed workflow, limitations, engine coverage, and security model, see the Russian documentation below.
-
-## License and contributions
-
-LocalAnonymizer is licensed under the [Apache License 2.0](LICENSE). Contributions intentionally submitted for inclusion in the project are accepted under the same license unless explicitly stated otherwise.
-
----
-
-# Локальный обезличиватель документов
-
-Приложение для локального обезличивания `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md` и `.log`. Интерфейс переключается между русским и английским языками с сохранением выбора. Текущий проверенный готовый выпуск предназначен для Windows. Сетевой сервер, HTTP-запросы, CDN, телеметрия и облачные модели не используются.
-
-## Скриншоты
-
-### Интерфейс на русском языке
-
-![Локальный обезличиватель документов — интерфейс на русском языке](docs/images/local-anonymizer-ru.png)
-
-*Текущий интерфейс из `main` с полностью вымышленным документом. На снимке показаны текст, рисунок, адрес и другие распознанные данные; пользовательские документы и реальные персональные сведения не использовались.*
-
-### Интерфейс на английском языке
-
-![Локальный обезличиватель документов — интерфейс на английском языке](docs/images/local-anonymizer-en.png)
-
-*Current UI from `main` with a fully synthetic document. The screenshot shows text, an image, an address, and other detected values; no user document or real personal data was used.*
-
-## Запуск готовой версии — без Python и установки пакетов
-
-1. Откройте [страницу выпуска `v0.2.10`](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.10). Скачайте с неё архив `LocalAnonymizer-0.2.10-windows-x64.zip`.
-2. Распакуйте архив в обычную папку.
-3. Запустите `LocalAnonymizer\LocalAnonymizer.exe`.
-
-Python, `uv`, pip и установка зависимостей для готовой версии **не нужны**. Папку `_internal` рядом с `.exe` нельзя удалять или переносить отдельно: в ней уже находятся Python и все необходимые библиотеки приложения. На Windows 11 используется системный Microsoft Edge WebView2.
-
-> **Состояние версии:** `v0.2.10` опубликована: проверенный Windows-архив, контрольные суммы SHA-256 и пофайловый состав доступны на странице выпуска. Пакеты Linux и macOS пока не публикуются и не объявляются поддерживаемыми.
-
-## Что нового в `v0.2.10`
-
-- Исправлено восстановление документов после изменения масштаба просмотра в Word; при отказе интерфейс показывает понятное сообщение без внутренних путей.
-- Усилены проверки скрытых данных XLSX и ODT. Необратимо удалённые секреты не включаются в точный архив восстановления DOCX/ODT.
-- Исправлено распознавание секретов и границ маркеров; изолированы параллельные предпросмотры и временные файлы, усилена согласованность экспорта пары.
-- Подробности приведены в [журнале изменений](CHANGELOG.md#0210--2026-10-27).
-
-## Что нового в `v0.2.9`
-
-- Добавлены автоматические сборки Linux/macOS и проверки готовых пакетов, включая проверки защищённого хранилища и буфера обмена с безопасным отказом. Windows остаётся основной поддерживаемой платформой, существующая цепочка точной обработки DOC/DOCX через Word COM не изменена.
-- В готовые сборки включены служебные шаблоны `python-docx`, необходимые для создания и экспорта DOCX.
-- Блок ручной проверки перенесён под две панели предпросмотра, его действия уплотнены, а панель применения остаётся видимой во время проверки. Ручной проверкой и автоматическим скрытием теперь управляют два явных взаимосогласованных флажка без прежнего выпадающего списка и дублирующихся заголовков «Дополнительные режимы».
-- Рабочая область документа перестроена: `Открыть` находится в заголовке исходного документа, маркеры соответствий — над обезличенным предпросмотром, обе области предпросмотра увеличены. Удалены лишняя полоса этапов, подзаголовок, подпись исходного редактора, статическое уведомление о хранении и видимая подсказка о перетаскивании; перетаскивание файла в окно продолжает работать.
-- Предпочтительная ширина окна Windows увеличена до 1600 пикселей с ограничением по доступному экрану, улучшена компоновка при небольшой высоте, русская и английская версии согласованы в светлой и тёмной темах.
-- Панель форматированного предпросмотра появляется сразу после начала подготовки, заранее занимает итоговое место, сообщает о загрузке и включает доступные только после готовности команды автоматически.
-- После очистки форматированного документа обе области форматированного предпросмотра удаляются до возврата пустых текстовых панелей, поэтому лишняя пустая панель больше не остаётся.
-- Встроенная инструкция на русском и английском переписана под актуальный процесс предпросмотра, проверки, применения, экспорта и переносимых файлов `.larecovery`.
-- Улучшено обезличивание явно подписанных почтовых адресов и пяти- или шестизначных индексов; посторонние числа по-прежнему не считаются индексами.
-- Добавлена отдельная обратимая категория `ПОРТ`: номера от 1 до 65535 обезличиваются после явной подписи `порт`/`port`, в диапазонах, обозначениях `TCP`/`UDP` и сетевых конечных точках `IP:порт`, `домен:порт`, `[IPv6]:порт` и инфраструктурный `узел:порт`. Голые числа, время, версии, недопустимые номера и цифровые учётные данные не считаются портами; ссылка с портом остаётся одним маркером ссылки.
-- Добавлена отдельная категория `СОКРАЩЕНИЯ`: полные двухбуквенные токены из заглавных Unicode-букв скрываются уже при первом вхождении, а токены минимум с тремя подряд заглавными буквами остаются поддержанными; домены, склеенные Word с номерами страниц оглавления, заменяются целиком с сохранением номера страницы.
-- Контекстные и инвентарные адреса объединяются в один ограниченный маркер `АДРЕС`, включая тип улицы после названия, порядковые названия, реквизиты строения и разрывы фрагментов DOCX без захвата соседнего текста.
-- Серверное имя с жёстким переносом или границей абзаца внутри одной инвентарной ячейки DOCX объединяется в один маркер `УЗЕЛ`; в смысловой таблице серверных мощностей целиком скрывается значение ячейки имени узла после подтверждения роли заголовками и IP той же строки, без фиксированного словаря кодов ролей. Обычный текст и соседние ячейки не склеиваются.
-- Ограниченные имена сервисных учётных записей заменяются одним маркером `ЛОГИН`, а четырёхколоночные инвентарные строки покрывают регион, сокращение округа, город/филиал и полный адрес с приоритетом точных сущностей над сокращениями.
-- Обе кнопки решения ручной проверки собраны под правой панелью обезличенного текста; всплывающие подсказки сохранены, постоянная инструкция по завершению скрыта из видимой компоновки.
-- Встроенные рисунки и статические схемы DOCX удаляются из обезличенной копии с видимым маркером `[СХЕМА-N]` и точно восстанавливаются локально; публичные снимки показывают актуальный интерфейс с полностью вымышленным примером без пользовательских данных.
-- «Предыдущее»/«Следующее» сохраняют выбранный форматированный или текстовый вид, синхронизируют обе форматированные панели по одному структурному ориентиру и прокручивают точный выбранный диапазон в видимую область при первом выборе, поздней отрисовке, повторах и резервном поиске без такого ориентира.
-- Статус форматированного предпросмотра занимает отдельную строку, а все пять кнопок остаются вместе на следующей строке во время подготовки и после готовности, включая узкие RU/EN-компоновки.
-- Обычный текст, структурированные документы и очередь ручной проверки используют одинаковый приоритет детекторов: вложенная спорная подсказка не ставится в очередь, если более сильное правило заменяет всю логическую запись.
-- Карточка текущего спорного места сохраняет стабильную адаптивную высоту во всех трёх внутренних состояниях (`off`, `review` и `auto`); при отключении краткое сообщение сохраняет полное переведённое объяснение в подсказке и доступном имени.
-- Консервативное распознавание инфраструктуры теперь покрывает структурированные имена машин и сервисных учётных записей с внутренними дефисами/подчёркиваниями, смешанными разделителями или регистром, компактными буквенно-цифровыми формами и цифровым префиксом, сохраняя защиту обычной прозы и строк программ/версий.
-- В левой и правой областях теперь можно выделить мышью произвольную часть текста и скопировать её через `Ctrl+C`. Это работает в текстовом и форматированном представлении DOCX, не отключая щелчки по маркерам, переходы и прокрутку.
-- Равнозначные разделы интерфейса получили общие типографические роли: гарнитуру, размер, насыщенность, межстрочный и межбуквенный интервалы и регистр. Правила одинаковы для русского и английского интерфейсов и адаптивных ширин; форматированный предпросмотр DOCX по-прежнему сохраняет исходную типографику документа.
-- Расширены проверки компоновки, согласованности переводов, адресов и индексов, загрузки и очистки форматированного предпросмотра, упаковки, защищённого хранилища и быстрого запуска на целевых платформах.
-
-История версий на русском и английском языках ведётся в [CHANGELOG.md](CHANGELOG.md).
-
-## Запуск из исходного кода (только для разработки)
-
-1. Установите Python 3.11 и `uv`.
-2. В каталоге проекта выполните:
-   ```bat
-   uv sync --extra dev --no-install-project
-   run.bat
-   ```
-3. Быстрая проверка без открытия окна: `run.bat --smoke`.
-
-После сборки `run.bat` запускает `dist\LocalAnonymizer\LocalAnonymizer.exe`. Локальная проверенная копия сборки может храниться в `release\LocalAnonymizer`, но каталог `release` намеренно не публикуется в Git: готовая версия распространяется архивом через раздел выпусков GitHub.
-
-## Платформенная архитектура
-
-Предметное ядро, DOCX/XLSX и текстовые форматы не зависят от Windows. Платформенные функции вынесены за отдельные границы:
-
-- каталог данных выбирается по правилам `%LOCALAPPDATA%`, XDG или `~/Library/Application Support`;
-- Windows DPAPI и системный буфер обмена подключаются через адаптеры;
-- конвертер старого `.doc` передаётся сервису как отдельная зависимость; штатный Windows-адаптер по-прежнему использует Microsoft Word COM;
-- PyInstaller использует единый `LocalAnonymizer.spec`; `build.bat` и `build.sh` являются только платформенными оболочками над ним;
-- Зависимости графического интерфейса ограничены условиями для каждой ОС: WebView2 на Windows, Cocoa на macOS и GTK/WebKit на Linux.
-
-Сборки Linux/macOS пока не публикуются и не считаются поддерживаемыми. GitHub Actions уже проверяют сборку, запуск, системное защищённое хранилище и работу буфера обмена на Ubuntu и macOS, однако интерактивная работа графического интерфейса, связь с реальным системным хранилищем ключей и полный пользовательский цикл восстановления ещё требуют ручной проверки на целевых ОС. Открытого резервного хранения локальных карт замен нет. Экспортируемый переносимый `.larecovery`, напротив, намеренно не зашифрован, содержит исходные значения и предупреждение о чувствительных данных; его нужно защищать так же, как оригинал.
-
-Подготовка пакетов для каждой ОС выполняется **на этой же ОС** (сборка PyInstaller для другой ОС не используется):
-
-```sh
-./build.sh
-./verify-native.sh
-```
-
-На Linux создаётся `dist/LocalAnonymizer/LocalAnonymizer`, на macOS — пакет приложения `dist/LocalAnonymizer.app`. Проверочный сценарий запускает быструю проверку ядра, восстановление пары файлов и команду `--platform-smoke`: запись с последующим чтением из защищённого хранилища и проверку доступности системного буфера обмена без чтения или перезаписи его пользовательского содержимого. Успех этих проверок из командной строки ещё не заменяет ручную проверку графического интерфейса GTK/WebKit или Cocoa.
+Windows: `build.bat`. На целевой macOS/Linux: `./build.sh`, затем `./verify-native.sh`; дополнительная нативная UI-проверка — `uv run python scripts/native_ui_smoke.py`. Сборка PyInstaller для другой ОС не используется. CLI-проверки не заменяют ручную приёмку GUI.
 
 ## Работа
 
 1. Вставьте текст либо выберите или перетащите файл. Текст анализируется автоматически с небольшой задержкой. Для DOCX левая панель по умолчанию показывает локальный форматированный предпросмотр только для чтения (порядок абзацев и таблиц, заголовки, базовое форматирование и колонтитулы); переключатель **«Текст и подсветка»** открывает обычный текстовый анализ. Для других форматов сохраняется текстовый предпросмотр.
 2. Просмотрите синие обратимые замены, серые необратимые удаления и жёлтые подсказки. Стрелки переходят по всем отметкам; строка таблицы соответствий ведёт к маркеру. Произвольную часть текста можно выделить мышью непосредственно в любой области и скопировать через `Ctrl+C`.
 3. Для жёлтой подсказки выберите **Оставить** или **Скрыть**. Щелчок по синему маркеру возвращает значение только в текущем тексте; решение можно отменить кнопкой рядом с восстановленным значением. Для файла после решений снова нажмите **Обезличить**, чтобы применить временные правила к выходному файлу.
-4. Экспортируйте обезличенный файл либо все готовые файлы одним ZIP без карт замен. Карту в CSV экспортируйте только после явного предупреждения: она содержит чувствительные значения.
-5. Для DOCX порядок такой: скачайте обезличенный файл, отредактируйте его в Word без удаления служебного свойства, нажмите **«Восстановить исправленный файл…»**, выберите этот файл и затем место сохранения восстановленной копии. Новые правки, таблицы и форматирование сохраняются. Файл должен сохранить служебную привязку к операции (OPC `identifier` для DOCX/XLSX или служебную строку для текстовых форматов); чужой, старый либо лишённый привязки файл отклоняется до создания результата. Неизвестные маркеры сохраняются и перечисляются; необратимо удалённые секреты не восстанавливаются.
+4. Экспортируйте пару: обезличенный документ и соседний файл `NAME — информация для восстановления.larecovery`. Пакетный ZIP содержит отдельную пару для каждого готового документа. `.larecovery` и CSV-карта содержат исходные значения — не передавайте их вместе с обезличенным документом посторонним.
+5. Для DOCX: отредактируйте обезличенный файл в Word, сохранив служебную привязку, затем выберите его для восстановления. Приложение ищет соседний `.larecovery` и проверяет соответствие документу/операции и целостность. После подтверждения пары выполните восстановление и сохраните отдельную копию. Новые правки, таблицы и поддерживаемое форматирование сохраняются. Неверная пара отклоняется; неизвестные маркеры остаются неизменными и перечисляются, необратимые секреты не восстанавливаются.
 
-Оригиналы копируются в `%LOCALAPPDATA%\LocalAnonymizer\documents`. Метаданные библиотеки находятся в SQLite. Карта каждого документа и профили зашифрованы Windows DPAPI для текущего пользователя и привязаны к идентификатору документа и операции.
+Оригиналы копируются в каталог данных приложения: на Windows — `%LOCALAPPDATA%\LocalAnonymizer`, на macOS — внутри `~/Library/Application Support`. Метаданные библиотеки находятся в SQLite. Локальные карты и профили защищены Windows DPAPI либо AES-GCM с системным keyring на macOS/Linux; открытого резервного хранения нет. Это не шифрование переносимого `.larecovery`.
 
 ## Настройки словаря
 
