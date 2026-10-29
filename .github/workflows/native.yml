@@ -57,8 +57,20 @@ jobs:
             libcairo2-dev pkg-config gir1.2-gtk-3.0 gir1.2-webkit2-4.1 \
             xclip xvfb
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install locked dependencies
         run: uv sync --extra dev --frozen
+
+      - name: Verify macOS ARM64 runner architecture
+        if: runner.os == 'macOS'
+        run: uv run python -c "import platform; print(platform.machine()); assert platform.machine() == 'arm64'"
+
+      - name: Verify native macOS WebKit bridge with strict CSP
+        if: runner.os == 'macOS'
+        run: uv run python scripts/native_ui_smoke.py
 
       - name: Run macOS tests
         if: runner.os == 'macOS'

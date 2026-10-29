@@ -1940,6 +1940,7 @@ def test_desktop_window_allows_760px_accessibility_layout():
 
 
 def test_desktop_window_opens_at_1600px_for_two_preview_panes(tmp_path, monkeypatch):
+    monkeypatch.setattr("local_anonymizer.csp_bridge.configure_csp_bridge", lambda window: None)
     captured = {}
 
     def create_window(title, url, **kwargs):
@@ -2124,6 +2125,7 @@ def test_interface_typography_roles_match_in_both_languages_at_real_viewport_wid
 
 
 def test_desktop_window_clamps_preferred_size_to_primary_work_area(tmp_path, monkeypatch):
+    monkeypatch.setattr("local_anonymizer.csp_bridge.configure_csp_bridge", lambda window: None)
     captured = {}
     work_area = SimpleNamespace(X=0, Y=0, Width=1366, Height=728)
     primary_screen = SimpleNamespace(
@@ -2310,6 +2312,7 @@ def test_rare_categories_are_forced_closed_on_every_launch():
 
 
 def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr("local_anonymizer.csp_bridge.configure_csp_bridge", lambda window: None)
     captured = {}
 
     def create_window(title, url, **kwargs):
@@ -2330,6 +2333,7 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
 
 
 def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
+    monkeypatch.setattr("local_anonymizer.csp_bridge.configure_csp_bridge", lambda window: None)
     captured = {}
 
     def create_window(title, url, **kwargs):

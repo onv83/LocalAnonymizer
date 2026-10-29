@@ -2,6 +2,16 @@
 
 A fully local desktop application for anonymizing `.docx`, `.doc`, `.odt`, `.xlsx`, `.txt`, `.csv`, `.md`, and `.log` files. The interface is available in English and Russian. The application does not use a network server, HTTP requests, CDNs, telemetry, or cloud models.
 
+## Изменения 0.2.11 и сборка macOS
+
+В исходники включены B68–B74: контекстные исправления, большой офлайн-словарь имён со склонениями, города/регионы России и подписанные паспортные реквизиты. Подробности и ограничения — в [CHANGELOG.md](CHANGELOG.md). Данные не отправляются наружу; финальная ручная проверка результата обязательна.
+
+macOS теперь входит в разрешённый объём разработки. Для Apple Silicon предусмотрена нативная сборка на `macos-14` в GitHub Actions; x86_64 macOS не проверяется. Копирование использует нативный буфер обмена; Cmd+Enter и Ctrl+Enter копируют результат; выбор языка переключает локальную страницу через нативное окно. CSP не разрешает `unsafe-eval`. Сборка не подписана Developer ID и не нотарифицирована; это ограничение выпуска, а не рекомендация отключать Gatekeeper. Проверяйте SHA-256 и источник архива перед открытием.
+
+Статус конкретных Windows/macOS артефактов, выполненные проверки и оставшиеся ограничения указаны в соответствующем GitHub Release. Не считайте наличие исходников подтверждением нативного запуска. Для самостоятельной сборки macOS: `uv sync --extra dev --frozen`, `./build.sh`, `./verify-native.sh`; дополнительный GUI smoke: `uv run python scripts/native_ui_smoke.py`.
+
+Словарь имён и географический snapshot поставляются с собственными `LICENSE`/`NOTICE` в `src/local_anonymizer/assets/given_names` и `russian_geography`. География отражает upstream-снимок 2021 года и не является текущим исчерпывающим административным справочником.
+
 ## Screenshots
 
 ### English interface

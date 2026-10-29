@@ -1,0 +1,15 @@
+{
+  "source_rows": 32134,
+  "source_sha256": "edf0bbe77afcfb121fa5a8a50b089cdf73b9b2cb51c0f876562b6f3476472cd0",
+  "spellings": 10283,
+  "normalized_keys": 10275,
+  "yo_spellings": 8,
+  "resource_bytes": 142779,
+  "resource_sha256": "210b548917a31032dae991142b871ab2eb5ed76cbab4b96b08c87807076d4950",
+  "excluded_ambiguous_words": [
+    "антенна",
+    "кабинет",
+    "мета",
+    "сервер"
+  ]
+}

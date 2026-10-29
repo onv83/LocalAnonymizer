@@ -974,6 +974,8 @@ class AppApi:
         if language not in {"ru", "en"}:
             raise ValueError("Неизвестный язык")
         self._write_ui_settings(language=language)
+        if self._window is not None:
+            self._window.load_url(str(asset_path(ENGLISH_INDEX_ASSET if language == "en" else INDEX_ASSET)))
         return {"ok": True, "language": language}
 
     def list_documents(self) -> list[dict]:
@@ -1694,6 +1696,8 @@ def main(argv: list[str] | None = None) -> int:
         **geometry,
     )
     api.set_window(window)
+    from .csp_bridge import configure_csp_bridge
+    configure_csp_bridge(window)
     webview.start(debug=False, private_mode=True)
     return 0
 
