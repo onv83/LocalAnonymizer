@@ -1,11 +1,11 @@
-# LocalAnonymizer v0.2.11 — установка на Mac
+# LocalAnonymizer v0.2.12 — установка на Mac
 
 **Предварительная версия для Apple Silicon ARM64 (M-серия). Python, uv и pip не нужны.**
 
 ### macOS: установка и первый запуск (предварительная версия)
 
 1. В меню Apple → «Об этом Mac» убедитесь, что указан чип Apple M-серии. Для Intel работоспособность не обещается.
-2. Скачайте [macOS ARM64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip), а не GitHub `Source code`.
+2. Скачайте [macOS ARM64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-macos-arm64.zip), а не GitHub `Source code`.
 3. Дважды щёлкните ZIP в Finder. В распакованной папке `native-macos-package` найдите `LocalAnonymizer.app` (Finder может скрывать расширение `.app`).
 4. Перетащите **LocalAnonymizer.app** в «Программы» (`Applications`). Не разбирайте пакет приложения и не запускайте отдельные файлы внутри него.
 5. Откройте приложение из «Программ» двойным щелчком.
@@ -32,6 +32,6 @@
 
 ## Об этой упаковке
 
-Исправлена только документация; `.app` и манифест приложения сохранены без изменений. Это не новая нативная сборка. Автоматические проверки исходной сборки: https://github.com/onv83/LocalAnonymizer/actions/runs/40908065255
+В этом выпуске исправлены отмена выбора исходных файлов и загрузка выбранной записи библиотеки в рабочую область. Автоматические проверки исходной сборки и пакета: https://github.com/onv83/LocalAnonymizer/actions/runs/41197775640
 
-Выпуск и SHA256SUMS.txt: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11
+Выпуск и SHA256SUMS.txt: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.12

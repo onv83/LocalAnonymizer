@@ -2,14 +2,14 @@
 
 Приложение обрабатывает документы на вашем компьютере, без облака, телеметрии, HTTP-сервера и передачи содержимого наружу. Интерфейс — русский и английский. Поддерживаются DOCX, ODT, XLSX, TXT, CSV, MD, LOG; старый DOC — только на Windows с Microsoft Word.
 
-## Скачать v0.2.11 — Python не нужен
+## Скачать v0.2.12 — Python не нужен
 
 | Платформа | Скачать готовое приложение | Статус |
 | --- | --- | --- |
-| Windows x64 | [LocalAnonymizer-0.2.11-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-windows-x64.zip) | Проверено локально, включая GUI и синтетический DOCX |
-| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.2.11-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip) | **Предварительная версия для проверки на реальном Mac** |
+| Windows x64 | [LocalAnonymizer-0.2.12-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-windows-x64.zip) | Проверено локально, включая GUI и синтетический DOCX |
+| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.2.12-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-macos-arm64.zip) | **Предварительная версия для проверки на реальном Mac** |
 
-[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
+[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.12) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
 **Для готовых ZIP не нужны Python, uv, pip или сборка из исходников.** Intel Mac не проверен; ARM64-архив не следует считать сборкой для Intel. Готовый Linux-пакет в этом выпуске не опубликован.
 
@@ -50,14 +50,11 @@
 - Cmd+Enter/Ctrl+Enter и маршрутизация RU/EN покрыты автоматическими UI-контрактами. Это **не** ручная приёмка клавиатуры, языка и полного DOCX-цикла на Mac.
 - Конкурентное создание первого ключа в реальном системном хранилище (B65) остаётся отдельной незакрытой проверкой. Проверки на Intel Mac и подтверждение Developer ID/notarization не выполнены.
 
-## Что изменилось в 0.2.11
+## Что изменилось в 0.2.12
 
-- **ФИО:** офлайн-словарь 10 275 основ имён, ограниченные падежные формы, оба порядка имени и фамилии, нетипичные фамилии рядом с известным именем, инициалы и защита от ложных совпадений. Неоднозначные личности не объединяются без достаточных оснований.
-- **География:** 1117 городов и 85 регионов из закреплённого снимка 2021 года, ограниченные склонения и контекст омонимов; сохранена ранее поддержанная география вне этого снимка. Это не текущий полный административный справочник.
-- **Паспорта:** подписанные серия и номер, слитная/раздельная запись, пробелы и переносы, ограниченный контекст реквизитов; точное восстановление проверенных исходных написаний. Произвольный макет паспорта не гарантируется.
-- **Суммы и телефоны:** исправлены денежные сокращения и перечисления, отрицательные контексты оборудования/ёмкости, телефоны с пробелом после плюса и добавочным номером.
-- **Контекст:** исправлены заголовки поставщиков и оглавления административных групп, чтобы не скрывать обычный текст как персоналию или секрет.
-- **Интерфейс macOS/RU/EN:** нативное копирование с явной ошибкой при отказе буфера; Cmd+Enter/Ctrl+Enter для основного действия; переключение языка через нативное окно. Bridge совместим с pywebview 6 без разрешения `unsafe-eval`/`unsafe-inline` в `script-src`; сообщения об ошибках восстановления сохранены.
+- **Файлы и библиотека:** отмена системного выбора исходных файлов не закрывает приложение и сохраняет открытый документ. Ошибка диалога остаётся понятным сообщением в интерфейсе.
+- **Рабочая область:** при выборе другой записи в библиотеке её предпросмотр снова загружается в рабочую область.
+- **Кеш интерфейса:** имена web-ресурсов обновлены, поэтому встроенное окно не использует прежний скрипт из кеша.
 
 Словари включают собственные LICENSE/NOTICE; географический снимок — CC BY-SA 4.0. Редкие имена, омонимы, сложные объекты и нетипичные реквизиты могут быть пропущены. **Ручная проверка каждого результата обязательна.** Подробности и предыдущие версии: [CHANGELOG.md](CHANGELOG.md).
 
@@ -82,21 +79,21 @@
 
 ## English installation and status
 
-**v0.2.11 Windows x64 is locally verified. macOS ARM64 is a preliminary/test build, not fully manually accepted.** No Python, uv, pip or source build is needed for either ZIP. Intel Mac compatibility is not verified; no Linux package is published in this release.
+**v0.2.12 Windows x64 is locally verified. macOS ARM64 is a preliminary/test build, not fully manually accepted.** No Python, uv, pip or source build is needed for either ZIP. Intel Mac compatibility is not verified; no Linux package is published in this release.
 
-- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
-- [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.11/LocalAnonymizer-0.2.11-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
+- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
+- [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
 - If the first launch is blocked, and only if you trust this exact downloaded file, open System Settings → Privacy & Security → Open Anyway after the failed launch, then confirm. If unavailable, or macOS reports malware/damage, stop and report the error rather than bypassing protection. Do not disable Gatekeeper globally or remove quarantine with `sudo xattr`. Developer ID/notarization were not established by this documentation audit.
-- [Release evidence and checksums](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.11): native ARM64 CI passed WebKit/strict-CSP bridge, clipboard, text restoration and packaged core/pair/platform checks. This is not manual end-user acceptance.
+- [Release evidence and checksums](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.12): native ARM64 CI passed WebKit/strict-CSP bridge, clipboard, text restoration and packaged core/pair/platform checks. This is not manual end-user acceptance.
 - **Still to check on a real Mac:** first launch/Gatekeeper; Cmd+Enter copy including button focus; RU→EN→RU and persistence after restart; real DOCX open/process/export/restore with tables, formatting and Word edits; clipboard, file dialogs and error UI. Native first-key concurrency (B65) remains open separately.
-- Names, Russian geography, labelled passports, money/phone contexts and native UI fixes are described in the bilingual [changelog](CHANGELOG.md#0211--2026-10-29). Detection is not exhaustive; manually review every anonymized result.
+- The v0.2.12 file-picker and library-selection fixes are described in the bilingual [changelog](CHANGELOG.md#0212--2026-10-31). Detection is not exhaustive; manually review every anonymized result.
 - Local mappings use OS-protected storage and fail closed without it. Exported `.larecovery` files are intentionally **unencrypted** and contain original values: protect them like the original document. Irreversibly removed secrets cannot be restored. Legacy `.doc` requires Word COM on Windows; macOS is not claimed equivalent.
 
 ## Документация внутри архивов / Bundled documentation
 
-Архивы v0.2.11 перепакованы только для исправления документации: Windows содержит актуальные README и CHANGELOG, macOS — русскую `README-macOS.md` в корне ZIP и рядом с `.app`. Исполняемые файлы и ресурсы приложения не изменены; метка исходников v0.2.11 сохранена. Контрольные суммы ZIP обновлены в `SHA256SUMS.txt`; манифесты приложения остаются прежними, поскольку документация находится вне проверяемого состава приложения.
+Архивы v0.2.12 содержат актуальные README и CHANGELOG для Windows, а также русскую `README-macOS.md` в корне macOS ZIP и рядом с `.app`. Контрольные суммы обоих ZIP опубликованы в `SHA256SUMS.txt`.
 
-The v0.2.11 ZIPs were repackaged for documentation only. Program binaries/resources and the source tag are unchanged. Archive checksums were updated; application manifests are unchanged.
+The v0.2.12 ZIPs contain the current Windows README/changelog and a Russian macOS install guide both at ZIP root and next to the app. Checksums for both ZIPs are published in `SHA256SUMS.txt`.
 
 ## Для разработчиков / Development
 
