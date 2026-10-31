@@ -2,7 +2,7 @@
 
 All notable changes to LocalAnonymizer are documented here.
 
-The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.11 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
+The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
 ## [0.2.12] — 2026-10-31
 
@@ -19,6 +19,17 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - The native picker receives an existing absolute start directory; picker errors are handled in the UI rather than escaping the bridge.
 - Selecting a library item again loads its preview into the workspace. Versioned web assets prevent WebView from serving the previous cached script.
 - Pinned the raw bytes of the SHA-256-verified given-name resource on Windows checkout.
+
+### Публикация и оставшиеся проверки
+
+- [v0.2.12 опубликована](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.12): [Windows x64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-windows-x64.zip) и [macOS ARM64 ZIP — предварительная версия](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-macos-arm64.zip). Python для готовых пакетов не нужен.
+- В Windows-пакете подтверждены проверка пары файлов восстановления, платформенная проверка и нативная проверка интерфейса: строгая CSP, системный буфер, восстановление и смена языка.
+- **macOS предварительная:** на пользовательском Mac ещё нужны первый запуск/Gatekeeper, Cmd+Enter и копирование при фокусе на кнопке, RU→EN→RU с сохранением выбора, открытие/обработка/экспорт/восстановление реального DOCX с таблицами, форматированием и правками Word, буфер обмена и файловые диалоги. Intel Mac и Developer ID/notarization не подтверждены.
+
+### English publication status
+
+- [v0.2.12 is published](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.12) with a [Windows x64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-windows-x64.zip) and a [preliminary macOS ARM64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.2.12/LocalAnonymizer-0.2.12-macos-arm64.zip). No Python is needed for the packaged applications.
+- The Windows package passed pair, platform and native UI checks for strict CSP, system clipboard, restore and language switching. macOS remains preliminary: real-Mac acceptance for Gatekeeper, keyboard, language persistence, a real DOCX/Word cycle, clipboard and dialogs is still required. Intel support and Developer ID/notarization are not established.
 
 ## [0.2.11] — 2026-10-29
 
