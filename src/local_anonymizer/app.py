@@ -38,9 +38,9 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "1.8"
-INDEX_ASSET = "index-v1.8.19.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.19.html"
+APP_VERSION = "1.8.1"
+INDEX_ASSET = "index-v1.8.20.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.20.html"
 
 
 def _read_clipboard_text() -> str:
@@ -1081,9 +1081,21 @@ class AppApi:
 
     def choose_files(self) -> dict:
         if self._window is None:
-            return {"ok": False, "ids": [], "errors": [{"error": "NoWindow"}]}
-        paths = self._window.create_file_dialog(10, allow_multiple=True,
-            file_types=("Поддерживаемые (*.docx;*.doc;*.odt;*.xlsx;*.txt;*.csv;*.md;*.log)",)) or []
+            return {"ok": False, "cancelled": False, "ids": [], "errors": [{"error": "NoWindow"}],
+                    "documents": self.list_documents()}
+        try:
+            paths = self._window.create_file_dialog(
+                10,
+                allow_multiple=True,
+                directory=str(Path.home().resolve()),
+                file_types=("Поддерживаемые (*.docx;*.doc;*.odt;*.xlsx;*.txt;*.csv;*.md;*.log)",),
+            )
+        except Exception as exc:
+            return {"ok": False, "cancelled": False, "ids": [],
+                    "errors": [{"error": type(exc).__name__}], "documents": self.list_documents()}
+        if not paths:
+            return {"ok": False, "cancelled": True, "ids": [], "errors": [],
+                    "documents": self.list_documents()}
         return self.import_paths(list(paths))
 
     def _engine(self, paranoid=False, rules="", whitelist="", disabled=None,
