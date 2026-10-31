@@ -4,6 +4,22 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.11 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.2.12] — 2026-10-31
+
+### Исправления
+
+- Исправлено закрытие приложения Windows при отмене диалога `Файлы и библиотека → Выбрать исходные файлы`: отмена теперь не меняет текущий документ и не завершает приложение.
+- Диалог выбора получает существующий абсолютный начальный каталог, а ошибка нативного диалога безопасно остаётся в интерфейсе вместо необработанного сбоя bridge.
+- При выборе документа из выпадающего списка библиотеки его предпросмотр снова загружается в рабочую область. Имена web-ресурсов интерфейса обновлены, поэтому WebView не использует предыдущий скрипт из кеша.
+- Зафиксирована побайтная выдача словаря имён при Windows checkout: Git не преобразует строки ресурса, который проверяется по SHA-256 манифестом.
+
+### English
+
+- Fixed the Windows app closing when `Files and library → Choose source files` is cancelled. Cancellation now leaves the current document intact.
+- The native picker receives an existing absolute start directory; picker errors are handled in the UI rather than escaping the bridge.
+- Selecting a library item again loads its preview into the workspace. Versioned web assets prevent WebView from serving the previous cached script.
+- Pinned the raw bytes of the SHA-256-verified given-name resource on Windows checkout.
+
 ## [0.2.11] — 2026-10-29
 
 ### Распознавание и восстановление

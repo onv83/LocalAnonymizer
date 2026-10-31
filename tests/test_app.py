@@ -2306,7 +2306,7 @@ def test_language_choice_is_persisted_by_backend_and_preserves_other_ui_settings
 
 
 def test_rare_categories_are_forced_closed_on_every_launch():
-    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.20.js").read_text(encoding="utf-8")
 
     assert "$('#detectionCategories').open=false" in javascript
 
@@ -2327,9 +2327,9 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
 
     assert app_module.main([]) == 0
-    assert captured["url"].endswith("/index-v1.8.19.html")
+    assert captured["url"].endswith(f"/{app_module.INDEX_ASSET}")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.19.js"></script>' in html
+    assert '<script src="app-v1.8.20.js"></script>' in html
 
 
 def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
@@ -2349,7 +2349,7 @@ def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
     )
 
     assert app_module.main([]) == 0
-    assert captured["url"].endswith("/index-en-v1.8.19.html")
+    assert captured["url"].endswith(f"/{app_module.ENGLISH_INDEX_ASSET}")
     assert captured["title"] == "Local Document Anonymizer"
 
 
@@ -3239,8 +3239,8 @@ def test_restore_document_cancelled_save_does_not_restore_or_leak_paths(tmp_path
 
 
 def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
-    html = asset_path("index-v1.8.19.html").read_text(encoding="utf-8")
-    javascript = asset_path("app-v1.8.19.js").read_text(encoding="utf-8")
+    html = asset_path("index-v1.8.20.html").read_text(encoding="utf-8")
+    javascript = asset_path("app-v1.8.20.js").read_text(encoding="utf-8")
     css = asset_path("style-v1.1.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -3288,8 +3288,8 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
     assert "filePreview&&hasFormattedDocumentPreview(currentPreviewFormat)" in javascript
     assert "requestAnonymizedDocumentPreview(selected,...settings" in javascript
     assert "preview_anonymized_document" in javascript
-    assert "Версия 1.8" in html and "APP_VERSION='1.8'" in javascript
-    assert 'src="app-v1.8.19.js"' in html
+    assert "Версия 1.8.1" in html and "APP_VERSION='1.8.1'" in javascript
+    assert 'src="app-v1.8.20.js"' in html
     assert "Текст документа загружен полностью" in javascript
     assert "Визуальные элементы без текста могут не отображаться" in javascript
     assert "rich.scrollTop=0" in javascript

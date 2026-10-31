@@ -1,10 +1,18 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from local_anonymizer.app import AppApi, asset_path
+from local_anonymizer.app import AppApi, INDEX_ASSET, asset_path
+
+
+def current_russian_app_javascript() -> str:
+    html = asset_path(INDEX_ASSET).read_text(encoding="utf-8")
+    script = re.search(r'<script src="([^"]+\.js)"></script>', html)
+    assert script, "current Russian entry page must load a versioned application script"
+    return asset_path(script.group(1)).read_text(encoding="utf-8")
 
 
 class SaveWindow:
@@ -13,6 +21,28 @@ class SaveWindow:
 
     def create_file_dialog(self, *_args, **_kwargs):
         return [str(self.target)]
+
+
+def test_cancelled_source_picker_uses_absolute_directory_and_preserves_application(tmp_path):
+    class Window:
+        arguments = None
+
+        def create_file_dialog(self, *args, **kwargs):
+            self.arguments = args, kwargs
+            return None
+
+    window = Window()
+    api = AppApi(root=tmp_path / "app")
+    api.set_window(window)
+
+    result = api.choose_files()
+
+    assert result == {"ok": False, "cancelled": True, "ids": [], "errors": [], "documents": []}
+    args, kwargs = window.arguments
+    assert args[0] == 10
+    assert kwargs["allow_multiple"] is True
+    assert Path(kwargs["directory"]).is_absolute()
+    assert Path(kwargs["directory"]).is_dir()
 
 
 def test_webview_document_list_is_strict_allowlist(tmp_path):
@@ -959,7 +989,7 @@ const pywebview={api:{
 
 
 def test_picker_selects_newly_imported_document_instead_of_keeping_old_selection(tmp_path):
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = current_russian_app_javascript()
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
@@ -1019,8 +1049,58 @@ const pywebview={api:{
     }
 
 
+def test_picker_cancel_keeps_current_document_and_reports_cancellation(tmp_path):
+    javascript = current_russian_app_javascript()
+    harness = r"""
+class FakeElement {
+  constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
+  addEventListener(){} setSelectionRange(){} scrollIntoView(){} click(){if(this.onclick)return this.onclick();}
+  appendChild(child){this.children.push(child);if(!this.value&&child.value)this.value=child.value;}
+  querySelectorAll(){return [];} closest(){return null;}
+  classList={add(){},remove(){},toggle(){},contains(){return false;}};
+}
+const elements=new Map(), listeners={};
+const document={
+  querySelector(selector){if(!elements.has(selector))elements.set(selector,new FakeElement());return elements.get(selector);},
+  querySelectorAll(){return [];}, createElement(){return new FakeElement();},
+  addEventListener(name,handler){listeners[name]=handler;}
+};
+const window={addEventListener(){}};
+const navigator={clipboard:{readText:async()=>'',writeText(){}}};
+const alert=()=>{};const confirm=()=>true;const prompt=()=>null;
+const pywebview={api:{choose_files:async()=>{throw new Error('native file dialog cancelled');}}};
+"""
+    scenario = r"""
+(async()=>{
+  showLibrary([{id:'doc-old',display_name:'old.docx',status:'Импортирован'}]);
+  document.querySelector('#source').value='already visible';
+  await document.querySelector('#choose').onclick();
+  console.log(JSON.stringify({
+    selected,
+    library:document.querySelector('#library').value,
+    source:document.querySelector('#source').value,
+    status:document.querySelector('#fileStatus').textContent
+  }));
+})();
+"""
+    script = tmp_path / "picker-cancel-keeps-workspace.js"
+    script.write_text(harness + javascript + scenario, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, encoding="utf-8"
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "selected": "doc-old",
+        "library": "doc-old",
+        "source": "already visible",
+        "status": "Выбор файлов отменён.",
+    }
+
+
 def test_latest_import_invocation_wins_across_choose_and_two_drops(tmp_path):
-    javascript = asset_path("app-v1.8.18.js").read_text(encoding="utf-8")
+    javascript = current_russian_app_javascript()
     harness = r"""
 class FakeElement {
   constructor(){this.value='';this.innerHTML='';this.textContent='';this.dataset={};this.checked=true;this.hidden=false;this.children=[];this.scrollTop=0;this.scrollHeight=1;this.clientHeight=1;}
