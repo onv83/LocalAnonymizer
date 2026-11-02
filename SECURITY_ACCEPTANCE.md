@@ -29,7 +29,7 @@ These requirements are release gates for the local anonymizer.
 
 ## P0 tests
 1. Split-run replacement preserves unrelated run formatting.
-2. Reverse split-run markers in body, nested tables, headers and footers; unknown markers remain and are reported; removed secrets never return.
+2. Reverse split-run markers in body, nested tables, headers and footers; unknown markers remain and are reported; secrets return through the same verified recovery pair as other markers.
 3. Wrong/corrupted mapping fails closed and publishes no output.
 4. Literal marker collision roundtrips correctly.
 5. Plaintext canaries absent from DB, WAL/journal, logs and app temp files except intentionally stored original/restored copies.

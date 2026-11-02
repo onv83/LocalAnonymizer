@@ -1,4 +1,4 @@
-"""Package-level regressions for irreversible Office recovery and ODT metadata."""
+"""Package-level regressions for Office recovery and ODT metadata."""
 import base64
 from io import BytesIO
 from zipfile import ZipFile, ZIP_STORED
@@ -34,7 +34,7 @@ def package_payload(path_or_bytes):
 
 
 @pytest.mark.parametrize("kind", ["docx", "odt"])
-def test_irreversible_secret_is_absent_from_recovery_package(tmp_path, kind):
+def test_secret_is_recoverable_through_the_normal_office_package(tmp_path, kind):
     source, anonymized, restored = [tmp_path / f"{name}.{kind}" for name in ("source", "anon", "restored")]
     text = f"password: {SECRET}"
     if kind == "docx":
@@ -48,10 +48,9 @@ def test_irreversible_secret_is_absent_from_recovery_package(tmp_path, kind):
     result = processor.anonymize(source, anonymized)
     assert SECRET.encode() not in package_payload(anonymized)
     archive = result.package_archive or {}
-    if "exact_source_b64" in archive:
-        assert SECRET.encode() not in package_payload(base64.b64decode(archive["exact_source_b64"]))
+    assert SECRET.encode() in package_payload(base64.b64decode(archive["exact_source_b64"]))
     processor.restore(anonymized, restored, result.mapping, package_archive=result.package_archive)
-    assert SECRET.encode() not in package_payload(restored)
+    assert SECRET.encode() in package_payload(restored)
 
 
 @pytest.mark.parametrize("surface", ["bookmark", "meta", "settings"])
@@ -63,7 +62,7 @@ def test_odt_hidden_metadata_is_not_published(tmp_path, surface):
 
 
 @pytest.mark.parametrize("kind", ["docx", "odt"])
-def test_hidden_irreversible_secret_is_not_archived(tmp_path, kind):
+def test_hidden_secret_is_recoverable_from_the_normal_office_package(tmp_path, kind):
     source, output, restored = [tmp_path / f"{name}.{kind}" for name in ("source", "anon", "restored")]
     if kind == "docx":
         document = Document()
@@ -83,7 +82,6 @@ def test_hidden_irreversible_secret_is_not_archived(tmp_path, kind):
         processor = OdtProcessor()
     result = processor.anonymize(source, output)
     archive = result.package_archive or {}
-    if "exact_source_b64" in archive:
-        assert SECRET.encode() not in package_payload(base64.b64decode(archive["exact_source_b64"]))
+    assert SECRET.encode() in package_payload(base64.b64decode(archive["exact_source_b64"]))
     processor.restore(output, restored, result.mapping, package_archive=result.package_archive)
-    assert SECRET.encode() not in package_payload(restored)
+    assert SECRET.encode() in package_payload(restored)

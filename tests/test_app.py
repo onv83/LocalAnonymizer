@@ -205,11 +205,12 @@ def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode
 
 def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    index = asset_path("index-v1.8.19.html")
+    index = asset_path("index-v1.8.20.html")
     assert index.exists()
     html = index.read_text(encoding="utf-8")
-    for label in ("Исходный текст", "Обезличенный текст", "Вернуть исходные значения", "Настройки", "Проверка движка"):
+    for label in ("Исходный текст", "Обезличенный текст", "Настройки", "Проверка движка"):
         assert label in html
+    assert "Вернуть исходные значения" not in html
     assert "http://" not in html and "https://" not in html
     assert smoke_check()["ok"] is True
     summary = AppApi().engine_self_test()
@@ -3269,9 +3270,10 @@ def test_ui_offers_docx_preview_modes_and_explains_word_restore_workflow():
         "2. Программа подтвердит пару",
         "3. Нажмите «Восстановить файл»",
         "соответствие проверяется по внутреннему идентификатору пары",
-        "Вернуть исходные значения",
-    ):
+        ):
         assert label in html
+    assert "включая значения, помеченные как секреты" in html
+    assert "восстанавливает их обычным механизмом" in html
     assert html.count('id="restoreFile"') == 1
     assert 'id="restoreFileTop"' not in html
     assert "Выбрать обезличенный файл…" in html

@@ -32,7 +32,7 @@ class _BrokenJoinEngine:
 @pytest.mark.parametrize(
     ("first", "second", "dictionary", "expected_first", "expected_second"),
     [
-        ("password: Secret123!", "next", {}, "password: (удалено)", "next"),
+        ("password: Secret123!", "next", {}, "password: [SECRET-1]", "next"),
         ("https://example.invalid/path", "next", {}, "[ССЫЛКА-1]", "next"),
         ("компания: Альфа", "next", {}, "компания: [ОРГАНИЗАЦИЯ-1]", "next"),
         ("alpha", "beta", {"alpha\ufdd0beta": "СИСТЕМА"}, "alpha", "beta"),

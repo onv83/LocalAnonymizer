@@ -592,7 +592,7 @@ class OdtProcessor:
         warnings = list(result.warnings)
         archive = (
             _exact_archive(source_bytes, output.read_bytes())
-            if (not any(part.get("secret") for part in result.parts)
+            if (not any(part.get("irreversible") for part in result.parts)
                 and _source_archive_is_reversible(source_bytes, self.engine))
             else None
         )

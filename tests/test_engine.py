@@ -31,9 +31,9 @@ def test_acceptance_sample_redacts_required_values_and_preserves_non_sensitive_n
     assert {"SLA", "НДС"} <= abbreviation_values
     for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"):
         assert secret not in output
-    assert output.count("(удалено") >= 3
+    assert output.count("[SECRET-") >= 3
     assert sum(1 for part in result.parts if part.get("secret")) >= 3
-    assert all(secret not in str(result.mapping) for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"))
+    assert all(secret in str(result.mapping) for secret in ("Qwerty123!", "str0ngggg", "Str0ngpassw"))
 
 
 def test_device_and_network_identifiers_use_validated_local_rules():
@@ -124,8 +124,8 @@ def test_numeric_credentials_are_not_downgraded_to_network_ports():
     result = Anonymizer().anonymize(source)
 
     assert "user1:1234" not in result.text
-    assert "user1:1234" not in repr(result.mapping)
-    assert "(удалено: учётные данные)" in result.text
+    assert "user1:1234" in repr(result.mapping)
+    assert "[SECRET-" in result.text
     assert result.mapping["[ПОРТ-1]"] == "3306"
 
 
@@ -634,8 +634,8 @@ def test_windows_to_alse_software_cell_redacts_nonsecret_remainder_around_secret
     assert "SecureSuite" not in result.text
     assert "Management Agent" not in result.text
     assert "Safe Alternative" not in result.text
-    assert "(удалено)" in result.text
-    assert all("TOPSECRET" not in value for value in result.mapping.values())
+    assert "[SECRET-" in result.text
+    assert any("TOPSECRET" in value for value in result.mapping.values())
 
 
 def test_windows_to_alse_software_cell_redacts_short_and_numeric_secret_remainders():
@@ -658,7 +658,7 @@ def test_windows_to_alse_software_cell_redacts_short_and_numeric_secret_remainde
     assert "TOPSECRET" not in result.text
     assert "2025" not in result.text
     assert {"A", "B", "2025"}.issubset(set(result.mapping.values()))
-    assert all("TOPSECRET" not in value for value in result.mapping.values())
+    assert any("TOPSECRET" in value for value in result.mapping.values())
 
 
 def test_windows_to_alse_table_skips_structural_rows_inside_recognized_table():
@@ -1070,7 +1070,7 @@ def test_semantic_server_node_beats_broad_secret_and_respects_disable():
     assert "(удалено" not in enabled.text
     assert node_name in set(enabled.mapping.values())
     assert any(marker.startswith("[УЗЕЛ-") for marker in enabled.mapping)
-    assert "(удалено" in disabled.text
+    assert "[SECRET-" in disabled.text
     assert not any(marker.startswith("[УЗЕЛ-") for marker in disabled.mapping)
 
 

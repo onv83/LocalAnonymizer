@@ -59,15 +59,9 @@ def test_webview_document_list_is_strict_allowlist(tmp_path):
     assert "operation_id" not in repr(rows)
 
 
-def test_text_restore_uses_explicit_current_mapping_without_shared_api_state(tmp_path):
+def test_current_app_api_has_no_text_only_restore_endpoint(tmp_path):
     api = AppApi(root=tmp_path / "app")
-    first = api.anonymize_text("Иванов Сергей Петрович")
-    second = api.anonymize_text("Петров Иван Сергеевич")
-
-    assert not hasattr(api, "mapping")
-    assert api.restore_text(first["text"], first["mapping"])["text"] == "Иванов Сергей Петрович"
-    assert api.restore_text(second["text"], second["mapping"])["text"] == "Петров Иван Сергеевич"
-    assert api.restore_text(first["text"], second["mapping"])["text"] == "Петров Иван Сергеевич"
+    assert not hasattr(api, "restore_text")
 
 
 def test_ad_hoc_rules_enforce_the_shared_marker_label_contract(tmp_path):
@@ -76,7 +70,7 @@ def test_ad_hoc_rules_enforce_the_shared_marker_label_contract(tmp_path):
     valid = api.anonymize_text("alpha beta", rules="alpha beta => CASE_ID2")
 
     assert valid["text"] == "[CASE_ID2-1]"
-    assert api.restore_text(valid["text"], valid["mapping"])["text"] == "alpha beta"
+    assert valid["mapping"] == {"[CASE_ID2-1]": "alpha beta"}
     with pytest.raises(ValueError, match="метк"):
         api.anonymize_text("alpha beta", rules="alpha beta => CASE ID2")
 

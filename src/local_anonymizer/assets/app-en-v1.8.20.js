@@ -31,7 +31,7 @@ function initSettingsTabs(){
 }
 initSettingsTabs();
 let last = {mapping:{}, candidates:[], counts:{}, parts:[], total:0, hintCount:0, warnings:[]};
-let textRestoreMapping = {};
+
 let selected = '', reviewIndex = -1, debounceTimer = 0, generation = 0, previewGeneration = 0, settingsGeneration = 0, importGeneration = 0, restoreGeneration = 0, lastEscape = 0;
 let filePreview = false, fileDirty = false, loadingPreview = false, documentsById = {}, currentPreviewFormat = '';
 let previewFullscreen = false, fullscreenReturnFocus = null;
@@ -454,7 +454,7 @@ async function anonymizeText(){
   }
   const result=await pywebview.api.anonymize_text(text,...settings);
   if(ticket!==generation)return;
-  last=result;if(Object.keys(last.mapping||{}).length)textRestoreMapping={...last.mapping};lastReviewDecision='';restoredParts.clear();reviewIndex=0;showMapping(last.mapping);renderOutput();renderWarnings();
+  last=result;lastReviewDecision='';restoredParts.clear();reviewIndex=0;showMapping(last.mapping);renderOutput();renderWarnings();
   $('#settingsStatus').textContent=fileDirty
     ?'Preview updated. The exportable file still uses the previous settings — click “Apply settings to file”.'
     :'Preview updated.';
@@ -473,7 +473,7 @@ async function anonymizeText(){
   if(!filePreview)updatePrimaryAction();
 }
 function scheduleAnonymize(){clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>anonymizeText(),320);renderMirror();}
-function clearResult(){generation++;last={mapping:{},candidates:[],counts:{},parts:[],total:0,hintCount:0,warnings:[]};textRestoreMapping={};restoredParts.clear();reviewedHints.clear();showMapping({});renderOutput();renderWarnings();}
+function clearResult(){generation++;last={mapping:{},candidates:[],counts:{},parts:[],total:0,hintCount:0,warnings:[]};restoredParts.clear();reviewedHints.clear();showMapping({});renderOutput();renderWarnings();}
 async function anonymizeSelected(){
   if(filePreview&&selected){
     const current=selected,ticket=++generation,settingsVersion=settingsGeneration,button=$('#anonymize');
@@ -504,7 +504,7 @@ async function anonymizeSelected(){
   if(!selected)return alert('Enter text or import a file.');
   const current=selected,ticket=++generation;const r=await pywebview.api.anonymize_document(current,$('#paranoid').checked,$('#rules').value,$('#whitelist').value,disabled(),$('#compactMarkers').checked,$('#redactDocxGraphics').checked);
   if(ticket!==generation||current!==selected)return;
-  last={mapping:r.mapping||{},candidates:r.candidates||[],counts:{},parts:[],total:r.replacement_count||0,hintCount:r.candidate_count||0,warnings:r.warnings||[]};if(Object.keys(last.mapping).length)textRestoreMapping={...last.mapping};showMapping(last.mapping);renderStats();renderWarnings();
+  last={mapping:r.mapping||{},candidates:r.candidates||[],counts:{},parts:[],total:r.replacement_count||0,hintCount:r.candidate_count||0,warnings:r.warnings||[]};showMapping(last.mapping);renderStats();renderWarnings();
   $('#fileStatus').textContent=`${r.ready?'Ready':'Manual review required'}. The anonymized file is ready to save.`;const documents=await pywebview.api.list_documents();if(ticket!==generation||current!==selected)return;showLibrary(documents);
 }
 
@@ -534,9 +534,9 @@ $('#clear').onclick=()=>{if($('#source').value.trim()&&!confirm('Clear the enter
 $('#sample').onclick=()=>{filePreview=false;fileDirty=false;leaveDocumentPreview();$('#source').value='Contractor “Build Guarantee Plus” supports the Web system. Login admin_db; old password qwerty123. Version 1.7.5.16, SLA 99.9%, VAT 20%, port 8080.';scheduleAnonymize();};
 $('#paste').onclick=async()=>{const r=await pywebview.api.read_clipboard_text();filePreview=false;fileDirty=false;leaveDocumentPreview();$('#source').value=r.text||'';scheduleAnonymize();};
 $('#copy').onclick=async()=>{try{const result=await pywebview.api.write_clipboard_text(outputText());if(!result.ok)throw new Error('copy');}catch{$('#fileStatus').textContent='Could not copy text.';}};
-$('#restore').onclick=async()=>{clearTimeout(debounceTimer);const source=$('#source');if(!source.value.trim())return alert('Paste text with markers into the “Source text” field.');if(!Object.keys(textRestoreMapping).length)return alert('No data is available for reverse replacement. Anonymize the source text first.');const ticket=++generation;const result=await pywebview.api.restore_text($('#source').value,textRestoreMapping);if(ticket!==generation)return;$('#source').value=result.text;filePreview=false;fileDirty=false;leaveDocumentPreview();updatePrimaryAction();scheduleAnonymize();};
+
 $('#selftest').onclick=async()=>{$('#testResult').textContent=(await pywebview.api.engine_self_test()).ok?' Engine OK':' Test failed';};
-$('#help').onclick=()=>alert('All rules run locally. Blue markers are reversible with the current mapping, gray secrets are removed without original values, and yellow items require a decision. The mapping and original values are not included in Help.');
+$('#help').onclick=()=>alert('All rules run locally. Values marked as secrets are not written to the unencrypted recovery file, so an anonymized pair cannot restore them. The source file and private library copy are not changed — keep them to return fully to the source. Blue markers are restored from the recovery file; yellow fragments need a decision.');
 $('#themeToggle').onclick=async()=>{const theme=document.documentElement?.dataset?.theme==='dark'?'light':'dark';applyTheme(theme,true);await pywebview.api.set_theme(theme);};
 
 $('#applyNow').onclick=()=>$('#anonymize').click();

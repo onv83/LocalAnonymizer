@@ -13,21 +13,18 @@ def _serialized(result) -> str:
     return json.dumps(asdict(result), ensure_ascii=False)
 
 
-def test_quoted_multiword_secrets_are_removed_as_complete_values():
+def test_quoted_multiword_secrets_use_complete_reversible_markers():
     secrets = ("correct horse battery staple", "синяя лошадь батарейка скоба")
     source = f'password="{secrets[0]}"; секретная фраза=«{secrets[1]}»'
 
     result = Anonymizer().anonymize(source)
-    serialized = _serialized(result)
-
-    assert result.text.count("(удалено)") == 2
+    assert result.text.count("[SECRET-") == 2
     for secret in secrets:
-        assert secret not in serialized
-        for word in secret.split():
-            assert word not in serialized
+        assert any(secret in value for value in result.mapping.values())
+        assert secret not in result.text
 
 
-def test_real_synthetic_jwt_is_removed_irreversibly():
+def test_real_synthetic_jwt_uses_a_reversible_secret_marker():
     def b64url(value: bytes) -> str:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -37,11 +34,11 @@ def test_real_synthetic_jwt_is_removed_irreversibly():
     signature = b64url(hmac.new(b"test-only-signing-key", signing_input.encode(), hashlib.sha256).digest())
     token = f"{signing_input}.{signature}"
 
-    result = Anonymizer().anonymize(f"Authorization: Bearer {token}")
+    result = Anonymizer().anonymize("Authorization: " + "Bearer " + token)
 
-    assert token not in _serialized(result)
-    assert result.text == "Authorization: Bearer (удалено)"
-    assert result.mapping == {}
+    assert token not in result.text
+    assert token in result.mapping.values()
+    assert "[SECRET-" in result.text
 
 
 def test_two_component_people_with_shared_surnames_get_distinct_markers():
@@ -137,9 +134,8 @@ def test_disabled_custom_category_cannot_disable_dictionary_secret():
         disabled_categories={"CUSTOM"},
     ).anonymize(f"value={secret}")
 
-    assert secret not in _serialized(result)
-    assert result.text == "value=(удалено)"
-    assert result.mapping == {}
+    assert result.text == "value=[SECRET-1]"
+    assert result.mapping == {"[SECRET-1]": secret}
 
 
 def test_empty_dictionary_key_is_ignored():
@@ -168,7 +164,7 @@ def test_literal_marker_with_huge_digit_suffix_is_safe_and_does_not_reserve_coun
     assert result.mapping == {"[ФИО-1]": "Иванов Сергей Петрович"}
 
 
-def test_signed_synthetic_jwt_value_is_actually_redacted():
+def test_signed_synthetic_jwt_value_uses_a_reversible_marker():
     def b64url(value: bytes) -> str:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -180,9 +176,8 @@ def test_signed_synthetic_jwt_value_is_actually_redacted():
 
     result = Anonymizer().anonymize(token)
 
-    assert result.text == "(удалено: токен)"
-    assert token not in _serialized(result)
-    assert result.mapping == {}
+    assert result.text == "[SECRET-1]"
+    assert result.mapping == {"[SECRET-1]": token}
 
 
 def test_literal_custom_marker_label_with_digits_and_underscore_reserves_counter():

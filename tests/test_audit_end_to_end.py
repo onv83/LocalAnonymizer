@@ -11,7 +11,8 @@ from local_anonymizer.service import AnonymizerService
 
 
 @pytest.mark.parametrize("edited", [False, True])
-def test_portable_docx_pair_never_restores_irreversible_secret(tmp_path, edited):
+def test_portable_docx_pair_restores_secret_by_the_ordinary_mechanism(tmp_path, edited):
+    """Secrets use a normal marker and mapping, including after a user edit."""
     secret = "SyntheticAuditCanary73!"
     email = "audit.person@example.test"
     source = tmp_path / "source.docx"
@@ -33,19 +34,21 @@ def test_portable_docx_pair_never_restores_irreversible_secret(tmp_path, edited)
             document.add_paragraph("Ordinary added text")
             document.save(pair["anonymized_path"])
         restored = tmp_path / "restored.docx"
-        service.restore_from_pair(pair["anonymized_path"], restored)
+        restored_report = service.restore_from_pair(pair["anonymized_path"], restored)
         output = Document(restored)
         text = "\n".join(p.text for p in output.paragraphs)
-        assert secret not in text
+        assert restored_report["unknown_markers"] == []
+        assert secret in text
         assert email in text
         assert output.paragraphs[0].runs[0].bold
         if edited:
             assert "Ordinary added text" in text
         payload = json.loads(pair["recovery_path"].read_text(encoding="utf-8"))
-        assert secret not in json.dumps(payload)
-        archive = payload["bundle"].get("package_archive") or {}
-        if "exact_source_b64" in archive:
-            with ZipFile(io.BytesIO(base64.b64decode(archive["exact_source_b64"]))) as package:
-                assert all(secret.encode() not in package.read(name) for name in package.namelist())
+        assert secret in json.dumps(payload)
+        assert secret in payload["bundle"]["mapping"].values()
+        archive = payload["bundle"]["package_archive"]
+        assert "exact_source_b64" in archive
+        source_snapshot = Document(io.BytesIO(base64.b64decode(archive["exact_source_b64"])))
+        assert secret in "\n".join(paragraph.text for paragraph in source_snapshot.paragraphs)
     finally:
         service.storage.connection.close()

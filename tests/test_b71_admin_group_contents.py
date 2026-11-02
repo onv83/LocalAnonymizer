@@ -1,4 +1,4 @@
-"""Synthetic contents headings versus explicit irreversible secrets."""
+"""Synthetic contents headings versus explicit secret markers."""
 import pytest
 from local_anonymizer.engine import Anonymizer
 
@@ -11,10 +11,10 @@ def test_group_heading_with_page_is_not_password(heading):
 
 
 @pytest.mark.parametrize("secret", ["Admins12", "Admins....12", "admin123456", "password456789"])
-def test_password_tokens_stay_irreversible(secret):
+def test_password_tokens_use_normal_reversible_markers(secret):
     result = Anonymizer().anonymize(f"Пароль: {secret}")
     assert secret not in result.text
-    assert secret not in result.mapping.values()
+    assert secret in result.mapping.values()
 
 
 def test_group_headings_docx_runs_and_table_restore(tmp_path):

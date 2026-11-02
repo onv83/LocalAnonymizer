@@ -31,7 +31,7 @@ function initSettingsTabs(){
 }
 initSettingsTabs();
 let last = {mapping:{}, candidates:[], counts:{}, parts:[], total:0, hintCount:0, warnings:[]};
-let textRestoreMapping = {};
+
 let selected = '', reviewIndex = -1, debounceTimer = 0, generation = 0, previewGeneration = 0, settingsGeneration = 0, importGeneration = 0, restoreGeneration = 0, lastEscape = 0;
 let filePreview = false, fileDirty = false, loadingPreview = false, documentsById = {}, currentPreviewFormat = '';
 let previewFullscreen = false, fullscreenReturnFocus = null;
@@ -423,7 +423,7 @@ async function anonymizeText(){
   }
   const result=await pywebview.api.anonymize_text(text,...settings);
   if(ticket!==generation)return;
-  last=result;if(Object.keys(last.mapping||{}).length)textRestoreMapping={...last.mapping};lastReviewDecision='';restoredParts.clear();reviewIndex=0;showMapping(last.mapping);renderOutput();renderWarnings();
+  last=result;lastReviewDecision='';restoredParts.clear();reviewIndex=0;showMapping(last.mapping);renderOutput();renderWarnings();
   $('#settingsStatus').textContent=fileDirty
     ?'Предпросмотр обновлён. Экспортируемый файл пока использует прежние настройки — нажмите «Применить настройки к файлу».'
     :'Предпросмотр обновлён.';
@@ -442,7 +442,7 @@ async function anonymizeText(){
   if(!filePreview)updatePrimaryAction();
 }
 function scheduleAnonymize(){clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>anonymizeText(),320);renderMirror();}
-function clearResult(){generation++;last={mapping:{},candidates:[],counts:{},parts:[],total:0,hintCount:0,warnings:[]};textRestoreMapping={};restoredParts.clear();reviewedHints.clear();showMapping({});renderOutput();renderWarnings();}
+function clearResult(){generation++;last={mapping:{},candidates:[],counts:{},parts:[],total:0,hintCount:0,warnings:[]};restoredParts.clear();reviewedHints.clear();showMapping({});renderOutput();renderWarnings();}
 async function anonymizeSelected(){
   if(filePreview&&selected){
     const current=selected,ticket=++generation,settingsVersion=settingsGeneration,button=$('#anonymize');
@@ -473,7 +473,7 @@ async function anonymizeSelected(){
   if(!selected)return alert('Введите текст или импортируйте файл.');
   const current=selected,ticket=++generation;const r=await pywebview.api.anonymize_document(current,$('#paranoid').checked,$('#rules').value,$('#whitelist').value,disabled(),$('#compactMarkers').checked,$('#redactDocxGraphics').checked);
   if(ticket!==generation||current!==selected)return;
-  last={mapping:r.mapping||{},candidates:r.candidates||[],counts:{},parts:[],total:r.replacement_count||0,hintCount:r.candidate_count||0,warnings:r.warnings||[]};if(Object.keys(last.mapping).length)textRestoreMapping={...last.mapping};showMapping(last.mapping);renderStats();renderWarnings();
+  last={mapping:r.mapping||{},candidates:r.candidates||[],counts:{},parts:[],total:r.replacement_count||0,hintCount:r.candidate_count||0,warnings:r.warnings||[]};showMapping(last.mapping);renderStats();renderWarnings();
   $('#fileStatus').textContent=`${r.ready?'Готов':'Требуется ручная проверка'}. Обезличенный файл готов к скачиванию.`;const documents=await pywebview.api.list_documents();if(ticket!==generation||current!==selected)return;showLibrary(documents);
 }
 
@@ -503,9 +503,9 @@ $('#clear').onclick=()=>{if($('#source').value.trim()&&!confirm('Очистит�
 $('#sample').onclick=()=>{filePreview=false;fileDirty=false;leaveDocumentPreview();$('#source').value='Подрядчик «строй-гарант плюс» обслуживает АС «Паутина». login admin_db; старый qwerty123. Версия 1.7.5.16, SLA 99,9%, НДС 20%, порт 8080.';scheduleAnonymize();};
 $('#paste').onclick=async()=>{const r=await pywebview.api.read_clipboard_text();filePreview=false;fileDirty=false;leaveDocumentPreview();$('#source').value=r.text||'';scheduleAnonymize();};
 $('#copy').onclick=async()=>{try{const result=await pywebview.api.write_clipboard_text(outputText());if(!result.ok)throw new Error('copy');}catch{$('#fileStatus').textContent='Не удалось скопировать текст.';}};
-$('#restore').onclick=async()=>{clearTimeout(debounceTimer);const source=$('#source');if(!source.value.trim())return alert('Вставьте текст с маркерами в поле «Исходный текст».');if(!Object.keys(textRestoreMapping).length)return alert('Нет данных для обратной замены. Сначала обезличьте исходный текст.');const ticket=++generation;const result=await pywebview.api.restore_text($('#source').value,textRestoreMapping);if(ticket!==generation)return;$('#source').value=result.text;filePreview=false;fileDirty=false;leaveDocumentPreview();updatePrimaryAction();scheduleAnonymize();};
+
 $('#selftest').onclick=async()=>{$('#testResult').textContent=(await pywebview.api.engine_self_test()).ok?' Движок исправен':' Ошибка проверки';};
-$('#help').onclick=()=>alert('Все правила выполняются локально. Синие маркеры обратимы по текущей таблице, серые секреты удалены без исходных значений, жёлтые фрагменты требуют решения. Таблица и исходные значения в справку не включаются.');
+$('#help').onclick=()=>alert('Все правила выполняются локально. Значения, помеченные как секреты, не записываются в незашифрованный файл восстановления: обезличенная пара не сможет вернуть их. Исходный файл и приватная копия в библиотеке не изменяются — храните их для полного возврата к исходнику. Синие маркеры восстанавливаются из файла восстановления, жёлтые фрагменты требуют решения.');
 $('#themeToggle').onclick=async()=>{const theme=document.documentElement?.dataset?.theme==='dark'?'light':'dark';applyTheme(theme,true);await pywebview.api.set_theme(theme);};
 
 $('#applyNow').onclick=()=>$('#anonymize').click();

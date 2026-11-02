@@ -4,6 +4,28 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.2.13] — 2026-11-02
+
+### Восстановление секретов
+
+- Секреты больше не удаляются: они получают обычные обратимые маркеры `[SECRET-N]`, включаются в карту замен и восстанавливаются штатной парой «обезличенный документ + `.larecovery`» — в том числе после редактирования DOCX в Word и для скрытых метаданных DOCX/ODT.
+- Точный архив DOCX/ODT включает секреты на тех же условиях, что и остальные обратимые значения.
+- Удалена отдельная кнопка текстовой подстановки «Вернуть исходные значения» в русском и английском интерфейсах вместе с её программным мостом: она не была механизмом восстановления файлов.
+- **Важно:** `.larecovery` остаётся незашифрованным и теперь содержит все исходные значения, включая секреты; обращайтесь с ним как с исходным документом.
+- Полный набор проверок: 1182 passed.
+
+### Сборка и ресурсы
+
+- Географический словарь и словарь имён проверяются по сырым байтам независимо от перевода строк Windows checkout (`.gitattributes` `-text`); сборщик географии пишет `locations.json` строго в LF — пересборка байт-детерминирована на любой ОС.
+
+### English
+
+- Secrets are no longer irreversibly removed: they get ordinary reversible `[SECRET-N]` markers, are stored in the mapping, and are restored by the standard document + `.larecovery` pair, including Word-edited DOCX and hidden DOCX/ODT metadata.
+- The misleading in-place "Restore original values" control and its bridge were removed from both interfaces; document recovery remains the file-pair mechanism.
+- `.larecovery` is unencrypted and now also contains secrets — protect it like the source document.
+- Geography/name assets are hash-pinned against raw bytes regardless of Windows CRLF checkout; the geography builder writes LF deterministically.
+- Full test suite: 1182 passed.
+
 ## [0.2.12] — 2026-10-31
 
 ### Исправления

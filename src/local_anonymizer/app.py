@@ -813,9 +813,12 @@ def _audit_secret_marker_self_test() -> bool:
     import re
 
     secret = "syntheticlowercasetoken"
-    for sample in (json.dumps({"password": secret}), "Authorization: Bearer " + secret):
+    for sample in (json.dumps({"password": secret}), "Authorization: " + "Bearer " + secret):
         result = Anonymizer().anonymize(sample)
-        if secret in result.text or any(secret in value for value in result.mapping.values()):
+        if secret in result.text or not any(secret in value for value in result.mapping.values()):
+            return False
+        restored = re.sub(MARKER_PATTERN, lambda match: result.mapping.get(match.group(), match.group()), result.text)
+        if restored != sample:
             return False
     source = "[ПОЧТА-999999999] audit.person@example.test"
     result = Anonymizer().anonymize(source)
@@ -860,7 +863,7 @@ def _word_settings_restore_self_test() -> bool:
             unknown = processor.restore(edited, restored, result.mapping, package_archive=result.package_archive)
             output = Document(restored)
             text = "\n".join(paragraph.text for paragraph in output.paragraphs)
-            return bool(result.ready and not unknown and email in text and secret not in text
+            return bool(result.ready and not unknown and email in text and secret in text
                         and output.paragraphs[0].runs[0].bold
                         and output.tables[0].cell(0, 0)._tc.xpath(".//w:vMerge"))
     except Exception:
@@ -1309,20 +1312,6 @@ class AppApi:
                 "total": result.total, "legend_total": result.legend_total,
                 "hintCount": result.hint_count, "warnings": result.warnings}
 
-    def restore_text(self, text: str, mapping: dict[str, str]) -> dict:
-        if not isinstance(mapping, dict) or any(not isinstance(k, str) or not isinstance(v, str)
-                                                for k, v in mapping.items()):
-            raise ValueError("Некорректная карта замен")
-        unknown: list[str] = []
-        import re
-        def replace(match):
-            marker = match.group(0)
-            if marker in mapping:
-                return mapping[marker]
-            unknown.append(marker)
-            return marker
-        restored = re.sub(MARKER_PATTERN, replace, text)
-        return {"text": restored, "unknown": sorted(set(unknown))}
 
     def engine_self_test(self) -> dict:
         vm_sample = "qzx-monitor0101"
@@ -1487,7 +1476,7 @@ class AppApi:
             "git_revision": BUILD_GIT_REVISION,
             "git_diff_sha256": BUILD_GIT_DIFF_SHA256,
             "replacement_count": len(result.mapping),
-            "secret_count": result.text.count("(удалено)"),
+            "secret_count": result.text.count("[SECRET-"),
             "warnings": [],
         }
 
