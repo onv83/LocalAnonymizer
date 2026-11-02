@@ -163,8 +163,10 @@ def build():
                     city_count=len(rows), region_count=len(locations)-len(rows),
                     modifications='Finite build-time case forms, curated compounds, region titles, context guards; no external morphology data.',
                     scope='HFLabs 2021-10-11 snapshot, not a current or exhaustive administrative register; includes Crimea per upstream naming without asserting sovereignty.')
+    # newline='\n': the file is hashed and compared as raw bytes; Windows must
+    # not translate to CRLF (the asset is pinned with -text in .gitattributes).
     (ROOT / 'locations.json').write_text(json.dumps(dict(manifest=manifest, locations=locations),
-        ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
 
 
 if __name__ == '__main__':

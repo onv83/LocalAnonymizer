@@ -119,7 +119,7 @@ def test_public_pair_restore_after_synthetic_word_zoom_edit(tmp_path):
     texts = "".join(body.itertext())
     assert "Иванов Сергей Петрович" in texts
     assert "Word edit remains" in texts
-    assert b"Secret123!" not in payload
+    assert "Secret123!" in texts
     assert len(body.findall(f".//{{{W}}}tbl")) == 1
     assert len(body.findall(f".//{{{W}}}vMerge")) == 2
     assert body.find(f".//{{{W}}}b") is not None

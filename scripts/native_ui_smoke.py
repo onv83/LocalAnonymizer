@@ -35,10 +35,13 @@ window.addEventListener('pywebviewready', async () => {
   await api.write_clipboard_text(sample);
   if ((await api.read_clipboard_text()).text !== sample) throw Error('clipboard mismatch');
   if (await api.get_language() !== 'ru') throw Error('language mismatch');
-  const anonymized=await api.anonymize_text('synthetic@example.com');
+  const anonymized=await api.anonymize_text('password: SyntheticSmoke42! contact synthetic@example.com');
   if (!anonymized.text || anonymized.text.includes('synthetic@example.com')) throw Error('anonymization failed');
-  const restored=await api.restore_text(anonymized.text,anonymized.mapping);
-  if(restored.text!=='synthetic@example.com') throw Error('restore failed');
+  if (typeof api.restore_text === 'function') throw Error('removed text-only restore endpoint is still exposed');
+  let roundtrip=anonymized.text;
+  for (const [marker,value] of Object.entries(anonymized.mapping)) roundtrip=roundtrip.split(marker).join(value);
+  if(roundtrip!=='password: SyntheticSmoke42! contact synthetic@example.com') throw Error('mapping roundtrip failed');
+  if(!anonymized.text.includes('[SECRET-')) throw Error('secret did not get a reversible marker');
   await api.complete({ok:true, strict_csp_bridge:true, native_clipboard:true, restore:true, language:true});
  } catch(error) { await window.pywebview.api.complete({ok:false,error:String(error)}); }
 });

@@ -1,6 +1,5 @@
-"""Synthetic audit regressions for irreversible secrets and marker allocation."""
+"""Synthetic audit regressions for secrets and marker allocation."""
 import json
-from dataclasses import asdict
 
 import pytest
 
@@ -8,29 +7,30 @@ from local_anonymizer.engine import Anonymizer, MARKER_RE
 
 
 @pytest.mark.parametrize("key", ["password", "client_secret", "API_KEY", "DB_PASSWORD"])
-def test_quoted_json_secret_keys_are_irreversible(key):
+def test_quoted_json_secret_keys_use_normal_reversible_markers(key):
     secret = "violetCanary82!"
     result = Anonymizer().anonymize(json.dumps({key: secret}))
-    assert secret not in json.dumps(asdict(result), ensure_ascii=False)
-    assert "(удалено)" in result.text
-    assert secret not in result.mapping.values()
+    assert secret not in result.text
+    assert any(secret in value for value in result.mapping.values())
+    assert "[SECRET-" in result.text
 
 
 def test_json_secret_escaped_quotes_do_not_leave_a_suffix():
     secret = 'violet"canary82!'
     result = Anonymizer().anonymize(json.dumps({"password": secret}))
-    assert result.text == '{"password": (удалено)}'
-    assert result.mapping == {}
-    assert "canary82" not in json.dumps(asdict(result))
+    assert result.text.startswith('{"password": [SECRET-')
+    assert json.dumps(secret) in result.mapping.values()
+    assert "canary82" not in result.text
 
 
 @pytest.mark.parametrize("token", ["violetcanary", "VIOLETCANARY", "abc", "a", "0123", "a-._~+/=="])
-def test_explicit_bearer_tokens_do_not_require_complexity(token):
-    result = Anonymizer().anonymize(f"Authorization: Bearer {token}")
-    assert result.text == "Authorization: Bearer (удалено)"
-    assert result.mapping == {}
-    assert result.legend == []
-    assert all(not part.get("orig") for part in result.parts if part.get("secret"))
+def test_explicit_bearer_tokens_use_normal_reversible_markers(token):
+    source = "Authorization: " + "Bearer " + token
+    result = Anonymizer().anonymize(source)
+    assert f"Bearer {token}" not in result.text
+    assert token in result.mapping.values()
+    assert "[SECRET-" in result.text
+    assert all(part.get("orig") for part in result.parts if part.get("secret"))
 
 
 @pytest.mark.parametrize("compact,label", [(False, "ПОЧТА"), (True, "ПЧ")])

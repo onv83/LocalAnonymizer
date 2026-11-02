@@ -25,7 +25,7 @@ def main() -> int:
         report = service.anonymize(document_id)
         anon = Path(report["output_path"])
         text = "\n".join(p.text for p in Document(anon).paragraphs)
-        required = ["[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[ТЕЛЕФОН-1]", "[ТЕЛЕФОН-2]", "[IP-1]", "[IP-2]", "[ПОРТ-1]", "[уязвимость]", "(удалено)"]
+        required = ["[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[ТЕЛЕФОН-1]", "[ТЕЛЕФОН-2]", "[IP-1]", "[IP-2]", "[ПОРТ-1]", "[уязвимость]", "[SECRET-1]"]
         preserved = ["1.7.5.16"]
         assert all(x in text for x in required)
         assert all(x in text for x in preserved)

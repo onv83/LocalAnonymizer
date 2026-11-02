@@ -811,15 +811,17 @@ class Anonymizer:
         for m in re.finditer(r"(?i)\b(?:верси[яи]|version|build|сборк[а-яё]*)\s+(?:платформы\s+)?(\d+(?:\.\d+){1,4})", source):
             protected.append(m.span(1))
 
-        # Secrets are irreversible and intentionally absent from mapping/legend.
+        # Secrets use the same marker and recovery mapping as every other
+        # detected category.  The portable recovery companion is therefore
+        # required to restore an exported document.
         add(r"-----BEGIN [A-Z ]{1,48}-----.*?-----END [A-Z ]{1,48}-----", "SECRET", 110,
-            flags=re.I | re.S, irreversible=True, fixed="(удалено: ключ/сертификат)")
+            flags=re.I | re.S)
         secret_word = r"(?:парол(?:ь|я|ю|ем|и)|password|passwd|pwd|passphrase|секрет(?:ная фраза)?|secret|token|токен|api[ _-]?key|apikey|access[ _-]?key|private[ _-]?key|client[ _-]?secret|ключ доступа)"
         quoted_or_token = r'(?:"(?:\\[^\r\n\ufdd0]|[^"\\\r\n\ufdd0])+"|\'(?:\\[^\r\n\ufdd0]|[^\'\\\r\n\ufdd0])+\'|«[^»\r\n\ufdd0]+»|[^\s,;"\'«»\ufdd0]+)'
-        add(rf"\b{secret_word}[\"']?\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1, irreversible=True, fixed="(удалено)")
+        add(rf"\b{secret_word}[\"']?\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1)
         add(rf"\b[A-Za-z_][A-Za-z0-9_]*(?:PASS|PASSWD|PASSWORD|PWD|PSWD|PSW|SECRET|TOKEN|APIKEY|API_KEY|ACCESSKEY|ACCESS_KEY|PRIVATE_KEY|CRED|CREDS|AUTH)[A-Za-z0-9_]*[\"']?\s*[:=]\s*({quoted_or_token})", "SECRET", 109, group=1,
-            validate=lambda m: not (re.search(r"TOKENS\s*[:=]", m.group(0), re.I) and m.group(1).rstrip(";,)").isdigit()), irreversible=True, fixed="(удалено)")
-        add(r"\b(?:парол[а-яё]*|password|пасс[а-яё]*|pwd|секретн[а-яё]+\s+фраз[а-яё]+|кодов[а-яё]+\s+слов[а-яё]*)\s+(?:(?:от|для|к|на)\s+)?(?:[а-яё]+\s+){0,3}((?=[^\s]*[\d!@#$%^&*_+])[A-Za-zА-Яа-яЁё0-9!@#$%^&*_+.\-]{4,})", "SECRET", 108, group=1, irreversible=True, fixed="(удалено)")
+            validate=lambda m: not (re.search(r"TOKENS\s*[:=]", m.group(0), re.I) and m.group(1).rstrip(";,)").isdigit()))
+        add(r"\b(?:парол[а-яё]*|password|пасс[а-яё]*|pwd|секретн[а-яё]+\s+фраз[а-яё]+|кодов[а-яё]+\s+слов[а-яё]*)\s+(?:(?:от|для|к|на)\s+)?(?:[а-яё]+\s+){0,3}((?=[^\s]*[\d!@#$%^&*_+])[A-Za-zА-Яа-яЁё0-9!@#$%^&*_+.\-]{4,})", "SECRET", 108, group=1)
         add(r"(?<![\w./@-])[a-z][a-z0-9_-]{2,20}:[A-Za-z0-9!@#$%^&*_+.\-]{4,40}(?![\w/@])", "SECRET", 107,
             validate=lambda m: bool(
                 re.search(r"[A-Za-z]", m.group())
@@ -828,24 +830,24 @@ class Anonymizer:
                     _strong_infrastructure_host(m.group().split(":", 1)[0])
                     and _valid_port(m.group().split(":", 1)[1])
                 )
-            ), irreversible=True, fixed="(удалено: учётные данные)")
+            ))
         add(r"\bBearer\s+([A-Za-z0-9+/=_.~-]+)", "SECRET", 106, group=1,
-            irreversible=True, fixed="(удалено)")
+            )
         add(r"\bBasic\s+([A-Za-z0-9+/=_.~-]{8,})", "SECRET", 106, group=1,
-            validate=lambda m: bool(re.search(r"[\d=.]", m.group(1)) or (len(m.group(1)) >= 12 and re.search(r"[a-z]", m.group(1)) and re.search(r"[A-Z]", m.group(1)))), irreversible=True, fixed="(удалено)")
-        add(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]{4,})?", "SECRET", 106, irreversible=True, fixed="(удалено: токен)")
-        add(r"\b(?:ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{15,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|rk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ya29\.[A-Za-z0-9_-]{20,})\b", "SECRET", 106, irreversible=True, fixed="(удалено: токен)")
+            validate=lambda m: bool(re.search(r"[\d=.]", m.group(1)) or (len(m.group(1)) >= 12 and re.search(r"[a-z]", m.group(1)) and re.search(r"[A-Z]", m.group(1)))))
+        add(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]{4,})?", "SECRET", 106)
+        add(r"\b(?:ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{15,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|rk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ya29\.[A-Za-z0-9_-]{20,})\b", "SECRET", 106)
         add(r"(?<![\wА-Яа-яЁё@#.-])(?:qwerty|password|passw0rd|passwd|admin|root|toor|asdf|zxcv|letmein|welcome|monkey|dragon|master|secret|секрет|парол[ья])[A-Za-z0-9!@#$%^&*_+.-]*", "SECRET", 105,
             validate=lambda m: len(m.group()) >= 6 and bool(re.search(r"\d", m.group())) and not (
                 re.fullmatch(r"Admins\.{0,12}\d{1,4}", m.group(), re.I)
                 and re.search(r"(?:^|[\r\n\ufdd0])[ \t]*(?:Domain|Enterprise|Schema)[ \t]+$", source[max(0, m.start()-80):m.start()], re.I)
                 and not re.search(rf"\b{secret_word}[\"']?\s*[:=—-][\s\ufdd0]*(?:Domain|Enterprise|Schema)[ \t]+$", source[max(0, m.start()-160):m.start()], re.I)
                 and re.match(r"[ \t]*(?:$|[\r\n\ufdd0])", source[m.end():])
-            ), irreversible=True, fixed="(удалено: похоже на пароль)")
+            ))
         add(r"\b[0-9a-fA-F]{32,64}\b", "SECRET", 102,
-            validate=lambda m: bool(re.search(r"[a-fA-F]", m.group()) and re.search(r"\d", m.group()) and not re.search(r"(?:commit|sha|hash|хеш|хэш|md5|checksum)\s*[:=]?\s*$", source[max(0, m.start()-25):m.start()], re.I)), irreversible=True, fixed="(удалено: похоже на ключ)")
+            validate=lambda m: bool(re.search(r"[a-fA-F]", m.group()) and re.search(r"\d", m.group()) and not re.search(r"(?:commit|sha|hash|хеш|хэш|md5|checksum)\s*[:=]?\s*$", source[max(0, m.start()-25):m.start()], re.I)))
         add(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])", "SECRET", 101,
-            validate=lambda m: bool(re.search(r"[a-z]", m.group()) and re.search(r"[A-Z]", m.group()) and re.search(r"\d", m.group())), irreversible=True, fixed="(удалено: похоже на ключ)")
+            validate=lambda m: bool(re.search(r"[a-z]", m.group()) and re.search(r"[A-Z]", m.group()) and re.search(r"\d", m.group())))
 
         # Strong validated requisites.
         add(r"\bИНН(?:/КПП)?\s*(\d(?:\s?\d){9,11})\b", "ИНН", 95, group=1,
@@ -2512,8 +2514,7 @@ class Anonymizer:
                 pattern = re.escape(value) if secret_label else rf"(?<!\w){re.escape(value)}(?!\w)"
                 for m in re.finditer(pattern, source, re.I):
                     found.append(Detection(*m.span(), "SECRET" if secret_label else category, 100,
-                                           m.group(), value.casefold(), secret_label,
-                                           "(удалено)" if secret_label else None))
+                                           m.group(), value.casefold()))
             elif not secret_label:
                 pattern = rf"(?<!\w){re.escape(value)}(?!\w)"
                 disabled_spans.extend(m.span() for m in re.finditer(pattern, source, re.I))
@@ -2533,7 +2534,10 @@ class Anonymizer:
         accepted: list[Detection] = []
         occupied = [*protected, *disabled_spans]
         for item in sorted(found, key=lambda x: (-x.priority, -(x.end-x.start), x.start, x.category)):
-            blockers = [(x.start, x.end) for x in accepted] if item.irreversible else occupied
+            # A secret follows the same reversible mapping path as every other
+            # sensitive value.  It must nevertheless override an allowlist or
+            # a literal marker supplied in the source: neither may publish it.
+            blockers = [(x.start, x.end) for x in accepted] if item.category == "SECRET" else occupied
             overlaps = sorted(
                 (max(item.start, start), min(item.end, end))
                 for start, end in blockers
@@ -2826,7 +2830,8 @@ class Anonymizer:
                 protected_boundaries = source[start:end].count("\ufdd3") * "\ufdd3"
                 rendered_replacement = replacement + protected_boundaries
                 parts.append({"t": "ph", "s": rendered_replacement, "orig": "" if item.irreversible else item.value, "cat": item.category,
-                              "secret": item.irreversible or item.category == "SECRET", "s0": start, "s1": end})
+                              "secret": item.category == "SECRET", "irreversible": item.irreversible,
+                              "s0": start, "s1": end})
             cursor = end
         if cursor < len(source):
             parts.append({"t": "text", "s": source[cursor:]})

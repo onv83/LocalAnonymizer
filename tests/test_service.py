@@ -24,7 +24,7 @@ def test_end_to_end_acceptance_docx_anonymize_edit_restore(tmp_path):
     assert report["ready"] is True
     anon = Path(report["output_path"])
     anonymized = "\n".join(p.text for p in Document(anon).paragraphs)
-    for expected in ("[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[IP-1]", "[ПОРТ-1]", "[уязвимость]", "(удалено)"):
+    for expected in ("[ФИО-1]", "[ОРГАНИЗАЦИЯ-1]", "[ПОЧТА-1]", "[IP-1]", "[ПОРТ-1]", "[уязвимость]", "[SECRET-1]"):
         assert expected in anonymized
     assert "1.7.5.16" in anonymized
     assert "порт [ПОРТ-1]" in anonymized
@@ -200,7 +200,7 @@ def test_docx_word_edit_restore_to_destination_preserves_new_formatting_and_unkn
     assert "10.20.30.40" in restored_text
     assert "Добавленный раздел" in restored_text and "Новая правка" in restored_text
     assert "[IP-999]" in restored_text
-    assert "Secret123!" not in restored_text and "(удалено)" in restored_text
+    assert "Secret123!" in restored_text
     added = next(p for p in restored.paragraphs if p.text == "Добавленный раздел")
     assert added.style.style_id == "Heading2"
     assert added.runs[0].bold is True and added.runs[0].italic is True

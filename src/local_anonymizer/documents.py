@@ -295,7 +295,7 @@ def _source_archive_is_reversible(source: bytes, engine: Anonymizer) -> bool:
                     values.append(element.tail)
             text = "\n".join(values)
             result = engine.anonymize(text)
-            if any(part.get("secret") for part in result.parts):
+            if any(part.get("irreversible") for part in result.parts):
                 return False
     return True
 
@@ -324,8 +324,9 @@ class DocxProcessor:
             nonlocal exact_source_safe
             result = self.engine.anonymize(document_boundary + combined + document_boundary)
             # Use explicit irreversible flags, not textual round-tripping:
-            # reversible aliases and structural separators may be normalized.
-            exact_source_safe = not any(part.get("secret") for part in result.parts)
+            # reversible aliases (including secrets) and structural separators
+            # may be normalized.
+            exact_source_safe = not any(part.get("irreversible") for part in result.parts)
             result_holder.append(result)
             transformed = result.text.removeprefix(document_boundary).removesuffix(document_boundary)
             return re.split(r"\ufdd0(?:[\ufdd1\ufdd2]\ufdd0)?|\ufdd3", transformed)

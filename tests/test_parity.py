@@ -8,7 +8,7 @@ from local_anonymizer.engine import Anonymizer
 from local_anonymizer.service import AnonymizerService
 
 
-def test_secret_variants_are_irreversible_and_never_mapped():
+def test_secret_variants_use_normal_reversible_markers():
     text = (
         "Пароль от системы морковка123; ADMIN_PSWD='str0ngggg'; "
         "admin:Str0ngpassw Bearer AbCdEf12.ghIJkl34 "
@@ -19,29 +19,28 @@ def test_secret_variants_are_irreversible_and_never_mapped():
     result = Anonymizer().anonymize(text)
     for secret in ("морковка123", "str0ngggg", "admin:Str0ngpassw", "AbCdEf12.ghIJkl34", "eyJhbGci", "ghp_", "qwerty123"):
         assert secret not in result.text
-        assert secret not in repr(result.mapping)
-    assert result.text.count("(удалено") >= 7
-    assert all(part.get("secret") for part in result.parts if part["t"] == "ph" and part["s"].startswith("(удалено"))
+        assert secret in repr(result.mapping)
+    assert result.text.count("[SECRET-") >= 7
+    assert all(not part.get("irreversible") for part in result.parts if part.get("secret"))
 
 
-def test_whitelist_and_custom_secret_rules_cannot_bypass_irreversible_deletion():
+def test_whitelist_and_custom_secret_rules_still_use_normal_reversible_markers():
     result = Anonymizer(whitelist={"qwerty123", "TopSecret99"},
                         user_dictionary={"TopSecret99": "SECRET"}).anonymize(
                             "старый qwerty123, код TopSecret99")
     assert "qwerty123" not in result.text.lower()
     assert "TopSecret99" not in result.text
-    assert not result.mapping
-    assert result.text.count("(удалено") == 2
+    assert {"qwerty123", "TopSecret99"} <= set(result.mapping.values())
+    assert result.text.count("[SECRET-") == 2
 
 
-def test_secret_plaintext_is_absent_from_serializable_result_and_marker_cannot_shield_it():
+def test_secret_uses_a_normal_mapping_and_marker_cannot_shield_it():
     secret = "UltraSecret987!"
     result = Anonymizer().anonymize(f"password={secret}; password=[ФИО-1]")
-    serialized = json.dumps(asdict(result), ensure_ascii=False)
-    assert secret not in serialized
+    assert secret in result.mapping.values()
     assert "password=[ФИО-1]" not in result.text
-    assert result.text.count("(удалено)") == 2
-    assert all(not part.get("orig") for part in result.parts if part.get("secret"))
+    assert result.text.count("[SECRET-") == 2
+    assert all(part.get("orig") for part in result.parts if part.get("secret"))
 
 
 def test_people_org_system_logins_and_derived_aliases():

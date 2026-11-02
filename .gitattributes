@@ -3,3 +3,5 @@
 src/local_anonymizer/assets/russian_geography/CC-BY-SA-4.0.txt whitespace=-blank-at-eof
 # The manifest hashes these generated resources as raw bytes; do not rewrite LF to CRLF on Windows checkout.
 src/local_anonymizer/assets/given_names/names.txt -text
+src/local_anonymizer/assets/russian_geography/hflabs-city.csv -text
+src/local_anonymizer/assets/russian_geography/locations.json -text
