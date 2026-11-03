@@ -530,3 +530,11 @@
 - [x] RU/EN-интерфейсы и документация прямо предупреждают: `.larecovery` не зашифрован и содержит все исходные значения, включая секреты; его нужно защищать как исходный документ.
 - [x] Устранён побочный дефект, найденный полным прогоном: география хешировала CSV с учётом окончаний строк, а сборщик писал `locations.json` через платформенный перевод строк — на Windows checkout с CRLF проверки provenance и побайтовой пересборки падали. Ресурсы закреплены `-text` в `.gitattributes`, сборщик пишет строго LF (`newline='\n'`).
 - [x] Обновлены устаревшие ожидания тестов под новую модель секретов: `test_word_settings_restore`, `test_engine`, `test_engine_hardening`, `test_office_hardening`, `test_service`, `test_release_verify`, `test_app_hardening` (вместо удалённого `restore_text` — проверка отсутствия endpoint'а), `scripts/release_verify.py` и `scripts/e2e_smoke.py` теперь требуют `[SECRET-1]` и возврат секрета.
+
+## B80 — публикация v0.2.13 (2026-11-02/03)
+
+- [x] **Публикация:** тег `v0.2.13` и [GitHub Release v0.2.13](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.2.13) созданы для коммита `68fbe6b` (main после PR #24 и исправления native-smoke); приложены Windows x64 ZIP, предварительный macOS ARM64 ZIP и `SHA256SUMS`. Заметки без англицизмов, macOS помечена предварительной.
+- [x] **Проверки архивов:** `release-0.2.13/verify_archives.py` — CRC, безопасные пути, актуальные инструкции. Windows-архив распакован отдельно: `--smoke`, `--pair-smoke` (пара содержит секреты, документ восстановлен точно), `--platform-smoke`. macOS-архив собран повторно из CI-артефакта без распаковки с сохранением 54 символических ссылок; добавлены русская `README-macOS.md` в корне и рядом с приложением, `README.md`, `CHANGELOG.md`.
+- [x] **Readback:** все три файла повторно скачаны с GitHub; суммы совпали с `SHA256SUMS`, файл сумм идентичен локальному. Ссылка скачивания из README отвечает.
+- [x] **Доказательства:** [docs/release-0.2.13.md](release-0.2.13.md) влито через [PR #25](https://github.com/onv83/LocalAnonymizer/pull/25).
+- [ ] **Обновление установленной копии Windows:** замена файлов в `%LOCALAPPDATA%\Programs\LocalAnonymizer` на сборку 0.2.13 отложена — пользователь заберёт релиз с GitHub сам либо даст явное разрешение на замену.
