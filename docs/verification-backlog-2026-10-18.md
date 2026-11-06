@@ -643,5 +643,5 @@
 ## B91 — публичный Latest release для v0.3.0
 
 - [ ] **Источник:** скриншот GitHub Releases от 2026-11-06: Latest всё ещё у `v0.2.13`.
-- [x] **Причина текущего состояния:** v0.3.0 ещё не публиковалась: native macOS ARM64 jobs от 2026-11-06 отменялись до первого шага, а теперь обнаружен release-blocking Word defect B90. Старый `v0.2.13` оставлен неизменным и Latest не переключается на непроверенный выпуск.
+- [x] **Причина предыдущего состояния:** native macOS ARM64 jobs от 2026-11-06 отменялись до первого шага. Повторный `workflow_dispatch` на `2cc47b4` дал точную GitHub annotation: `The configuration 'macos-14-arm64-us-default' is not supported`. CI workflow переводится на `macos-15`, а архитектурная проверка `platform.machine() == 'arm64'` остаётся release gate. B90 уже исправлен, но до успешного нового ARM64 artifact старый `v0.2.13` остаётся Latest.
 - [ ] **Требование:** после закрытия B90 получить новый native macOS ARM64 artifact, пересобрать и независимо проверить Windows архив из финального main, затем создать tag/release `v0.3.0` с Windows/macOS ZIP и SHA256SUMS, скачать assets обратно и подтвердить digests. До этого не создавать Windows-only release.
