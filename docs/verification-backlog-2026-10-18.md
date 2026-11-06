@@ -629,3 +629,17 @@
 - [x] **Требование:** одно добавленное правило заменяет каждое допустимое вхождение фразы во всём исходном тексте и в live formatted preview; исходное значение не может остаться рядом с уже заменёнными совпадениями после завершения обновления.
 - [x] **Исправление:** source-selection action теперь отменяет 320-мс debounce и сразу запускает один актуальный `anonymizeText()` после сохранения правила/исключения. Так formatted pane не успевает оставаться на устаревшем результате из-за отложенного обновления.
 - [x] **Проверка:** engine regression проверяет три вхождения с разным регистром под единым `[СКРЫТО-1]`; RU/EN browser acceptance воспроизводит source-selection rule на трёх разнесённых DOCX spans, требует все три markers и отсутствие исходной фразы в formatted output в пределах 250 мс.
+
+## B90 — Word не должен получать обезличенный DOCX с пустым `w:start`
+
+- [ ] **Источник:** сообщение пользователя от 2026-11-06 и диалог Microsoft Word о повреждённом обезличенном документе. Значения и текст пользовательского файла не переносятся в репозиторий.
+- [x] **Корневая причина:** в валидном `word/numbering.xml` Word допускает `w:start w:val="0"`. Санитайзер не включал пару `start/val` в точный allowlist и удалял атрибут, оставляя недопустимый пустой `w:start`; Microsoft Word затем отклонял файл как повреждённый.
+- [ ] **Требование:** сохранять целочисленное `w:start/@w:val` в `word/numbering.xml` в диапазоне `0..2_147_483_647`; выпускать только документ, который Microsoft Word открывает без Repair.
+- [ ] **Приёмка:** RED/GREEN unit regression; повторная обработка forensic-copy пользовательского документа только в scratch; Word COM открывает полученный DOCX с `OpenAndRepair=False`; полный source suite, новый Windows package, installed-path Word gate и CI. Реальный пользовательский файл и исходный экспорт не перезаписываются.
+- [x] **Source proof (2026-11-06):** predicate RED подтвердил, что `start/val=0` был запрещён; integration regression проходит весь DOCX sanitize/export path и требует все `w:start/@w:val="0"`. На прежнем source pipeline получалось 9 пустых `w:start`; после исправления forensic-copy открывается Microsoft Word COM с `OpenAndRepair=False`. Focused `3 passed`, full suite `1193 passed, 3 warnings`; повторный независимый review — `PASS`. Package/install/CI остаются обязательными.
+
+## B91 — публичный Latest release для v0.3.0
+
+- [ ] **Источник:** скриншот GitHub Releases от 2026-11-06: Latest всё ещё у `v0.2.13`.
+- [x] **Причина текущего состояния:** v0.3.0 ещё не публиковалась: native macOS ARM64 jobs от 2026-11-06 отменялись до первого шага, а теперь обнаружен release-blocking Word defect B90. Старый `v0.2.13` оставлен неизменным и Latest не переключается на непроверенный выпуск.
+- [ ] **Требование:** после закрытия B90 получить новый native macOS ARM64 artifact, пересобрать и независимо проверить Windows архив из финального main, затем создать tag/release `v0.3.0` с Windows/macOS ZIP и SHA256SUMS, скачать assets обратно и подтвердить digests. До этого не создавать Windows-only release.

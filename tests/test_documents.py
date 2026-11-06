@@ -16,6 +16,7 @@ from lxml import etree
 from local_anonymizer.documents import (
     DocxProcessor,
     RestorationError,
+    _safe_known_attribute_value,
     _trusted_docx_strings,
     _trusted_wml_schema,
 )
@@ -2273,6 +2274,48 @@ def test_docx_external_hyperlink_is_unwrapped_without_dangling_relationship_refe
     assert "EXTERNAL_RELATIONSHIP_CANARY" not in _all_xml(out).decode("utf-8")
     assert "видимый текст" in "".join(document_xml.itertext())
     assert report.ready
+
+
+def test_word_numbering_start_zero_is_a_valid_required_value():
+    policy = lambda value: _safe_known_attribute_value("word/numbering.xml", "start", "val", value)
+    assert policy("0")
+    assert policy("2147483647")
+    assert not policy("2147483648")
+    assert not policy("-1")
+    assert not policy("not-a-number")
+
+
+def test_docx_numbering_start_zero_survives_sanitization(tmp_path):
+    source = tmp_path / "numbering-start-zero.docx"
+    anonymized = tmp_path / "numbering-start-zero.anonymized.docx"
+    document = Document()
+    document.add_paragraph("Иванов Сергей Петрович", style="List Number")
+    document.save(source)
+
+    def set_all_numbering_starts_to_zero(payload):
+        root = etree.fromstring(payload)
+        starts = root.xpath(
+            "//w:lvl/w:start",
+            namespaces={"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"},
+        )
+        assert starts
+        for start in starts:
+            start.set(qn("w:val"), "0")
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+    _rewrite_docx_parts(source, {"word/numbering.xml": set_all_numbering_starts_to_zero})
+    report = DocxProcessor().anonymize(source, anonymized)
+
+    assert report.ready is True
+    assert not report.warnings
+    with ZipFile(anonymized) as package:
+        numbering = etree.fromstring(package.read("word/numbering.xml"))
+    starts = numbering.xpath(
+        "//w:lvl/w:start",
+        namespaces={"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"},
+    )
+    assert starts
+    assert [start.get(qn("w:val")) for start in starts] == ["0"] * len(starts)
 
 
 def test_docx_preserves_context_valid_dynamic_formatting_values(tmp_path):
