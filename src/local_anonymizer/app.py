@@ -39,8 +39,8 @@ except ImportError:
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
 APP_VERSION = "1.8.1"
-INDEX_ASSET = "index-v1.8.20.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.20.html"
+INDEX_ASSET = "index-v1.8.22.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.22.html"
 
 
 def _read_clipboard_text() -> str:

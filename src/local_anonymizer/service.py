@@ -285,9 +285,16 @@ class AnonymizerService:
         rich_html = ""
         if suffix == ".docx":
             document = Document(source)
-            text = "\n".join(_paragraph_text(p) for p in _paragraphs(document) if _paragraph_text(p))
+            visible_paragraphs = [(paragraph, _paragraph_text(paragraph)) for paragraph in _paragraphs(document)]
+            visible_paragraphs = [(paragraph, text) for paragraph, text in visible_paragraphs if text]
+            text = "\n".join(value for _, value in visible_paragraphs)
+            source_offsets: dict[int, int] = {}
+            position = 0
+            for index, (paragraph, value) in enumerate(visible_paragraphs):
+                source_offsets[id(paragraph._p)] = position
+                position += len(value) + (1 if index < len(visible_paragraphs) - 1 else 0)
             if include_rich:
-                rich_html = render_docx_preview(document)
+                rich_html = render_docx_preview(document, source_offsets=source_offsets)
         elif suffix == ".odt":
             text = extract_odt_text(source)
             if include_rich:

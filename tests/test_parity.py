@@ -103,7 +103,8 @@ def test_structured_parts_offsets_counts_hints_paranoid_and_warnings():
     assert result.hint_count >= 3
     assert "[ГОРОД-1]" in result.text
     assert all(source[p["s0"]:p["s1"]] == p["orig"] for p in result.parts if p["t"] != "text")
-    assert {w["kind"] for w in result.warnings} >= {"ДСП", "КИИ", "ЗАКУПКИ", "МАССИВ-ПДН"}
+    assert {w["kind"] for w in result.warnings} >= {"КИИ", "ЗАКУПКИ", "МАССИВ-ПДН"}
+    assert not {w["kind"] for w in result.warnings} & {"ГОСТАЙНА", "ДСП"}
     paranoid = Anonymizer(paranoid=True).anonymize("Начальник отдела ИБ работает в Казани. Диагноз указан.")
     assert "[ДОЛЖНОСТЬ-1]" in paranoid.text
     assert "[ГОРОД-1]" in paranoid.text

@@ -68,12 +68,21 @@ def _image_html(node, run_element, paragraph: Paragraph) -> str:
     )
 
 
-def _run_content(run_element, paragraph: Paragraph) -> str:
+def _run_content(run_element, paragraph: Paragraph, source_cursor: dict[str, int] | None = None) -> str:
     parts: list[str] = []
     for node in run_element.iter():
         local = node.tag.rsplit("}", 1)[-1]
         if local == "t":
-            parts.append(escape(node.text or ""))
+            value = node.text or ""
+            if source_cursor is None:
+                parts.append(escape(value))
+            else:
+                start = source_cursor["position"]
+                end = start + len(value)
+                source_cursor["position"] = end
+                parts.append(
+                    f'<span data-source-start="{start}" data-source-end="{end}">{escape(value)}</span>'
+                )
         elif local in {"br", "cr"}:
             parts.append("<br>")
         elif local == "tab":
@@ -83,8 +92,8 @@ def _run_content(run_element, paragraph: Paragraph) -> str:
     return "".join(parts)
 
 
-def _run_html(run_element, paragraph: Paragraph) -> str:
-    content = _run_content(run_element, paragraph)
+def _run_html(run_element, paragraph: Paragraph, source_cursor: dict[str, int] | None = None) -> str:
+    content = _run_content(run_element, paragraph, source_cursor)
     if not content:
         return ""
     run = Run(run_element, paragraph)
@@ -109,9 +118,11 @@ def _run_html(run_element, paragraph: Paragraph) -> str:
     return content
 
 
-def _paragraph_html(paragraph: Paragraph, anchor: str) -> str:
+def _paragraph_html(paragraph: Paragraph, anchor: str, source_offsets: dict[int, int] | None = None) -> str:
+    start = source_offsets.get(id(paragraph._p)) if source_offsets is not None else None
+    source_cursor = {"position": start} if start is not None else None
     content = "".join(
-        _run_html(node, paragraph)
+        _run_html(node, paragraph, source_cursor)
         for node in paragraph._p.xpath(".//w:r[not(ancestor::w:del)]")
     )
     alignment = _ALIGNMENT_CLASSES.get(_safe_format_value(lambda: paragraph.alignment))
@@ -136,9 +147,9 @@ def _container_blocks(container):
             yield Table(child, container)
 
 
-def _cell_html(cell: _Cell, anchor: str) -> str:
+def _cell_html(cell: _Cell, anchor: str, source_offsets: dict[int, int] | None = None) -> str:
     return "".join(
-        _block_html(block, f"{anchor}/b{block_index}")
+        _block_html(block, f"{anchor}/b{block_index}", source_offsets)
         for block_index, block in enumerate(_container_blocks(cell))
     )
 
@@ -180,7 +191,7 @@ def _vertical_span(row_elements, row_index: int, column: int, grid_span: int) ->
     return span
 
 
-def _table_html(table: Table, anchor: str) -> str:
+def _table_html(table: Table, anchor: str, source_offsets: dict[int, int] | None = None) -> str:
     row_elements = list(table._tbl.tr_lst)
     rows: list[str] = []
     for row_index, row_element in enumerate(row_elements):
@@ -201,7 +212,7 @@ def _table_html(table: Table, anchor: str) -> str:
                     attributes.append(f' rowspan="{row_span}"')
             cell = _Cell(cell_element, table)
             rendered_cells.append(
-                f"<td{''.join(attributes)}>{_cell_html(cell, f'{anchor}/r{row_index}/c{column}')}</td>"
+                f"<td{''.join(attributes)}>{_cell_html(cell, f'{anchor}/r{row_index}/c{column}', source_offsets)}</td>"
             )
             column += grid_span
         rows.append(
@@ -211,13 +222,14 @@ def _table_html(table: Table, anchor: str) -> str:
     return '<table class="docx-table"><tbody>' + "".join(rows) + "</tbody></table>"
 
 
-def _block_html(block, anchor: str) -> str:
+def _block_html(block, anchor: str, source_offsets: dict[int, int] | None = None) -> str:
     if isinstance(block, Paragraph):
-        return _paragraph_html(block, anchor)
-    return _table_html(block, anchor)
+        return _paragraph_html(block, anchor, source_offsets)
+    return _table_html(block, anchor, source_offsets)
 
 
-def _part_section(document, attr: str, class_name: str, title: str) -> str:
+def _part_section(document, attr: str, class_name: str, title: str,
+                  source_offsets: dict[int, int] | None = None) -> str:
     rendered: list[str] = []
     seen: set[int] = set()
     for section in document.sections:
@@ -228,7 +240,7 @@ def _part_section(document, attr: str, class_name: str, title: str) -> str:
         seen.add(identity)
         part_index = len(seen) - 1
         body = "".join(
-            _block_html(block, f"{class_name}/{part_index}/b{block_index}")
+            _block_html(block, f"{class_name}/{part_index}/b{block_index}", source_offsets)
             for block_index, block in enumerate(_container_blocks(part))
         )
         if any((node.text or "").strip() for node in part._element.xpath(".//w:t")):
@@ -236,7 +248,7 @@ def _part_section(document, attr: str, class_name: str, title: str) -> str:
     return "".join(rendered)
 
 
-def render_docx_preview(document) -> str:
+def render_docx_preview(document, source_offsets: dict[int, int] | None = None) -> str:
     """Render a read-only DOCX preview from a fixed HTML allowlist.
 
     User text is escaped. Relationship targets, style names, field codes,
@@ -244,9 +256,9 @@ def render_docx_preview(document) -> str:
     images are rendered as local data URIs; external and unsupported images are omitted.
     """
     body = "".join(
-        _block_html(block, f"body/b{block_index}")
+        _block_html(block, f"body/b{block_index}", source_offsets)
         for block_index, block in enumerate(_container_blocks(document))
     )
-    header = _part_section(document, "header", "docx-header", "Верхний колонтитул")
-    footer = _part_section(document, "footer", "docx-footer", "Нижний колонтитул")
+    header = _part_section(document, "header", "docx-header", "Верхний колонтитул", source_offsets)
+    footer = _part_section(document, "footer", "docx-footer", "Нижний колонтитул", source_offsets)
     return f'<article class="docx-preview"><section class="docx-body">{body}</section>{header}{footer}</article>'

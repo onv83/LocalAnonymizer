@@ -92,3 +92,18 @@ def test_unlabelled_counts_capacities_and_deadlines_remain_nonfinancial(source):
     result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
     assert result.text == source
     assert "СУММА" not in result.counts
+
+
+@pytest.mark.parametrize("amount", ["416 826 р", "416 826 р.", "416\u00a0826\u00a0р"])
+def test_short_ruble_suffix_without_dot_is_money(amount):
+    source = f"Затраты ДВиС составили: по периоду — порядка {amount}"
+    result = Anonymizer().anonymize(source)
+    assert result.text == "Затраты ДВиС составили: по периоду — порядка [СУММА-1]"
+    assert [row["orig"] for row in result.legend if row["cat"] == "СУММА"] == [amount]
+
+
+@pytest.mark.parametrize("source", ["пункт р раздела", "инициалы А. Р."])
+def test_short_ruble_suffix_does_not_match_without_numeric_amount(source):
+    result = Anonymizer(disabled_categories={"СОКРАЩЕНИЯ"}).anonymize(source)
+    assert "СУММА" not in result.counts
+    assert result.text == source
