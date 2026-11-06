@@ -334,7 +334,7 @@ function projectionMapItemAt(items,offset,atEnd=false){return items.find(item=>i
 function renderLiveFormattedProjection(){
   if(!filePreview||!hasFormattedDocumentPreview(currentPreviewFormat))return false;
   const sourceRoot=$('#docxPreview'),rich=$('#anonymizedDocxPreview'),sourceText=$('#source').value;
-  if(!sourceRoot?.innerHTML||!sourceRoot.querySelector('[data-source-start][data-source-end]'))return false;
+  if(!sourceRoot?.innerHTML||!sourceRoot.querySelector?.('[data-source-start][data-source-end]'))return false;
   rich.innerHTML=sourceRoot.innerHTML;
   const items=formattedProjectionMap(rich),parts=formattedProjectionParts(),sourceCharacters=Array.from(sourceText),sourceRange=(start,end)=>sourceCharacters.slice(start,end).join('');
   let startAt=0,endAt=0,previousPartEnd=-1;
@@ -347,7 +347,7 @@ function renderLiveFormattedProjection(){
 function clearSourceSelectionMirror(){
   const rich=$('#richOutput');
   rich?.querySelectorAll('[data-source-selection-overlay]').forEach(node=>node.replaceWith(...node.childNodes));
-  rich?.normalize();
+  rich?.normalize?.();
   rich?.querySelectorAll('.source-selection-match').forEach(node=>node.classList.remove('source-selection-match'));
   if(globalThis.CSS?.highlights)CSS.highlights.delete('source-selection');
 }
