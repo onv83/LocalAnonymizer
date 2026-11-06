@@ -68,9 +68,13 @@
 
 ## Скриншоты / Screenshots
 
-### Русский интерфейс
+### Русский интерфейс — полный рабочий экран v0.3.0
 
-![Русский интерфейс](docs/images/local-anonymizer-ru.png)
+<a href="docs/images/local-anonymizer-ru-v0.3.0-full.png">
+  <img src="docs/images/local-anonymizer-ru-v0.3.0-full.png" width="100%" alt="Полный экран LocalAnonymizer v0.3.0: исходный и обезличенный текст, словарные правила, ручная проверка и восстановление">
+</a>
+
+*Нажмите на снимок, чтобы открыть исходное изображение в полном разрешении (1587 × 1387).*
 
 ### English interface
 
