@@ -4,6 +4,23 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.3.0] — 2026-11-06
+
+### Правила и исключения
+
+- Добавлено production-управление дополнительными правилами и исключениями: две таблицы с созданием, редактированием, подтверждаемым удалением и сохранением в существующий профиль без изменения формата `#rules` / `#whitelist`.
+- Добавлены два равноправных пути записи: через «Добавить…» и через выделение в исходном тексте с действиями ручной проверки. Доступны RU/EN-интерфейсы, доступный keyboard-listbox категорий, проверка ввода, обработка ошибок сохранения и синхронизация при загрузке профиля.
+- Активные entry assets обновлены до versioned `v1.8.22`; формат профиля и механизм восстановления не изменялись. В дополнение к UI-изменениям удалены только неоперационные уведомления `ГОСТАЙНА`/`ДСП` из `_warnings()`.
+- Правило, добавленное из выделения или таблицы, применяется ко всем допустимым вхождениям без учёта регистра. В форматированном режиме обновление запускается сразу, остаётся на текущей прокрутке и проецирует новые маркеры без тяжёлой пересборки DOCX.
+- Исправлено отображение пустого состояния «Дополнительных правил пока нет»: оно показывается только при действительно пустом словаре.
+- `416 826 р` распознаётся как `СУММА`; длинные маркеры безопасно переносятся внутри ячеек таблиц.
+
+### English
+
+- Added production rule/allow-list tables with add, edit, confirmed delete and persistence through the existing profile contract.
+- A selected-source rule masks every eligible occurrence case-insensitively. The formatted Office-like preview remains open, preserves scroll position and updates its markers without rebuilding DOCX for preview changes.
+- Fixed the empty-rule hint so it is visible only when the dictionary is actually empty. Bare ruble suffixes such as `416 826 р` are recognized as money; long markers wrap safely in table cells.
+
 ## [0.2.13] — 2026-11-02
 
 ### Восстановление секретов

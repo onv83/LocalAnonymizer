@@ -218,7 +218,7 @@ def test_csv_export_neutralizes_formula_injection(tmp_path):
     "classification",
     ["Совершенно секретно", "Для служебного пользования", "ДСП", "Конфиденциально"],
 )
-def test_classification_label_is_informational_and_does_not_block_export(
+def test_classification_label_does_not_create_a_manual_warning_or_block_export(
     tmp_path, classification
 ):
     source = tmp_path / "classified.txt"
@@ -230,12 +230,11 @@ def test_classification_label_is_informational_and_does_not_block_export(
 
     assert report["status"] == "Готов"
     assert report["ready"] is True
-    assert any(
-        isinstance(warning, dict)
-        and warning.get("level") == "info"
-        and "не блокирует экспорт" in warning.get("message", "")
+    assert not {
+        warning.get("kind")
         for warning in report["warnings"]
-    )
+        if isinstance(warning, dict)
+    } & {"ГОСТАЙНА", "ДСП"}
     exported = service.export_pair(doc_id, tmp_path / "classified-anonymized.txt")
     assert exported["anonymized_path"].is_file()
     assert exported["recovery_path"].is_file()
@@ -262,12 +261,11 @@ def test_docx_classification_labels_do_not_block_anonymized_pair_export(tmp_path
 
     assert report["status"] == "Готов"
     assert report["ready"] is True
-    assert {warning.get("kind") for warning in report["warnings"]} >= {"ГОСТАЙНА", "ДСП"}
-    assert all(
-        warning.get("level") == "info"
+    assert not {
+        warning.get("kind")
         for warning in report["warnings"]
-        if warning.get("kind") in {"ГОСТАЙНА", "ДСП"}
-    )
+        if isinstance(warning, dict)
+    } & {"ГОСТАЙНА", "ДСП"}
     exported = service.export_pair(document_id, tmp_path / "classified-anonymized.docx")
     assert exported["anonymized_path"].is_file()
     assert exported["recovery_path"].is_file()

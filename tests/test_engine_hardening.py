@@ -6,7 +6,7 @@ from dataclasses import asdict
 
 import pytest
 
-from local_anonymizer.engine import Anonymizer, _stem_surname
+from local_anonymizer.engine import Anonymizer, COMMON_SURNAME_STEMS, COMMON_SURNAMES, _stem_surname
 
 
 def _serialized(result) -> str:
@@ -62,6 +62,23 @@ def test_surname_stem_normalizes_russian_case_forms():
         _stem_surname(value)
         for value in ("Петровский", "Петровского", "Петровскому", "Петровской")
     } == {"петровский"}
+
+
+def test_common_surname_stems_are_precomputed_once():
+    assert COMMON_SURNAME_STEMS == {_stem_surname(value) for value in COMMON_SURNAMES}
+
+
+def test_user_dictionary_masks_every_case_insensitive_occurrence():
+    source = "Ретроспектива проекта.\nПромежуточная ретроспектива проекта.\nРЕТРОСПЕКТИВА."
+
+    result = Anonymizer(user_dictionary={"Ретроспектива": "СКРЫТО"}).anonymize(source)
+
+    assert result.text == "[СКРЫТО-1] проекта.\nПромежуточная [СКРЫТО-2] проекта.\n[СКРЫТО-3]."
+    assert result.mapping == {
+        "[СКРЫТО-1]": "Ретроспектива",
+        "[СКРЫТО-2]": "ретроспектива",
+        "[СКРЫТО-3]": "РЕТРОСПЕКТИВА",
+    }
 
 
 def test_initials_reuse_anchor_but_bare_declined_surname_gets_separate_marker():

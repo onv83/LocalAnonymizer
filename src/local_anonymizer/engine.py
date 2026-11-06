@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import unicodedata
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
@@ -592,6 +593,9 @@ def _stem_surname(value: str) -> str:
         return adjective.group(1) + "ий"
     nominal = re.fullmatch(r"(.+(?:ов|ев|ин|ын))(?:а|у|ым|ом|е|ой|ою|ы|ами|ах)", x)
     return nominal.group(1) if nominal else x
+
+
+COMMON_SURNAME_STEMS = frozenset(_stem_surname(value) for value in COMMON_SURNAMES)
 
 
 def _name_stem(value: str) -> str:
@@ -2046,7 +2050,7 @@ class Anonymizer:
 
         # Finance requires currency or explicit commercial context.
         fnum = r"(?:\d{1,3}(?:[ \u00A0.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
-        fcur = r"(?:руб(?:л[а-яё]+)?\.?|р\.|₽|RUB|долл(?:ар[а-яё]*)?\.?|\$|USD|евро|€|EUR|у\.\s?е\.)"
+        fcur = r"(?:руб(?:л[а-яё]+)?\.?|р\.?(?![^\W\d_])|₽|RUB|долл(?:ар[а-яё]*)?\.?|\$|USD|евро|€|EUR|у\.\s?е\.)"
         add(rf"(?<![\d.,№-])(?<!\d/){fnum}(?:\s*(?:тысяч[аи]?|тысяч|миллион(?:а|ов)?|миллиард(?:а|ов)?|триллион(?:а|ов)?|тыс\.?|млн\.?|млрд\.?|трлн\.?))?(?:\s*\([^()\n]{{0,70}}\))?\s*{fcur}(?:\s*\d{{1,2}}\s*коп[а-яё]*\.?)?", "СУММА", 77, canonical=lambda m: "fin:" + _digits(m.group()))
         add(rf"(?:₽|\$|€|USD|EUR|RUB)\s*{fnum}(?:\s*(?:тыс|млн|млрд)\.?)?", "СУММА", 77, canonical=lambda m: "fin:" + _digits(m.group()))
         add(rf"(?<![\d.,-]){fnum}\s*т\.\s?р\.?(?![а-яёA-Za-z])", "СУММА", 77, canonical=lambda m: "fin:" + _digits(m.group()))
@@ -2514,7 +2518,7 @@ class Anonymizer:
                 pattern = re.escape(value) if secret_label else rf"(?<!\w){re.escape(value)}(?!\w)"
                 for m in re.finditer(pattern, source, re.I):
                     found.append(Detection(*m.span(), "SECRET" if secret_label else category, 100,
-                                           m.group(), value.casefold()))
+                                           m.group(), m.group(), case_sensitive_canonical=True))
             elif not secret_label:
                 pattern = rf"(?<!\w){re.escape(value)}(?!\w)"
                 disabled_spans.extend(m.span() for m in re.finditer(pattern, source, re.I))
@@ -2597,22 +2601,20 @@ class Anonymizer:
         surname_keys: dict[str, set[str]] = {}
         for raw, key in surnames:
             surname_keys.setdefault(_stem_surname(raw), set()).add(key)
-        for raw, key in surnames:
-            if ("ФИО", key) not in surviving_keys:
+        surviving_surname_stems = {
+            stem for stem, keys in surname_keys.items()
+            if len(stem) >= 3 and len(keys) == 1 and ("ФИО", next(iter(keys))) in surviving_keys
+        }
+        for m in re.finditer(r"(?<![\w-])[А-Яа-яЁё][А-Яа-яЁё-]{2,}(?![\w-])", source):
+            if _stem_surname(m.group()) not in surviving_surname_stems:
                 continue
-            stem = _stem_surname(raw)
-            if len(stem) < 3 or len(surname_keys.get(stem, ())) != 1:
-                continue
-            for m in re.finditer(r"(?<![\w-])[А-Яа-яЁё][А-Яа-яЁё-]{2,}(?![\w-])", source):
-                if _stem_surname(m.group()) != stem:
-                    continue
-                if not any(m.start() < e and m.end() > s for s, e in occupied):
-                    # A matching surname stem is enough to detect the value, but
-                    # not enough to prove that it names the same person as the
-                    # full-name anchor. Keep a separate reversible identity key.
-                    surname_key = "фио-фамилия:" + self._canon(m.group())
-                    accepted.append(Detection(*m.span(), "ФИО", 49, m.group(), surname_key))
-                    occupied.append(m.span())
+            if not any(m.start() < e and m.end() > s for s, e in occupied):
+                # A matching surname stem is enough to detect the value, but
+                # not enough to prove that it names the same person as the
+                # full-name anchor. Keep a separate reversible identity key.
+                surname_key = "фио-фамилия:" + self._canon(m.group())
+                accepted.append(Detection(*m.span(), "ФИО", 49, m.group(), surname_key))
+                occupied.append(m.span())
         seen_exact_aliases: set[tuple[str, str, str, bool]] = set()
         for raw, key, category, case_sensitive in exact_aliases:
             alias = (raw, key, category, case_sensitive)
@@ -2719,11 +2721,42 @@ class Anonymizer:
             logical_intra_boundary=True,
         )
         hint(r"\b[А-ЯЁ][а-яё-]{3,}\b", "возможная фамилия", flags=0,
-             validate=lambda m: _stem_surname(m.group()) in {_stem_surname(x) for x in COMMON_SURNAMES})
+             validate=lambda m: _stem_surname(m.group()) in COMMON_SURNAME_STEMS)
         # Capitalized-only proper nouns in the middle of a sentence.
         lower_stems = {_name_stem(m.group()) for m in re.finditer(r"\b[а-яё][а-яё-]{3,}\b", source)}
         hint(r"\b[А-ЯЁ][а-яё-]{3,}\b", "возможное имя собственное", flags=0,
              validate=lambda m: _name_stem(m.group()) not in lower_stems and m.group().casefold() not in STOP_PROPER and m.start() > 0 and source[m.start()-1] not in ".!?\n")
+
+        def merge_spans(spans: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+            merged: list[tuple[int, int]] = []
+            for start, end in sorted(spans):
+                if end <= start:
+                    continue
+                if merged and start <= merged[-1][1]:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+                else:
+                    merged.append((start, end))
+            return merged
+
+        hard_spans = merge_spans([*protected, *disabled_spans, *((x.start, x.end) for x in accepted)])
+
+        def overlaps_hard(start: int, end: int) -> bool:
+            index = bisect_left(hard_spans, (start, -1))
+            return (
+                index > 0 and hard_spans[index - 1][1] > start
+            ) or (index < len(hard_spans) and hard_spans[index][0] < end)
+
+        def add_hard(start: int, end: int) -> None:
+            index = bisect_left(hard_spans, (start, -1))
+            if index > 0 and hard_spans[index - 1][1] >= start:
+                index -= 1
+                start = min(start, hard_spans[index][0])
+                end = max(end, hard_spans[index][1])
+            stop = index
+            while stop < len(hard_spans) and hard_spans[stop][0] <= end:
+                end = max(end, hard_spans[stop][1])
+                stop += 1
+            hard_spans[index:stop] = [(start, end)]
 
         # Abbreviations are the broad fail-closed fallback. Apply them only
         # after validated entities and exact aliases. Optional review hints are
@@ -2731,22 +2764,17 @@ class Anonymizer:
         # hints, while confirmed entities, protected markers and disabled spans
         # continue to block the fallback.
         for item in abbreviation_candidates:
-            hard_spans = [*protected, *disabled_spans, *((x.start, x.end) for x in accepted)]
-            if any(item.start < end and item.end > start for start, end in hard_spans):
+            if overlaps_hard(item.start, item.end):
                 continue
-            overlaps_occupied = any(
-                item.start < end and item.end > start for start, end in occupied
-            )
-            if overlaps_occupied:
-                overlapping_hints = [
-                    hint_item for hint_item in hints
-                    if item.start < hint_item.end and item.end > hint_item.start
-                ]
+            overlapping_hints = [
+                hint_item for hint_item in hints
+                if item.start < hint_item.end and item.end > hint_item.start
+            ]
+            if overlapping_hints:
                 if (
                     not _is_hyphenated_initialism_compound(
                         item.value.replace("\n", "")
                     )
-                    or not overlapping_hints
                     or any(
                         hint_item.kind not in {
                             "возможное имя собственное",
@@ -2762,6 +2790,7 @@ class Anonymizer:
                 ]
             accepted.append(item)
             occupied.append((item.start, item.end))
+            add_hard(item.start, item.end)
 
         if self.paranoid:
             for h in hints:
@@ -2842,8 +2871,6 @@ class Anonymizer:
     @staticmethod
     def _warnings(source: str) -> list[dict[str, str]]:
         specs = [
-            ("ГОСТАЙНА", "info", r"совершенно\s+секретно|особой\s+важности|государственн[а-яё]+\s+тайн|гостайн|(?<![а-яё])секретно(?![а-яё])", "Обнаружен гриф секретности. Это ожидаемый сценарий обезличивания и не блокирует экспорт; проверьте обезличенный результат."),
-            ("ДСП", "info", r"для\s+служебного\s+пользования|(?<![а-яё])ДСП(?![а-яё])|коммерческ[а-яё]+\s+тайн|конфиденциальн", "Обнаружен гриф ДСП или признак конфиденциальности. Это ожидаемый сценарий обезличивания и не блокирует экспорт; проверьте обезличенный результат."),
             ("КИИ", "warn", r"критическ[а-яё]+\s+информационн[а-яё]+\s+инфраструктур|(?<![а-яё])КИИ(?![а-яё])", "Упоминается КИИ: перепроверьте объекты и идентификаторы систем."),
             ("ЗАКУПКИ", "warn", r"ОКПД\s?2|КТРУ", "Есть ОКПД2/КТРУ: проверьте связку кода, описания, объёма и заказчика."),
             ("МАССИВ-ПДН", "warn", r"массив[а-яё]*\s+(?:персональн[а-яё]+\s+данн[а-яё]+|ПДн)|реестр[а-яё]*\s+(?:сотрудник|клиент|пациент)[а-яё]*", "Есть признак массива персональных данных; ручная проверка обязательна."),

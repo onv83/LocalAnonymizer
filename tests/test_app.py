@@ -2330,7 +2330,8 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     assert app_module.main([]) == 0
     assert captured["url"].endswith(f"/{app_module.INDEX_ASSET}")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.20.js"></script>' in html
+    assert '<script src="app-v1.8.22.js"></script>' in html
+    assert '<script src="dictionary-rules-v1.8.22.js"></script>' in html
 
 
 def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
@@ -3053,9 +3054,9 @@ def test_docx_preview_is_formatted_ordered_and_escaped_without_links(tmp_path):
     assert preview["kind"] == "document" and preview["format"] == "docx"
     assert rich.index("<h1") < rich.index("<table")
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in rich and "<script" not in rich
-    assert "<strong>жирный</strong>" in rich
-    assert "<em> курсив</em>" in rich
-    assert "<u> подчёркнутый</u>" in rich
+    assert '<strong><span data-source-start=' in rich and '>жирный</span></strong>' in rich
+    assert '<em><span data-source-start=' in rich and '> курсив</span></em>' in rich
+    assert '<u><span data-source-start=' in rich and '> подчёркнутый</span></u>' in rich
     assert 'class="docx-paragraph align-center"' in rich
     assert 'style="font-size:18pt;color:#123456"' in rich
     assert rich.count('class="docx-table"') >= 2
@@ -3067,7 +3068,37 @@ def test_docx_preview_is_formatted_ordered_and_escaped_without_links(tmp_path):
     assert document_id not in repr(preview) and str(tmp_path) not in repr(preview)
 
 
-def test_docx_preview_renders_safe_embedded_png_but_anonymized_preview_only_shows_marker(tmp_path):
+def test_docx_preview_emits_exact_source_offsets_for_live_formatted_projection(tmp_path):
+    source = tmp_path / "projection-map.docx"
+    doc = Document()
+    paragraph = doc.add_paragraph()
+    paragraph.add_run("АО ")
+    sensitive = paragraph.add_run("ALD")
+    sensitive.bold = True
+    paragraph.add_run(" завершила этап")
+    doc.save(source)
+
+    api = AppApi(root=tmp_path / "app")
+    document_id = api.import_paths([str(source)])["ids"][0]
+    preview = api.preview_document(document_id)
+
+    assert preview["text"] == "АО ALD завершила этап"
+    assert '<span data-source-start="0" data-source-end="3">АО </span>' in preview["rich_html"]
+    assert '<strong><span data-source-start="3" data-source-end="6">ALD</span></strong>' in preview["rich_html"]
+    assert '<span data-source-start="6" data-source-end="21"> завершила этап</span>' in preview["rich_html"]
+
+    interleaved = tmp_path / "projection-map-interleaved.docx"
+    document = Document()
+    document.add_paragraph("P-before")
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "ALD"
+    document.add_paragraph("P-after")
+    document.save(interleaved)
+    interleaved_id = api.import_paths([str(interleaved)])["ids"][0]
+    interleaved_preview = api.preview_document(interleaved_id)
+    assert interleaved_preview["text"] == "P-before\nP-after\nALD"
+    assert '<span data-source-start="17" data-source-end="20">ALD</span>' in interleaved_preview["rich_html"]
+    assert interleaved_preview["rich_html"].index("P-before") < interleaved_preview["rich_html"].index("ALD") < interleaved_preview["rich_html"].index("P-after")
+
     image_bytes = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )
@@ -3146,7 +3177,7 @@ def test_docx_preview_header_anchor_identity_survives_image_only_header_removal(
     anonymized_html = api.preview_anonymized_document(document_id)["rich_html"]
 
     source_anchor = re.search(
-        r'data-preview-anchor="([^"]+)">Второй заголовок</p>', source_html
+        r'data-preview-anchor="([^"]+)"><span data-source-start="\d+" data-source-end="\d+">Второй заголовок</span></p>', source_html
     )
     anonymized_anchor = re.search(
         r'data-preview-anchor="([^"]+)">Второй заголовок</p>', anonymized_html
@@ -3358,3 +3389,119 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
     document_id = api.import_paths([str(source)])["ids"][0]
 
     assert "Безопасный текст" in api.preview_document(document_id)["rich_html"]
+
+
+def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():
+    assert app_module.INDEX_ASSET == "index-v1.8.22.html"
+    assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.22.html"
+    for language in ("", "-en"):
+        html = app_module.asset_path(f"index{language}-v1.8.22.html").read_text(encoding="utf-8")
+        assert 'src="dictionary-rules-v1.8.22.js"' in html
+        assert f'src="app{language}-v1.8.22.js"' in html
+
+    javascript = app_module.asset_path("dictionary-rules-v1.8.22.js").read_text(encoding="utf-8")
+    for required in (
+        "#rules",
+        "#whitelist",
+        "save_profile(",
+        "dictionary-rules-sync",
+        "formattedSource?.addEventListener('scroll'",
+        "return chosen&&range&&isInside(range.startContainer)&&isInside(range.endContainer)?chosen:''",
+        "if(!selection){window.syncSourceSelectionToOutput?.('');if(hadSelection)clearSelectionPriority(true);return;}",
+        "window.syncSourceSelectionToOutput?.(selection);",
+        "const markerLiteral=/\\[(?:[А-ЯA-ZЁа-яё][А-ЯA-ZЁа-яё0-9_-]{0,63}-\\p{Nd}+|уязвимость)\\]/u;",
+        "unsavedProfileWarning",
+        'role="listbox"',
+        "selectLabel",
+        "#dictionaryRuleDialog",
+    ):
+        assert required in javascript
+
+    css = app_module.asset_path("dictionary-rules-v1.8.22.css").read_text(encoding="utf-8")
+    for required in ("height:calc(100% - 34px)", "flex-direction:column", "overflow:hidden"):
+        assert required in css
+
+    for script_name in ("app-v1.8.22.js", "app-en-v1.8.22.js"):
+        javascript = app_module.asset_path(script_name).read_text(encoding="utf-8")
+        assert "dictionary-rules-sync" in javascript
+        assert "dictionaryUnsavedProfileWarning" in javascript
+        assert ".larecovery" in javascript
+        assert "not written to the unencrypted recovery file" not in javascript
+        assert "не записываются в незашифрованный файл восстановления" not in javascript
+        assert "'ГОСТАЙНА':" not in javascript
+        assert "'ДСП':" not in javascript
+
+
+def test_dictionary_rule_editor_v24_browser_acceptance(tmp_path: Path):
+    import socket
+    import time
+    import urllib.request
+
+    edge = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            )
+            if candidate.exists()
+        ),
+        None,
+    )
+    if edge is None:
+        pytest.skip("Microsoft Edge is required for the dictionary-editor browser regression")
+
+    verifier = Path(__file__).parents[1] / "scripts" / "verify_dictionary_rules_v24.mjs"
+    for language_index, html_name in enumerate(("index-v1.8.22.html", "index-en-v1.8.22.html")):
+        for viewport_width in (390, 1600):
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1", 0))
+                port = reservation.getsockname()[1]
+            profile = tmp_path / f"edge-dictionary-rules-v24-{language_index}-{viewport_width}"
+            browser = subprocess.Popen(
+                [
+                    str(edge),
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--allow-file-access-from-files",
+                    "--remote-allow-origins=*",
+                    f"--remote-debugging-port={port}",
+                    f"--user-data-dir={profile}",
+                    f"--window-size={viewport_width},920",
+                    asset_path(html_name).as_uri(),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                targets = None
+                for _ in range(100):
+                    try:
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+                            targets = json.load(response)
+                        break
+                    except Exception:
+                        time.sleep(0.05)
+                assert targets, {"language": html_name, "width": viewport_width, "error": "No Edge DevTools target"}
+                page = next(target for target in targets if target.get("type") == "page")
+                result = subprocess.run(
+                    ["node", str(verifier), page["webSocketDebuggerUrl"], str(viewport_width)],
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+                assert result.returncode == 0, {
+                    "language": html_name,
+                    "width": viewport_width,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                }
+                outcome = json.loads(result.stdout.strip())
+                assert outcome["ok"], {"language": html_name, "width": viewport_width, **outcome}
+                assert outcome["language"] == ("en" if language_index else "ru")
+            finally:
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    browser.terminate()
+                    browser.wait(timeout=5)

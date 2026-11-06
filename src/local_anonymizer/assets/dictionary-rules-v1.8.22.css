@@ -1,0 +1,76 @@
+/* v1.8.22: rules/whitelist production editor. */
+body[data-design="new"] .dictionary-rule-source-help{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;min-height:18px;margin-left:6px;padding:0;border:1px solid var(--border);border-radius:50%;background:var(--surface-raised);color:var(--text-primary);font-size:12px;vertical-align:middle}
+body[data-design="new"] #dictionaryRuleDialog{display:flex;flex-direction:column;height:calc(100% - 34px);max-height:calc(100% - 34px);overflow:hidden;padding:10px}body[data-design="new"] #dictionaryDeleteDialog{overflow:hidden}body[data-design="new"] #dictionaryRuleDialog,body[data-design="new"] #dictionaryDeleteDialog{position:absolute;z-index:90;right:17px;bottom:17px;width:min(460px,calc(100% - 34px));box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);box-shadow:0 12px 30px #07131e45}body[data-design="new"] #dictionaryDeleteDialog{padding:14px}
+body[data-design="new"] #dictionaryRuleDialog[hidden],body[data-design="new"] #dictionaryDeleteDialog[hidden]{display:none}
+body[data-design="new"] .dictionary-rule-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;margin-bottom:4px}
+body[data-design="new"] .dictionary-rule-dialog-head h3{margin:0;font-size:16px}
+body[data-design="new"] .dictionary-rule-dialog-close{min-width:32px!important;width:32px;height:32px;min-height:32px!important;padding:0!important;font-size:20px!important}
+body[data-design="new"] .dictionary-rule-field{display:grid;gap:3px;margin:4px 0;flex:0 0 auto}
+body[data-design="new"] .dictionary-rule-field input{min-height:32px;padding:5px 8px;box-sizing:border-box;color:var(--text-primary);background:var(--surface);border-color:var(--border)}
+body[data-design="new"] #dictionaryRuleLabels{display:flex;flex:1 1 auto;flex-direction:column;min-height:54px}body[data-design="new"] .dictionary-rule-label-list{flex:1 1 auto;min-height:54px;max-height:none;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--surface-raised)}
+body[data-design="new"] .dictionary-rule-label-group{padding:7px 9px 3px;color:var(--text-secondary);font-size:11px;font-weight:700}
+body[data-design="new"] .dictionary-rule-label-option{display:flex;align-items:center;gap:7px;padding:5px 9px;min-height:28px;cursor:pointer}
+body[data-design="new"] .dictionary-rule-label-option:hover{background:color-mix(in srgb,var(--action-primary) 10%,var(--surface-raised))}
+body[data-design="new"] .dictionary-rule-label-option small{margin-left:auto;color:var(--text-secondary)}
+body[data-design="new"] .dictionary-rule-error{min-height:14px;margin:2px 0 0;color:var(--danger);font-size:11px}body[data-design="new"] .dictionary-rule-count{margin:2px 0;color:var(--text-secondary);font-size:11px;line-height:14px}body[data-design="new"] .dictionary-rule-secret{max-height:28px;margin:2px 0;padding:3px 5px;overflow:auto;border:1px solid var(--warning);border-radius:6px;color:var(--warning);background:color-mix(in srgb,var(--warning) 10%,var(--surface));font-size:10px;line-height:11px}
+body[data-design="new"] .dictionary-rule-actions{display:flex;flex:0 0 auto;justify-content:flex-end;gap:8px;margin-top:4px}body[data-design="new"] .dictionary-rule-actions button{min-height:32px;padding:5px 9px}
+body[data-design="new"] .dictionary-rule-panel{display:flex;flex-direction:column;height:100%;min-height:0}
+body[data-design="new"] .dictionary-rule-head{display:flex;align-items:center;justify-content:space-between;gap:10px;height:36px;margin:0 0 8px}
+body[data-design="new"] .dictionary-rule-head h3{margin:0;font-size:16px;line-height:20px}
+body[data-design="new"] .dictionary-rule-head button{height:36px;min-height:36px;padding:7px 11px}
+body[data-design="new"] .dictionary-rule-scroll{display:flex;flex:1;flex-direction:column;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+body[data-design="new"] .dictionary-rule-table{width:100%;border-collapse:collapse}
+body[data-design="new"] .dictionary-rule-table th,body[data-design="new"] .dictionary-rule-table td{padding:9px 10px;border-bottom:1px solid color-mix(in srgb,var(--border) 25%,var(--surface));text-align:left;vertical-align:middle}
+body[data-design="new"] .dictionary-rule-table th{height:36px;box-sizing:border-box;background:var(--surface-raised);color:var(--text-secondary);font-size:12px;font-weight:600}
+body[data-design="new"] .dictionary-rule-table td{height:52px;box-sizing:border-box;line-height:18px}
+body[data-design="new"] .dictionary-rule-table td:last-child{width:76px;text-align:right;white-space:nowrap}
+body[data-design="new"] .dictionary-rule-icon{display:inline-grid;place-items:center;width:32px;height:32px;min-height:32px!important;margin-left:7px;padding:5px!important;border-color:color-mix(in srgb,var(--border) 60%,var(--surface));background:var(--surface)}
+body[data-design="new"] .dictionary-rule-icon:first-child{margin-left:0}
+body[data-design="new"] .dictionary-rule-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+body[data-design="new"] .dictionary-rule-empty{display:flex;align-items:center;height:58px;box-sizing:border-box;margin-top:auto;padding:18px;border:1px dashed var(--border);border-radius:6px;color:var(--text-secondary)}
+body[data-design="new"] .dictionary-rule-empty[hidden]{display:none}
+body[data-design="new"] .dictionary-rule-backstore{display:none!important}
+body[data-design="new"] .dictionary-review-options{margin:7px 0 0;padding:8px 11px;border:1px solid var(--border);border-radius:5px;background:var(--surface-raised);font-size:12px}
+body[data-design="new"] .dictionary-review-options label{display:block;margin:5px 0;cursor:help}
+body[data-design="new"] .dictionary-review-options input{accent-color:var(--action-primary)}
+body[data-design="new"] #manualReview.dictionary-review-v24{display:block;height:330px;min-height:0;max-height:330px;box-sizing:border-box;overflow:hidden;padding:10px;background:var(--surface);border-color:var(--border);color:var(--text-primary)}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-heading{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:0 0 8px}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-heading h2{margin:0;font-size:15px}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-heading-help{display:none}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-context{height:66px;box-sizing:border-box;overflow:hidden;margin:0 0 7px;padding:9px 11px;border:1px solid var(--border);border-radius:5px;background:var(--surface-raised)}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-candidate{height:100%;min-height:0;padding:0;border:0;background:transparent;grid-template-columns:1fr auto;grid-template-rows:18px 22px;gap:3px 12px}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-candidate .review-label{grid-column:1;font-size:12px;color:var(--text-secondary)}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-candidate #reviewCurrent{grid-column:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-candidate .review-help{grid-column:2;grid-row:1 / span 2;margin:0;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;color:var(--text-secondary)}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-navigation,body[data-design="new"] #manualReview.dictionary-review-v24 .review-actions{display:contents}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-toolbar button{min-height:44px;padding:6px;border-radius:5px;background:var(--surface-raised);border-color:var(--border);color:var(--text-primary);font-size:12px}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-controls-disclosure{display:none}
+body[data-design="new"] #manualReview.dictionary-review-v24 .dictionary-review-options small{display:none}
+body[data-design="new"] #richOutput .source-selection-match{outline:2px solid #5ab7ff;outline-offset:2px;background:rgba(48,142,255,.38);color:var(--foreground)}
+body[data-design="new"] #anonymizedDocxPreview .formatted-projection-marker{display:inline;padding:1px 4px;border-radius:3px;background:#1f6f9f;color:#fff;font-weight:700;line-height:1.25;white-space:normal;overflow-wrap:anywhere;word-break:break-word;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+body[data-design="new"] #richOutput::highlight(source-selection){background:rgba(48,142,255,.42);color:var(--foreground)}
+body[data-design="new"] #manualReview.dictionary-review-v24 .review-decision,body[data-design="new"] #manualReview.dictionary-review-v24 .review-finish{display:none!important}
+body[data-design="new"] #manualReview.dictionary-review-v24 #resultStatus{display:block;min-height:16px;margin-top:7px;color:var(--warning);font-size:12px}
+body[data-design="new"] #manualReview.dictionary-review-v24 #warning{display:block!important;max-height:28px;margin:5px 0 0;padding:4px 8px;overflow:auto;color:var(--warning);font-size:11px;line-height:1.2}
+body[data-design="new"] #docxPreviewControls #previewTop,body[data-design="new"] #docxPreviewControls #previewBottom,body[data-design="new"] #anonymizedPreviewControls #anonymizedPreviewTop,body[data-design="new"] #anonymizedPreviewControls #anonymizedPreviewBottom{display:none!important}
+body[data-design="new"] .preview-switch{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto 36px;gap:8px}
+body[data-design="new"] .preview-switch .preview-completeness{grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body[data-design="new"] .preview-switch button{height:36px;min-height:36px;padding:7px 10px;white-space:nowrap}
+@media(min-width:801px){
+ body[data-design="new"] main.columns{align-items:start;margin:0 0 14px;column-gap:14px;row-gap:14px}
+ body[data-design="new"] main.columns>.workspace-column{display:grid;grid-template-rows:569px 330px;gap:14px;min-height:0}
+ body[data-design="new"] .workspace-column>.pane{height:569px;min-height:0;overflow:hidden}
+ body[data-design="new"] .workspace-column>#anonymizationSettings{height:330px;min-height:0;max-height:330px;padding:0!important;overflow:hidden}
+ body[data-design="new"] .workspace-column>#anonymizationSettings>summary,body[data-design="new"] .workspace-column>#anonymizationSettings .settings-intro,body[data-design="new"] .workspace-column>#anonymizationSettings #settingsStatus{display:none!important}
+ body[data-design="new"] .workspace-column>#anonymizationSettings .settings-workbench{grid-template-columns:174px minmax(0,1fr);height:328px;min-height:0;margin:0;overflow:visible}
+ body[data-design="new"] .workspace-column>#anonymizationSettings .settings-editor{position:relative;height:328px;min-height:0;padding:17px;box-sizing:border-box;overflow:visible}
+ body[data-design="new"] .workspace-column>#anonymizationSettings .settings-panel-content{height:100%;min-height:0}
+ body[data-design="new"] .pane .editor-stack,body[data-design="new"] .rich-output,body[data-design="new"] .docx-preview-host{height:377px;min-height:0}
+}
+@media(max-width:800px){
+ body[data-design="new"] .restore-card-actions{width:100%;flex-wrap:wrap}body[data-design="new"] .restore-card-actions button{min-width:0;max-width:100%;white-space:normal;flex:1 1 210px}
+ body[data-design="new"] #manualReview.dictionary-review-v24{height:auto;max-height:none;overflow:visible}
+ body[data-design="new"] #manualReview.dictionary-review-v24 .review-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-design="new"] #dictionaryRuleDialog{position:fixed;right:10px;bottom:10px;width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px)}body[data-design="new"] #dictionaryDeleteDialog{position:fixed;right:10px;bottom:10px;width:calc(100vw - 20px);max-height:calc(100vh - 20px)}
+}
