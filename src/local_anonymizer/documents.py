@@ -919,6 +919,8 @@ def _safe_known_attribute_value(
             return unsigned and int(value) <= 2_147_483_647
         if (element_local, attr_local) == ("ilvl", "val"):
             return unsigned and int(value) <= 9
+        if (element_local, attr_local) == ("start", "val"):
+            return unsigned and int(value) <= 2_147_483_647
         if (element_local, attr_local) == ("multiLevelType", "val"):
             return value in {"singleLevel", "multilevel", "hybridMultilevel"}
         if (element_local, attr_local) == ("numFmt", "val"):
