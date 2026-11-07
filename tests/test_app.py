@@ -193,6 +193,16 @@ def test_directory_identifiers_self_test_requires_table_login_and_complete_dn():
     assert app_module._directory_identifiers_self_test(PartialDetector()) is False
 
 
+def test_directory_identifiers_self_test_requires_universal_user_login_detection():
+    class LegacyDetector:
+        def anonymize(self, source):
+            if source.startswith("Пользователи:"):
+                return SimpleNamespace(text=source, mapping={}, counts={})
+            return Anonymizer().anonymize(source)
+
+    assert app_module._directory_identifiers_self_test(LegacyDetector()) is False
+
+
 def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode_behavior():
     assert app_module._single_two_letter_abbreviation_self_test() is True
 

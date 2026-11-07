@@ -665,3 +665,12 @@
 - [x] **RED/GREEN:** `tests/test_restore_original_layout.py` — 4 synthetic теста (поля/закладки/гиперссылки/имена стилей после Word-resave, fallback при добавленном абзаце, hostile graft блокируется). Все focused suite зелёные.
 - [x] **Forensic acceptance:** реальная пара восстановлена в scratch: поля (36/36), инструкции TOC (13/13), закладки (25/25), гиперссылки (10/10, 4 external rel), исходные `styleId` — полное совпадение с оригиналом; единственное отличие текста — собственная правка пользователя в Word; Microsoft Word COM открыл результат с `OpenAndRepair=False` и видит 22 поля и 10 гиперссылок.
 - [ ] **Требуется до закрытия:** полный suite, независимый review, Windows package/install, PR merge. Release `v0.3.0` не изменяется.
+
+## B94 — универсальное распознавание контекстных логинов вместо point-правил (2026-11-08)
+
+- [x] **Источник:** пользователь явно потребовал не hardcode отдельных имён учётных записей, а универсальное правило для новых аналогичных значений. Реальные логины в репозиторий и backlog не переносятся.
+- [x] **RED и корневая причина:** существующий contextual detector понимал `Логин`/`Учётная запись`/`login`/`username`, но не `Пользователь`/`User`, optional parentheses, списки значений и полный token через Word-run boundary. Dotted login мог частично перехватываться как `ДОМЕН`.
+- [x] **Реализация:** единый logical-source scanner распознаёт RU/EN user/account labels, скобки, comma/semicolon lists и физические DOCX spans после удаления только intra-region `U+FDD3`. Приоритет `ЛОГИН` выше частичного domain match; полный email остаётся `ПОЧТА`; status values (`enabled`, `disabled` и др.) и `Account manager` не маскируются.
+- [x] **Source и DOCX proof:** focused engine/app tests покрывают неизвестные synthetic логины, списки, скобки, status negatives, table-cell boundary, split-run mapping и self-test против legacy detector. Synthetic DOCX export содержит три `ЛОГИН` markers без исходных значений и восстанавливается byte-exact; `10 passed` на focused наборе.
+- [x] **Forensic real-DOCX proof:** обработка scratch-копии реального документа с тремя point-правилами удалёнными из engine удалила все соответствующие логины из output XML и оставила markers; пользовательский исходник и реальный профиль не изменялись.
+- [ ] **Остаётся до установки/публикации:** полный serial suite, независимый exact-snapshot review, свежая Windows сборка, packaged smoke/pair/platform, обновление установленной копии и пользовательская приёмка. Затем отдельный release gate для GitHub/macOS.

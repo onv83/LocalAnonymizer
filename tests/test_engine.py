@@ -858,6 +858,47 @@ def test_labelled_login_in_adjacent_docx_table_cell_is_redacted():
     assert disabled.mapping == {}
 
 
+def test_user_label_redacts_unknown_parenthesized_login():
+    account = "qa_new_17"
+    source = f"Пользователь: ({account})"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Пользователь: ([ЛОГИН-1])"
+    assert result.mapping == {"[ЛОГИН-1]": account}
+
+
+def test_user_label_redacts_every_unknown_login_in_a_list():
+    accounts = ("alpha.new17", "beta_test22", "gamma-ops33")
+    source = "Пользователи: alpha.new17, (beta_test22); gamma-ops33"
+
+    result = Anonymizer().anonymize(source)
+
+    assert all(account not in result.text for account in accounts)
+    assert result.text.count("[ЛОГИН-") == 3
+    assert set(result.mapping.values()) == set(accounts)
+
+
+def test_user_label_does_not_mask_common_status_values():
+    source = "User: enabled; User: disabled; Пользователь: активен"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == source
+    assert result.mapping == {}
+
+
+def test_user_label_redacts_complete_login_split_by_docx_run_boundary():
+    source = "Пользователь: (qa_\ufdd3new17)"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text.count("[ЛОГИН-") == 1
+    assert "qa_" not in result.text
+    assert "new17" not in result.text
+    assert result.mapping == {"[ЛОГИН-1]": "qa_\nnew17"}
+
+
 def test_english_account_label_in_adjacent_docx_table_cell_is_redacted():
     account = "synthetic_demo_user"
     source = f"Account\ufdd0{account}"

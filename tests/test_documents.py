@@ -850,6 +850,37 @@ def test_docx_table_redacts_labelled_login_and_complete_distinguished_name(tmp_p
     assert restored.read_bytes() == source_bytes
 
 
+def test_docx_user_label_redacts_unknown_login_list_across_runs_and_restores_exactly(tmp_path):
+    source = tmp_path / "user-login-list-source.docx"
+    anonymized = tmp_path / "user-login-list-anonymized.docx"
+    restored = tmp_path / "user-login-list-restored.docx"
+    accounts = ("qa_new17", "alpha.new18", "beta_test22")
+    document = Document()
+    paragraph = document.add_paragraph("Пользователи: (")
+    paragraph.add_run("qa_")
+    paragraph.add_run("new17").bold = True
+    paragraph.add_run("), ")
+    paragraph.add_run("alpha.")
+    paragraph.add_run("new18")
+    paragraph.add_run("; beta_test22")
+    document.save(source)
+    source_bytes = source.read_bytes()
+
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    payload = _all_xml(anonymized)
+    assert all(account.encode() not in payload for account in accounts)
+    assert Document(anonymized).paragraphs[0].text.count("[ЛОГИН-") == 3
+    assert source.read_bytes() == source_bytes
+    DocxProcessor().restore(
+        anonymized,
+        restored,
+        result.mapping,
+        package_archive=result.package_archive,
+    )
+    assert restored.read_bytes() == source_bytes
+
+
 def test_docx_service_account_split_inside_token_by_hard_break_has_no_fragment_leak(tmp_path):
     source = tmp_path / "split-service-account-source.docx"
     anonymized = tmp_path / "split-service-account-anonymized.docx"

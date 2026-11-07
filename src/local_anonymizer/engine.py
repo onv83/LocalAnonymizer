@@ -2300,18 +2300,66 @@ class Anonymizer:
                 case_sensitive_canonical=True,
             ))
         add(r"\b[A-Za-z][\w.-]{1,20}\\[A-Za-z][\w.-]{1,30}\b", "ЛОГИН", 63, canonical=lambda m: m.group().casefold())
-        add(
-            r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|уч[её]тк[а-яё]+)"
-            r"\s*[:=—-]?\s*(?:\ufdd0\s*)?([A-Za-z][\w.@-]{2,30})",
-            "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold(),
-            allow_boundary_context=True,
+        account_status_values = {
+            "active", "enabled", "disabled", "locked", "unlocked", "online",
+            "offline", "unknown", "none", "true", "false", "valid", "invalid",
+        }
+        account_email = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", re.I)
+        account_list_item = re.compile(
+            r"\s*\)?\s*[,;]\s*\(?\s*([A-Za-z][\w.@-]{2,30})(?![\w.@-])(?!\s*[:=])",
+            re.I,
         )
-        add(
-            r"\baccount\s*(?:(?:[:=—-]\s*(?:\ufdd0\s*)?)|(?:\ufdd0\s*))"
-            r"([A-Za-z][\w.@-]{2,30})",
-            "ЛОГИН", 63, group=1, canonical=lambda m: m.group(1).casefold(),
-            allow_boundary_context=True,
+        contextual_account_patterns = (
+            re.compile(
+                r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|пользовател[а-яё]*|логин[а-яё]*|login|username|users?|уч[её]тк[а-яё]+)"
+                r"\s*[:=—-]?\s*(?:\ufdd0\s*)?\(?\s*([A-Za-z][\w.@-]{2,30})(?![\w.@-])",
+                re.I,
+            ),
+            re.compile(
+                r"\baccount\s*(?:(?:[:=—-]\s*(?:\ufdd0\s*)?)|(?:\ufdd0\s*))\(?\s*"
+                r"([A-Za-z][\w.@-]{2,30})(?![\w.@-])",
+                re.I,
+            ),
         )
+        logical_account_chars: list[str] = []
+        physical_account_positions: list[int] = []
+        for offset, char in enumerate(source):
+            if char == "\ufdd3":
+                continue
+            logical_account_chars.append(char)
+            physical_account_positions.append(offset)
+        logical_account_source = "".join(logical_account_chars)
+
+        def append_contextual_account(logical_span: tuple[int, int], raw: str) -> None:
+            if raw.casefold() in account_status_values or account_email.fullmatch(raw):
+                return
+            start = physical_account_positions[logical_span[0]]
+            end = physical_account_positions[logical_span[1] - 1] + 1
+            physical_span = (start, end)
+            if raw.casefold() in self.whitelist:
+                return
+            if "ЛОГИН" in self.disabled_categories:
+                disabled_spans.append(physical_span)
+                return
+            physical = source[start:end]
+            found.append(Detection(
+                start, end, "ЛОГИН", 91,
+                physical.replace("\ufdd3", "\n"), raw.casefold(),
+                scope_start=start, scope_end=end,
+            ))
+
+        for account_pattern in contextual_account_patterns:
+            for label_match in account_pattern.finditer(logical_account_source):
+                if label_match.group(1).casefold() in account_status_values:
+                    continue
+                append_contextual_account(label_match.span(1), label_match.group(1))
+                cursor = label_match.end(1)
+                while (item_match := account_list_item.match(logical_account_source, cursor)) is not None:
+                    raw = item_match.group(1)
+                    cursor = item_match.end(1)
+                    if raw.casefold() in account_status_values:
+                        break
+                    append_contextual_account(item_match.span(1), raw)
         if re.search(r"\b(?:Enterprise|Schema)\s+Admins\b", source, re.I):
             privileged_login_matches = add(
                 r"(?<![\w.-])([A-ZА-ЯЁ][a-zа-яё]{2,30}_[A-ZА-ЯЁ])(?![\w.-])",

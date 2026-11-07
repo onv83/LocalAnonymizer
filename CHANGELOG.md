@@ -19,11 +19,19 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Форматированный preview не строит ненужный recovery snapshot и style/font maps.
 - Повторные XPath-запросы заменены линейными структурными идентификаторами. На синтетических замерах после warmup DOCX со 100 email: **10,21 → 2,12 с (~4,8×)**; rewrite на 16 000 абзацев: **5,57 → 0,53 с (~10,5×)**. Это измерения конкретных тестов, а не гарантия для любого документа.
 
+### Распознавание учётных записей
+
+- Универсальное contextual-правило `ЛОГИН` распознаёт ранее неизвестные идентификаторы после `Пользователь`, `Учётная запись`, `Логин`, `User`, `Username`, `Account` и связанных форм — с двоеточием или табличной границей, в скобках и без них.
+- Поддерживаются списки логинов через запятую/точку с запятой, значения, разбитые по Word runs, и точное восстановление. Контекстный логин имеет приоритет над частичным доменным совпадением; полный email остаётся `ПОЧТА`, а статусы вроде `enabled`/`disabled` не маскируются как логины.
+- Проверка реального DOCX выполнена без point-правил для конкретных логинов: значения удалены из output XML универсальным детектором, исходный файл не изменён.
+
 ### English
 
 - DOCX restore now rebuilds on the verified original snapshot, preserving styles, numbering, settings, TOC fields, bookmarks, hyperlinks, tables and run formatting while retaining user edits.
 - Fixed multi-group and empty marker groups, formatting-only bold/italic edits, Word-merged runs and numbering IDs. Added a real Word-saved regression pair with two images; deleted or complex graphics use safe restoration without dangling relationships.
 - Reduced repeated DOCX analysis and XPath work. Warmed synthetic benchmarks measured about **4.8×** for a 100-email DOCX and **10.5×** for a 16,000-paragraph rewrite; results vary by document.
+- Generalized contextual `ЛОГИН` detection covers previously unknown identifiers after Russian/English user/account labels, optional parentheses, comma/semicolon lists, adjacent table cells and Word-run splits, with exact restoration.
+- Contextual logins take precedence over partial domain matches; full emails remain `ПОЧТА`, and common status values such as `enabled`/`disabled` are not relabelled as accounts. A real-DOCX forensic probe passed with the point account rules removed from the engine.
 - Source verification before packaging: **1222 passed, 3 warnings**.
 
 ## [0.3.0] — 2026-11-06

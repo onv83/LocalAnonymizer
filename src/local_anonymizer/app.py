@@ -752,6 +752,11 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
     english_login_result = detector.anonymize(f"Account\ufdd0{account}")
     ordinary_english_result = detector.anonymize("Account manager handles billing")
     dn_result = detector.anonymize(distinguished_name)
+    universal_accounts = ("qa_\ufdd3new17", "alpha.new18")
+    universal_result = detector.anonymize(
+        f"Пользователи: ({universal_accounts[0]}), {universal_accounts[1]}"
+    )
+    account_status_result = detector.anonymize("User: enabled")
     return (
         login_result.text == "Учётная запись\ufdd0[ЛОГИН-1]"
         and login_result.mapping == {"[ЛОГИН-1]": account}
@@ -763,6 +768,12 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
         and dn_result.text == "[DN-1]"
         and dn_result.mapping == {"[DN-1]": distinguished_name}
         and dn_result.counts == {"DN": 1}
+        and universal_result.text.count("[ЛОГИН-") == 2
+        and all(fragment not in universal_result.text for fragment in ("qa_", "new17", "alpha.new18"))
+        and set(universal_result.mapping.values()) == {"qa_\nnew17", "alpha.new18"}
+        and universal_result.counts.get("ЛОГИН") == 2
+        and account_status_result.text == "User: enabled"
+        and account_status_result.mapping == {}
     )
 
 
