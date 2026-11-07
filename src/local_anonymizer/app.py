@@ -757,6 +757,9 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
         f"Пользователи: ({universal_accounts[0]}), {universal_accounts[1]}"
     )
     account_status_result = detector.anonymize("User: enabled")
+    short_label_result = detector.anonymize("Учётка: qa17")
+    bounded_list_result = detector.anonymize("Пользователи: a17, b22" + chr(13) + chr(10) + "see docs")
+    financial_status_result = detector.anonymize("Bank account (closed)")
     return (
         login_result.text == "Учётная запись\ufdd0[ЛОГИН-1]"
         and login_result.mapping == {"[ЛОГИН-1]": account}
@@ -774,6 +777,13 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
         and universal_result.counts.get("ЛОГИН") == 2
         and account_status_result.text == "User: enabled"
         and account_status_result.mapping == {}
+        and short_label_result.text == "Учётка: [ЛОГИН-1]"
+        and short_label_result.mapping == {"[ЛОГИН-1]": "qa17"}
+        and bounded_list_result.text.count("[ЛОГИН-") == 2
+        and "see docs" in bounded_list_result.text
+        and set(bounded_list_result.mapping.values()) == {"a17", "b22"}
+        and financial_status_result.text == "Bank account (closed)"
+        and financial_status_result.mapping == {}
     )
 
 

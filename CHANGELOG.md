@@ -11,7 +11,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Восстановление пересобирает документ на проверенном снимке исходника: возвращаются исходные стили, нумерация, настройки, поля TOC, закладки, гиперссылки, таблицы и форматирование runs, а пользовательские правки сохраняются.
 - Исправлены абзацы с несколькими группами текста и жёсткими разрывами, пустые marker-группы, formatting-only изменения bold/italic, объединённые Word runs и идентификаторы `w:num/@w:numId`.
 - Добавлена настоящая Word-saved регрессионная пара с двумя изображениями, таблицей, нумерацией и разрывами. Удалённые изображения не воскресают; смешанные и многомаркерные группы используют безопасный restore без dangling relationships.
-- Полный исходный набор перед упаковкой: **1222 passed, 3 warnings**. Проверка реальной пары выполняется только на forensic-копиях, без изменения пользовательских файлов.
+- Полный исходный набор перед упаковкой: **1239 passed, 3 warnings**. Проверка реальной пары выполняется только на forensic-копиях, без изменения пользовательских файлов.
 
 ### Быстродействие
 
@@ -32,7 +32,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Reduced repeated DOCX analysis and XPath work. Warmed synthetic benchmarks measured about **4.8×** for a 100-email DOCX and **10.5×** for a 16,000-paragraph rewrite; results vary by document.
 - Generalized contextual `ЛОГИН` detection covers previously unknown identifiers after Russian/English user/account labels, optional parentheses, comma/semicolon lists, adjacent table cells and Word-run splits, with exact restoration.
 - Contextual logins take precedence over partial domain matches; full emails remain `ПОЧТА`, and common status values such as `enabled`/`disabled` are not relabelled as accounts. A real-DOCX forensic probe passed with the point account rules removed from the engine.
-- Source verification before packaging: **1222 passed, 3 warnings**.
+- Source verification before packaging: **1239 passed, 3 warnings**.
 
 ## [0.3.0] — 2026-11-06
 

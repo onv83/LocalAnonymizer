@@ -202,6 +202,18 @@ def test_directory_identifiers_self_test_requires_universal_user_login_detection
 
     assert app_module._directory_identifiers_self_test(LegacyDetector()) is False
 
+    class ReviewLegacyDetector:
+        def anonymize(self, source):
+            if source == "Bank account (closed)":
+                return SimpleNamespace(
+                    text="Bank account ([ЛОГИН-1])",
+                    mapping={"[ЛОГИН-1]": "closed"},
+                    counts={"ЛОГИН": 1},
+                )
+            return Anonymizer().anonymize(source)
+
+    assert app_module._directory_identifiers_self_test(ReviewLegacyDetector()) is False
+
 
 def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode_behavior():
     assert app_module._single_two_letter_abbreviation_self_test() is True
