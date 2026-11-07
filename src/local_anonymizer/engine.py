@@ -2311,7 +2311,7 @@ class Anonymizer:
         )
         account_list_item = re.compile(
             rf"[ \t]*\)?[ \t]*[,;][ \t]*\(?[ \t]*({account_token})"
-            rf"(?=[ \t]*(?:[,;).]|$|\ufdd0))",
+            rf"(?=[ \t]*(?:[,;).]|$|\ufdd0)|[ \t]*[\x0d\x0a])",
             re.I,
         )
         contextual_account_patterns = (
@@ -2326,12 +2326,12 @@ class Anonymizer:
                 re.I,
             ),
             re.compile(
-                rf"\b(?:пользовател[а-яё]*|users?|accounts?)\s*\(\s*({account_token})\)",
+                rf"\b(?:пользовател[а-яё]*|users?)\s*\(\s*({account_token})\)",
                 re.I,
             ),
         )
         account_label_probe = re.compile(
-            r"уч[её]тн|пользовател|логин|login|username|users?|accounts?",
+            r"уч[её]тн|уч[её]тк|пользовател|логин|login|username|users?|accounts?",
             re.I,
         )
         logical_account_chars: list[str] = []

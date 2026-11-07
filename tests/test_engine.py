@@ -907,6 +907,39 @@ def test_user_label_redacts_parenthesized_login_without_a_separator():
         assert result.mapping == {"[ЛОГИН-1]": "qa_new_17"}
 
 
+def test_short_russian_account_label_family_remains_active():
+    cases = (
+        ("Учётка: qa17", 1),
+        ("учётки: a17, b22", 2),
+        ("Учётка (qa17)", 1),
+        ("В учётке qa17", 1),
+    )
+
+    for source, expected_count in cases:
+        result = Anonymizer().anonymize(source)
+        assert result.text.count("[ЛОГИН-") == expected_count
+        assert "qa17" not in result.text
+        assert "a17" not in result.text
+        assert "b22" not in result.text
+
+
+def test_last_account_list_item_before_line_break_is_not_lost():
+    for boundary in ("\r\n", "\n", "\ufdd3 "):
+        source = f"Пользователи: a17, b22{boundary}see docs"
+        result = Anonymizer().anonymize(source)
+        assert result.text.count("[ЛОГИН-") == 2
+        assert "a17" not in result.text
+        assert "b22" not in result.text
+        assert "see docs" in result.text
+
+
+def test_parenthesized_financial_account_status_is_not_a_login():
+    for source in ("Bank account (closed)", "Account (pending)"):
+        result = Anonymizer().anonymize(source)
+        assert result.text == source
+        assert result.mapping == {}
+
+
 def test_labelled_email_keeps_sentence_period_and_email_category():
     source = "Логин: user@example.test."
 
