@@ -2330,7 +2330,7 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     assert app_module.main([]) == 0
     assert captured["url"].endswith(f"/{app_module.INDEX_ASSET}")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.22.js"></script>' in html
+    assert '<script src="app-v1.8.23.js"></script>' in html
     assert '<script src="dictionary-rules-v1.8.22.js"></script>' in html
 
 
@@ -3392,12 +3392,12 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
 
 
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():
-    assert app_module.INDEX_ASSET == "index-v1.8.22.html"
-    assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.22.html"
+    assert app_module.INDEX_ASSET == "index-v1.8.23.html"
+    assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.23.html"
     for language in ("", "-en"):
-        html = app_module.asset_path(f"index{language}-v1.8.22.html").read_text(encoding="utf-8")
+        html = app_module.asset_path(f"index{language}-v1.8.23.html").read_text(encoding="utf-8")
         assert 'src="dictionary-rules-v1.8.22.js"' in html
-        assert f'src="app{language}-v1.8.22.js"' in html
+        assert f'src="app{language}-v1.8.23.js"' in html
 
     javascript = app_module.asset_path("dictionary-rules-v1.8.22.js").read_text(encoding="utf-8")
     for required in (
@@ -3421,7 +3421,7 @@ def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_pro
     for required in ("height:calc(100% - 34px)", "flex-direction:column", "overflow:hidden"):
         assert required in css
 
-    for script_name in ("app-v1.8.22.js", "app-en-v1.8.22.js"):
+    for script_name in ("app-v1.8.23.js", "app-en-v1.8.23.js"):
         javascript = app_module.asset_path(script_name).read_text(encoding="utf-8")
         assert "dictionary-rules-sync" in javascript
         assert "dictionaryUnsavedProfileWarning" in javascript
@@ -3452,7 +3452,7 @@ def test_dictionary_rule_editor_v24_browser_acceptance(tmp_path: Path):
         pytest.skip("Microsoft Edge is required for the dictionary-editor browser regression")
 
     verifier = Path(__file__).parents[1] / "scripts" / "verify_dictionary_rules_v24.mjs"
-    for language_index, html_name in enumerate(("index-v1.8.22.html", "index-en-v1.8.22.html")):
+    for language_index, html_name in enumerate(("index-v1.8.23.html", "index-en-v1.8.23.html")):
         for viewport_width in (390, 1600):
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
