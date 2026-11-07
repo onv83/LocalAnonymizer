@@ -250,6 +250,96 @@ def _unknown_markers(text: str, mapping: dict[str, str]) -> list[str]:
     return sorted({m.group() for m in re.finditer(MARKER_PATTERN, text) if m.group() not in mapping})
 
 
+def _restore_grouped_texts(
+    texts: list[str], separators: list[str], mapping: dict[str, str]
+) -> tuple[list[str], list[str]]:
+    """Replace markers in a grouped document text sequence; return (targets, unknown)."""
+    unknown: list[str] = []
+    unknown.extend(marker for text in texts for marker in _unknown_markers(text, mapping))
+    if not texts:
+        return [], unknown
+    separator_tokens = {
+        "\ufdd0": "\x00LA_CELL\x00",
+        "\ufdd3": "\x00LA_INTRA\x00",
+        "\ufdd0\ufdd1\ufdd0": "\x00LA_TABLE\x00",
+        "\ufdd0\ufdd2\ufdd0": "\x00LA_ROW\x00",
+    }
+    wrapper = separator_tokens["\ufdd0\ufdd1\ufdd0"]
+    combined = wrapper + texts[0] + "".join(
+        separator_tokens[separator] + text
+        for separator, text in zip(separators, texts[1:])
+    ) + wrapper
+    intra = separator_tokens["\ufdd3"]
+    for marker, original in sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True):
+        segments = original.split("\n")
+        if len(segments) > 1:
+            structural_marker = marker + intra * (len(segments) - 1)
+            combined = combined.replace(structural_marker, intra.join(segments))
+        combined = combined.replace(marker, original)
+    transformed = combined.removeprefix(wrapper).removesuffix(wrapper)
+    split_pattern = "|".join(
+        re.escape(token) for token in sorted(set(separator_tokens.values()), key=len, reverse=True)
+    )
+    return re.split(split_pattern, transformed), unknown
+
+
+def _original_identifier_maps(source: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Predict canonical style/font identifiers for a source DOCX.
+
+    Mirrors _package_identifier_maps so restore can map Word-renamed or
+    canonical identifiers back to the original ones.
+    """
+    trusted_styles, _ = _trusted_docx_strings()
+    style_map: dict[str, str] = {}
+    font_map: dict[str, str] = {}
+    with ZipFile(source) as archive:
+        names = set(archive.namelist())
+        if "word/styles.xml" in names:
+            root = etree.fromstring(archive.read("word/styles.xml"))
+            seen: set[str] = set()
+            index = 1
+            for style in root.iter(qn("w:style")):
+                old = style.get(qn("w:styleId"))
+                if not old or old in seen:
+                    continue
+                seen.add(old)
+                if old in trusted_styles:
+                    continue
+                style_map[f"LocalStyle{index:03d}"] = old
+                index += 1
+        if "word/fontTable.xml" in names:
+            root = etree.fromstring(archive.read("word/fontTable.xml"))
+            seen = set()
+            index = 1
+            for font in root.iter(qn("w:font")):
+                old = font.get(qn("w:name"))
+                if not old or old in seen:
+                    continue
+                seen.add(old)
+                if old in _SAFE_FONT_NAMES:
+                    continue
+                font_map[f"LocalFont{index:03d}"] = old
+                index += 1
+    return style_map, font_map
+
+
+def _verify_predicted_identifier_maps(path: Path, style_map: dict, font_map: dict) -> bool:
+    """Confirm the anonymized package actually uses the predicted canonical IDs."""
+    with ZipFile(path) as archive:
+        names = set(archive.namelist())
+        if "word/styles.xml" in names:
+            root = etree.fromstring(archive.read("word/styles.xml"))
+            canonical = [sid for sid in (style.get(qn("w:styleId")) for style in root.iter(qn("w:style"))) if sid]
+            if [sid for sid in canonical if re.fullmatch(r"LocalStyle\d{3}", sid)] != list(style_map):
+                return False
+        if "word/fontTable.xml" in names:
+            root = etree.fromstring(archive.read("word/fontTable.xml"))
+            canonical = [name for name in (font.get(qn("w:name")) for font in root.iter(qn("w:font"))) if name]
+            if [name for name in canonical if re.fullmatch(r"LocalFont\d{3}", name)] != list(font_map):
+                return False
+    return True
+
+
 def _restore_text(text: str, mapping: dict[str, str]) -> str:
     return re.sub(MARKER_PATTERN, lambda m: mapping.get(m.group(), m.group()), text)
 
@@ -351,6 +441,10 @@ class DocxProcessor:
                 "relationships": [],
                 "content_types": [],
             }
+        style_id_map, font_id_map = _original_identifier_maps(source)
+        if _verify_predicted_identifier_maps(output, style_id_map, font_id_map):
+            package_archive["style_id_map"] = style_id_map
+            package_archive["font_id_map"] = font_id_map
         anonymized_bytes = output.read_bytes()
         if exact_source_safe and _source_archive_is_reversible(original_hash, self.engine):
             package_archive["exact_source_b64"] = base64.b64encode(original_hash).decode("ascii")
@@ -368,35 +462,15 @@ class DocxProcessor:
         _preflight_docx_package(source)
         if _restore_exact_docx_package(source, output, mapping, package_archive):
             return []
+        layout_unknown = _restore_original_layout(source, output, mapping, package_archive)
+        if layout_unknown is not None:
+            return layout_unknown
         unknown: list[str] = []
 
         def transform_all(texts: list[str], separators: list[str]) -> list[str]:
-            unknown.extend(marker for text in texts for marker in _unknown_markers(text, mapping))
-            if not texts:
-                return []
-            separator_tokens = {
-                "\ufdd0": "\x00LA_CELL\x00",
-                "\ufdd3": "\x00LA_INTRA\x00",
-                "\ufdd0\ufdd1\ufdd0": "\x00LA_TABLE\x00",
-                "\ufdd0\ufdd2\ufdd0": "\x00LA_ROW\x00",
-            }
-            wrapper = separator_tokens["\ufdd0\ufdd1\ufdd0"]
-            combined = wrapper + texts[0] + "".join(
-                separator_tokens[separator] + text
-                for separator, text in zip(separators, texts[1:])
-            ) + wrapper
-            intra = separator_tokens["\ufdd3"]
-            for marker, original in sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True):
-                segments = original.split("\n")
-                if len(segments) > 1:
-                    structural_marker = marker + intra * (len(segments) - 1)
-                    combined = combined.replace(structural_marker, intra.join(segments))
-                combined = combined.replace(marker, original)
-            transformed = combined.removeprefix(wrapper).removesuffix(wrapper)
-            split_pattern = "|".join(
-                re.escape(token) for token in sorted(set(separator_tokens.values()), key=len, reverse=True)
-            )
-            return re.split(split_pattern, transformed)
+            replaced, found = _restore_grouped_texts(texts, separators, mapping)
+            unknown.extend(found)
+            return replaced
 
         temp = _temp_path(output)
         try:
@@ -415,15 +489,10 @@ class DocxProcessor:
         return sorted(set(unknown))
 
 
-def _restore_exact_docx_package(
-    source: Path,
-    output: Path,
-    mapping: dict[str, str],
-    archive: dict | None,
-) -> bool:
-    """Restore the byte-exact source when the anonymized package was not edited."""
+def _validated_exact_original(archive: dict | None) -> bytes | None:
+    """Decode and integrity-check the archived exact source snapshot, if present."""
     if not isinstance(archive, dict):
-        return False
+        return None
     exact_keys = {
         "exact_source_b64",
         "exact_source_sha256",
@@ -431,7 +500,7 @@ def _restore_exact_docx_package(
     }
     present = exact_keys.intersection(archive)
     if not present:
-        return False
+        return None
     if present != exact_keys:
         raise RestorationError("Повреждён точный снимок исходного DOCX")
     encoded = archive["exact_source_b64"]
@@ -443,14 +512,27 @@ def _restore_exact_docx_package(
         r"[0-9a-f]{64}", anonymized_digest
     ):
         raise RestorationError("Повреждён точный снимок исходного DOCX")
-    if hashlib.sha256(source.read_bytes()).hexdigest() != anonymized_digest:
-        return False
     try:
         original = base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError) as exc:
         raise RestorationError("Повреждён точный снимок исходного DOCX") from exc
     if hashlib.sha256(original).hexdigest() != source_digest:
         raise RestorationError("Повреждён точный снимок исходного DOCX")
+    return original
+
+
+def _restore_exact_docx_package(
+    source: Path,
+    output: Path,
+    mapping: dict[str, str],
+    archive: dict | None,
+) -> bool:
+    """Restore the byte-exact source when the anonymized package was not edited."""
+    original = _validated_exact_original(archive)
+    if original is None:
+        return False
+    if hashlib.sha256(source.read_bytes()).hexdigest() != archive["exact_anonymized_sha256"]:
+        return False
     temp = _temp_path(output)
     try:
         temp.write_bytes(source.read_bytes())
@@ -466,6 +548,454 @@ def _restore_exact_docx_package(
     finally:
         temp.unlink(missing_ok=True)
     return True
+
+
+_LAYOUT_TEXT_PART = re.compile(r"word/(?:document|header\d+|footer\d+)\.xml")
+_LAYOUT_FORBIDDEN_GRAFT_ELEMENTS = frozenset({"fldChar", "fldSimple", "instrText"})
+
+
+class _LayoutRestoreUnavailable(Exception):
+    """The original-layout restore path cannot safely handle this edited file."""
+
+
+def _clone_element(element):
+    return etree.fromstring(etree.tostring(element))
+
+
+def _format_blob(element) -> bytes | None:
+    if element is None:
+        return None
+    clone = _clone_element(element)
+    for node in clone.iter():
+        if not isinstance(node.tag, str):
+            continue
+        for attr in list(node.attrib):
+            local = etree.QName(attr).localname
+            if local.startswith("rsid") or local in {"paraId", "textId"}:
+                del node.attrib[attr]
+    return etree.tostring(clone)
+
+
+def _paragraph_format_signature(paragraph) -> tuple[bytes | None, frozenset]:
+    properties = paragraph.find(qn("w:pPr"))
+    run_properties = frozenset(
+        _format_blob(run.find(qn("w:rPr"))) for run in paragraph.iter(qn("w:r"))
+    )
+    return (_format_blob(properties), run_properties)
+
+
+def _part_contexts(root) -> tuple[set, set]:
+    pairs: set = set()
+    attributes: set = set()
+    for node in root.iter():
+        if not isinstance(node.tag, str):
+            continue
+        node_qname = etree.QName(node)
+        parent = node.getparent()
+        if parent is not None and isinstance(parent.tag, str):
+            parent_qname = etree.QName(parent)
+            pairs.add((parent_qname.namespace, parent_qname.localname,
+                       node_qname.namespace, node_qname.localname))
+        for key in node.attrib:
+            attr_qname = etree.QName(key)
+            attributes.add((node_qname.namespace, node_qname.localname,
+                            attr_qname.namespace, attr_qname.localname))
+    return pairs, attributes
+
+
+_WORD_LANGUAGE_VALUE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+_WORD_LANGUAGE_ATTRIBUTES = frozenset({"val", "eastAsia", "bidi"})
+
+
+def _strip_word_session_ids(element) -> None:
+    """Remove Word rsid* session attributes from a graft candidate."""
+    for node in element.iter():
+        if not isinstance(node.tag, str):
+            continue
+        for key in list(node.attrib):
+            attr_qname = etree.QName(key)
+            if attr_qname.namespace == _WML_NS and attr_qname.localname.startswith("rsid"):
+                del node.attrib[key]
+        # Word rewrites pagination markers on every save; they carry no user content.
+        if node.tag == qn("w:lastRenderedPageBreak"):
+            parent = node.getparent()
+            if parent is not None:
+                parent.remove(node)
+
+
+def _is_benign_word_language_markup(node, parent_qname) -> bool:
+    """Word adds run proofing language on save; allow only the plain leaf form."""
+    node_qname = etree.QName(node)
+    if node_qname.namespace != _WML_NS or node_qname.localname != "lang":
+        return False
+    if parent_qname.namespace != _WML_NS or parent_qname.localname != "rPr":
+        return False
+    if len(node) or (node.text or "").strip() or (node.tail or "").strip():
+        return False
+    return all(
+        etree.QName(key).namespace == _WML_NS
+        and etree.QName(key).localname in _WORD_LANGUAGE_ATTRIBUTES
+        and _WORD_LANGUAGE_VALUE.fullmatch(value) is not None
+        for key, value in node.attrib.items()
+    )
+
+
+def _validate_grafted_paragraph(paragraph, pairs: set, attributes: set, rel_ids: set) -> bool:
+    """A grafted paragraph may only use structures that exist in the original part."""
+    for node in paragraph.iter():
+        if not isinstance(node.tag, str):
+            return False
+        node_qname = etree.QName(node)
+        parent = node.getparent()
+        if parent is None or not isinstance(parent.tag, str):
+            return False
+        parent_qname = etree.QName(parent)
+        if (parent_qname.namespace, parent_qname.localname,
+                node_qname.namespace, node_qname.localname) not in pairs:
+            if not _is_benign_word_language_markup(node, parent_qname):
+                return False
+        if (node_qname.namespace == _WML_NS
+                and node_qname.localname in _LAYOUT_FORBIDDEN_GRAFT_ELEMENTS):
+            return False
+        for key, value in node.attrib.items():
+            attr_qname = etree.QName(key)
+            if (node_qname.namespace, node_qname.localname,
+                    attr_qname.namespace, attr_qname.localname) not in attributes:
+                if not _is_benign_word_language_markup(node, parent_qname):
+                    return False
+            if attr_qname.namespace == _OFFICE_REL_NS and value not in rel_ids:
+                return False
+    return True
+
+
+def _restore_paragraph_bookmarks(original_paragraph, grafted_paragraph) -> None:
+    """Re-anchor bookmarks that lived entirely inside the original paragraph."""
+    starts = {
+        node.get(qn("w:id")): node
+        for node in original_paragraph.iter(qn("w:bookmarkStart"))
+        if node.get(qn("w:id"))
+    }
+    ends = {
+        node.get(qn("w:id"))
+        for node in original_paragraph.iter(qn("w:bookmarkEnd"))
+        if node.get(qn("w:id"))
+    }
+    for bookmark_id, start in starts.items():
+        if bookmark_id not in ends:
+            continue
+        anchor = grafted_paragraph.find(qn("w:pPr"))
+        grafted_paragraph.insert(
+            1 if anchor is not None else 0, _clone_element(start)
+        )
+        end = etree.SubElement(grafted_paragraph, qn("w:bookmarkEnd"))
+        end.set(qn("w:id"), bookmark_id)
+
+
+def _style_table(styles_root) -> dict[str, tuple[str, str, object]]:
+    table: dict[str, tuple[str, str, object]] = {}
+    if styles_root is None:
+        return table
+    for style in styles_root.iter(qn("w:style")):
+        style_id = style.get(qn("w:styleId"))
+        if not style_id:
+            continue
+        name_element = style.find(qn("w:name"))
+        table[style_id] = (
+            style.get(qn("w:type"), ""),
+            name_element.get(qn("w:val"), "") if name_element is not None else "",
+            style,
+        )
+    return table
+
+
+def _font_names(font_root) -> set[str]:
+    if font_root is None:
+        return set()
+    return {
+        name for name in (font.get(qn("w:name")) for font in font_root.iter(qn("w:font")))
+        if name
+    }
+
+
+def _part_relationship_ids(package: ZipFile, part_name: str) -> set[str]:
+    rels_name = _relationship_part_for(part_name)
+    if rels_name not in package.namelist():
+        return set()
+    root = etree.fromstring(package.read(rels_name))
+    return {child.get("Id") for child in root if child.get("Id")}
+
+
+def _restore_original_layout(
+    source: Path, output: Path, mapping: dict[str, str], archive: dict | None
+) -> list[str] | None:
+    """Rebuild the restored DOCX on the original snapshot when structure matches.
+
+    Returns the unknown-marker list on success, or None when this path is not
+    applicable and the legacy edited-package restore must be used instead.
+    """
+    original = _validated_exact_original(archive)
+    if original is None:
+        return None
+    try:
+        return _restore_original_layout_impl(source, output, mapping, archive, original)
+    except _LayoutRestoreUnavailable:
+        return None
+
+
+def _restore_original_layout_impl(
+    source: Path, output: Path, mapping: dict[str, str], archive: dict, original: bytes
+) -> list[str]:
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+    with ZipFile(BytesIO(original)) as original_package, ZipFile(source) as edited_package:
+        return _restore_original_layout_package(
+            output, mapping, archive, original_package, edited_package, parser
+        )
+
+
+def _restore_original_layout_package(
+    output: Path, mapping: dict[str, str], archive: dict,
+    original_package: ZipFile, edited_package: ZipFile, parser,
+) -> list[str]:
+    original_infos = original_package.infolist()
+    original_names = {info.filename for info in original_infos}
+    edited_names = set(edited_package.namelist())
+
+    original_text_parts = [
+        info.filename for info in original_infos if _LAYOUT_TEXT_PART.fullmatch(info.filename)
+    ]
+    edited_text_parts = [
+        name for name in edited_names if _LAYOUT_TEXT_PART.fullmatch(name)
+    ]
+    if any(name not in original_names for name in edited_text_parts):
+        raise _LayoutRestoreUnavailable()
+    if any(name not in edited_names for name in original_text_parts):
+        raise _LayoutRestoreUnavailable()
+
+    # Edited sequence in package order, with contexts for separator computation.
+    edited_entries: list[tuple[str, object, list, str, tuple]] = []
+    edited_groups_by_part: dict[str, list[tuple[str, object, list, str, tuple]]] = {}
+    for info in edited_package.infolist():
+        name = info.filename
+        if not _LAYOUT_TEXT_PART.fullmatch(name):
+            continue
+        root = etree.fromstring(edited_package.read(name), parser)
+        for paragraph in root.iter(qn("w:p")):
+            tree = root.getroottree()
+            table = next((a for a in paragraph.iterancestors() if a.tag == qn("w:tbl")), None)
+            row = next((a for a in paragraph.iterancestors() if a.tag == qn("w:tr")), None)
+            cell = next((a for a in paragraph.iterancestors() if a.tag == qn("w:tc")), None)
+            context = (
+                name,
+                tree.getpath(table) if table is not None else None,
+                tree.getpath(row) if row is not None else None,
+                tree.getpath(cell) if cell is not None else None,
+                tree.getpath(paragraph),
+            )
+            for nodes in (_xml_text_node_groups(paragraph) or [[]]):
+                text = "".join(node.text or "" for node in nodes)
+                entry = (name, paragraph, nodes, text, context)
+                edited_entries.append(entry)
+                edited_groups_by_part.setdefault(name, []).append(entry)
+
+    def separator(left, right) -> str:
+        left_context, right_context = left[4], right[4]
+        if left_context[0:2] != right_context[0:2]:
+            return "\ufdd0\ufdd1\ufdd0"
+        if left_context[1] is None:
+            return "\ufdd3" if left_context[4] == right_context[4] else "\ufdd0"
+        if left_context[2] != right_context[2]:
+            return "\ufdd0\ufdd2\ufdd0"
+        if left_context[3] != right_context[3]:
+            return "\ufdd0"
+        return "\ufdd3"
+
+    separators = [separator(left, right) for left, right in zip(edited_entries, edited_entries[1:])]
+    targets, unknown = _restore_grouped_texts(
+        [entry[3] for entry in edited_entries], separators, mapping
+    )
+    targets_by_part: dict[str, list[str]] = {}
+    for entry, target in zip(edited_entries, targets):
+        targets_by_part.setdefault(entry[0], []).append(target)
+
+    original_roots: dict[str, object] = {}
+    original_groups_by_part: dict[str, list[tuple[object, list, str]]] = {}
+    for name in original_text_parts:
+        root = etree.fromstring(original_package.read(name), parser)
+        original_roots[name] = root
+        groups: list[tuple[object, list, str]] = []
+        for paragraph in root.iter(qn("w:p")):
+            for nodes in (_xml_text_node_groups(paragraph) or [[]]):
+                groups.append((paragraph, nodes, "".join(node.text or "" for node in nodes)))
+        original_groups_by_part[name] = groups
+        if len(groups) != len(edited_groups_by_part.get(name, [])):
+            raise _LayoutRestoreUnavailable()
+
+    original_styles_root = (
+        etree.fromstring(original_package.read("word/styles.xml"), parser)
+        if "word/styles.xml" in original_names else None
+    )
+    edited_styles_root = (
+        etree.fromstring(edited_package.read("word/styles.xml"), parser)
+        if "word/styles.xml" in edited_names else None
+    )
+    original_font_root = (
+        etree.fromstring(original_package.read("word/fontTable.xml"), parser)
+        if "word/fontTable.xml" in original_names else None
+    )
+    original_styles = _style_table(original_styles_root)
+    edited_styles = _style_table(edited_styles_root)
+    original_font_names = _font_names(original_font_root)
+    style_id_map = archive.get("style_id_map") if isinstance(archive.get("style_id_map"), dict) else {}
+    font_id_map = archive.get("font_id_map") if isinstance(archive.get("font_id_map"), dict) else {}
+    styles_out = _clone_element(original_styles_root) if original_styles_root is not None else None
+    styles_pairs, styles_attributes = (
+        _part_contexts(original_styles_root) if original_styles_root is not None else (set(), set())
+    )
+    original_style_ids = set(original_styles)
+    appended_styles: dict[str, str] = {}
+
+    def resolve_style_id(value: str, kind: str) -> str:
+        if value in original_style_ids:
+            return value
+        mapped = style_id_map.get(value)
+        if mapped and mapped in original_style_ids:
+            return mapped
+        entry = edited_styles.get(value)
+        if entry is not None:
+            style_type, name, _element = entry
+            for candidate, (candidate_type, candidate_name, _c) in original_styles.items():
+                if candidate_type == (style_type or kind) and candidate_name == name:
+                    return candidate
+        return append_edited_style(value, kind)
+
+    def append_edited_style(value: str, kind: str) -> str:
+        if value in appended_styles:
+            return appended_styles[value]
+        entry = edited_styles.get(value)
+        if entry is None or styles_out is None:
+            raise _LayoutRestoreUnavailable()
+        style_type, _name, element = entry
+        clone = _clone_element(element)
+        if not _validate_grafted_style(clone):
+            raise _LayoutRestoreUnavailable()
+        new_id = value if value not in original_style_ids and value not in appended_styles.values() else None
+        if new_id is None:
+            suffix = 1
+            while f"LA{suffix}" in original_style_ids or f"LA{suffix}" in appended_styles.values():
+                suffix += 1
+            new_id = f"LA{suffix}"
+        appended_styles[value] = new_id
+        clone.set(qn("w:styleId"), new_id)
+        for ref in clone.iter():
+            if not isinstance(ref.tag, str):
+                continue
+            local = etree.QName(ref).localname
+            if local in {"basedOn", "next", "link"}:
+                ref_value = ref.get(qn("w:val"))
+                if ref_value and ref_value != value:
+                    ref.set(qn("w:val"), resolve_style_id(ref_value, style_type or kind))
+        styles_out.append(clone)
+        return new_id
+
+    def _validate_grafted_style(style_element) -> bool:
+        for node in style_element.iter():
+            if not isinstance(node.tag, str):
+                return False
+            node_qname = etree.QName(node)
+            parent = node.getparent()
+            if parent is None or not isinstance(parent.tag, str):
+                continue
+            parent_qname = etree.QName(parent)
+            if (parent_qname.namespace, parent_qname.localname,
+                    node_qname.namespace, node_qname.localname) not in styles_pairs:
+                return False
+            for key in node.attrib:
+                attr_qname = etree.QName(key)
+                if (node_qname.namespace, node_qname.localname,
+                        attr_qname.namespace, attr_qname.localname) not in styles_attributes:
+                    return False
+        return True
+
+    numbering_ids: set[str] = set()
+    if "word/numbering.xml" in original_names:
+        numbering_root = etree.fromstring(original_package.read("word/numbering.xml"), parser)
+        numbering_ids = {
+            value for value in (el.get(qn("w:val")) for el in numbering_root.iter(qn("w:numId")))
+            if value
+        }
+
+    def resolve_font_name(value: str) -> str:
+        if value in original_font_names:
+            return value
+        mapped = font_id_map.get(value)
+        if mapped and mapped in original_font_names:
+            return mapped
+        raise _LayoutRestoreUnavailable()
+
+    changed: dict[str, object] = {}
+    for name in original_text_parts:
+        root = original_roots[name]
+        pairs, attributes = _part_contexts(root)
+        rel_ids = _part_relationship_ids(original_package, name)
+        part_changed = False
+        for (paragraph, nodes, original_text), entry, target in zip(
+            original_groups_by_part[name], edited_groups_by_part[name], targets_by_part[name]
+        ):
+            if target == original_text:
+                continue
+            part_changed = True
+            edited_paragraph = entry[1]
+            edited_nodes = entry[2]
+            if _paragraph_format_signature(paragraph) == _paragraph_format_signature(edited_paragraph):
+                _replace_xml_text_nodes(nodes, target)
+                continue
+            _strip_word_session_ids(edited_paragraph)
+            if not _validate_grafted_paragraph(edited_paragraph, pairs, attributes, rel_ids):
+                raise _LayoutRestoreUnavailable()
+            for num_id in edited_paragraph.iter(qn("w:numId")):
+                if num_id.get(qn("w:val")) not in numbering_ids:
+                    raise _LayoutRestoreUnavailable()
+            for element in edited_paragraph.iter():
+                if not isinstance(element.tag, str):
+                    continue
+                local = etree.QName(element).localname
+                if local in {"pStyle", "rStyle"}:
+                    value = element.get(qn("w:val"))
+                    if value:
+                        kind = "paragraph" if local == "pStyle" else "character"
+                        element.set(qn("w:val"), resolve_style_id(value, kind))
+                if local == "rFonts":
+                    for attr_local in ("ascii", "hAnsi", "eastAsia", "cs"):
+                        attr = qn(f"w:{attr_local}")
+                        value = element.get(attr)
+                        if value:
+                            element.set(attr, resolve_font_name(value))
+            _replace_xml_text_nodes(edited_nodes, target)
+            grafted = _clone_element(edited_paragraph)
+            _restore_paragraph_bookmarks(paragraph, grafted)
+            paragraph.getparent().replace(paragraph, grafted)
+        if part_changed:
+            changed[name] = root
+    if appended_styles and styles_out is not None:
+        changed["word/styles.xml"] = styles_out
+
+    temp = _temp_path(output)
+    try:
+        with ZipFile(temp, "w") as output_package:
+            for info in original_infos:
+                name = info.filename
+                if name in changed:
+                    payload = etree.tostring(
+                        changed[name], xml_declaration=True, encoding="UTF-8", standalone=True
+                    )
+                else:
+                    payload = original_package.read(name)
+                output_package.writestr(info, payload)
+        _preflight_docx_package(temp)
+        _atomic_publish(temp, output)
+    finally:
+        temp.unlink(missing_ok=True)
+    return sorted(set(unknown))
 
 
 def _temp_path(output: Path) -> Path:
