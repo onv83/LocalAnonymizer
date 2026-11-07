@@ -899,6 +899,75 @@ def test_user_label_redacts_complete_login_split_by_docx_run_boundary():
     assert result.mapping == {"[ЛОГИН-1]": "qa_\nnew17"}
 
 
+def test_user_label_redacts_parenthesized_login_without_a_separator():
+    for source in ("Неизвестный пользователь (qa_new_17)", "User (qa_new_17)"):
+        result = Anonymizer().anonymize(source)
+        assert "qa_new_17" not in result.text
+        assert result.text.count("[ЛОГИН-") == 1
+        assert result.mapping == {"[ЛОГИН-1]": "qa_new_17"}
+
+
+def test_labelled_email_keeps_sentence_period_and_email_category():
+    source = "Логин: user@example.test."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Логин: [ПОЧТА-1]."
+    assert result.mapping == {"[ПОЧТА-1]": "user@example.test"}
+
+
+def test_contextual_label_preserves_complete_domain_backslash_login():
+    account = r"CORP\ivanov"
+    source = f"Учётная запись: {account}"
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "Учётная запись: [ЛОГИН-1]"
+    assert result.mapping == {"[ЛОГИН-1]": account}
+
+
+def test_bare_english_user_does_not_turn_ordinary_prose_into_logins():
+    ordinary = (
+        "See the user guide",
+        "The user clicks the button",
+        "Each user receives access",
+        "The end-user receives a report",
+    )
+
+    for source in ordinary:
+        result = Anonymizer().anonymize(source)
+        assert result.text == source
+        assert result.mapping == {}
+    user_name = Anonymizer().anonymize("User name: John Smith")
+    assert "[ЛОГИН-" not in user_name.text
+    assert user_name.text.startswith("User name:")
+
+
+def test_account_list_does_not_cross_line_or_docx_hard_break_boundaries():
+    for boundary in ("\r\n", "\ufdd3"):
+        source = f"Пользователи: a17, b22,{boundary}see docs"
+        result = Anonymizer().anonymize(source)
+        assert result.text.count("[ЛОГИН-") == 2
+        assert "see docs" in result.text
+        assert "a17" not in result.text
+        assert "b22" not in result.text
+
+
+def test_status_values_do_not_hide_other_accounts_in_a_list():
+    result = Anonymizer().anonymize("Users: a17, enabled, b22")
+    assert result.text.count("[ЛОГИН-") == 2
+    assert "enabled" in result.text
+    assert "a17" not in result.text
+    assert "b22" not in result.text
+
+
+def test_plural_accounts_label_supports_a_login_list():
+    result = Anonymizer().anonymize("Accounts: alpha17, beta22")
+
+    assert result.text.count("[ЛОГИН-") == 2
+    assert set(result.mapping.values()) == {"alpha17", "beta22"}
+
+
 def test_english_account_label_in_adjacent_docx_table_cell_is_redacted():
     account = "synthetic_demo_user"
     source = f"Account\ufdd0{account}"

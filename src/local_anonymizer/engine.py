@@ -2305,33 +2305,61 @@ class Anonymizer:
             "offline", "unknown", "none", "true", "false", "valid", "invalid",
         }
         account_email = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", re.I)
+        account_token = (
+            r"[A-Za-z][\w.@-]{1,28}[\w-]"
+            r"(?![\w@-]|\.[\w@-]|\\)"
+        )
         account_list_item = re.compile(
-            r"\s*\)?\s*[,;]\s*\(?\s*([A-Za-z][\w.@-]{2,30})(?![\w.@-])(?!\s*[:=])",
+            rf"[ \t]*\)?[ \t]*[,;][ \t]*\(?[ \t]*({account_token})"
+            rf"(?=[ \t]*(?:[,;).]|$|\ufdd0))",
             re.I,
         )
         contextual_account_patterns = (
             re.compile(
-                r"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|пользовател[а-яё]*|логин[а-яё]*|login|username|users?|уч[её]тк[а-яё]+)"
-                r"\s*[:=—-]?\s*(?:\ufdd0\s*)?\(?\s*([A-Za-z][\w.@-]{2,30})(?![\w.@-])",
+                rf"\b(?:уч[её]тн[а-яё]+\s+запис[а-яё]+|логин[а-яё]*|login|username|уч[её]тк[а-яё]+)"
+                rf"\s*[:=—-]?\s*(?:\ufdd0\s*)?\(?\s*({account_token})",
                 re.I,
             ),
             re.compile(
-                r"\baccount\s*(?:(?:[:=—-]\s*(?:\ufdd0\s*)?)|(?:\ufdd0\s*))\(?\s*"
-                r"([A-Za-z][\w.@-]{2,30})(?![\w.@-])",
+                rf"\b(?:пользовател[а-яё]*|users?|accounts?)\s*"
+                rf"(?:(?:[:=—-]\s*(?:\ufdd0\s*)?)|(?:\ufdd0\s*))\(?\s*({account_token})",
+                re.I,
+            ),
+            re.compile(
+                rf"\b(?:пользовател[а-яё]*|users?|accounts?)\s*\(\s*({account_token})\)",
                 re.I,
             ),
         )
+        account_label_probe = re.compile(
+            r"уч[её]тн|пользовател|логин|login|username|users?|accounts?",
+            re.I,
+        )
         logical_account_chars: list[str] = []
         physical_account_positions: list[int] = []
-        for offset, char in enumerate(source):
-            if char == "\ufdd3":
-                continue
-            logical_account_chars.append(char)
-            physical_account_positions.append(offset)
+        account_identifier_neighbor = re.compile(r"[\w.@-]", re.I)
+        if account_label_probe.search(source) or "\ufdd3" in source:
+            for offset, char in enumerate(source):
+                if char == "\ufdd3":
+                    previous = source[offset - 1] if offset else ""
+                    following = source[offset + 1] if offset + 1 < len(source) else ""
+                    if (
+                        account_identifier_neighbor.fullmatch(previous)
+                        and account_identifier_neighbor.fullmatch(following)
+                    ):
+                        continue
+                    logical_account_chars.append(chr(10))
+                    physical_account_positions.append(offset)
+                    continue
+                logical_account_chars.append(char)
+                physical_account_positions.append(offset)
         logical_account_source = "".join(logical_account_chars)
 
         def append_contextual_account(logical_span: tuple[int, int], raw: str) -> None:
-            if raw.casefold() in account_status_values or account_email.fullmatch(raw):
+            if (
+                raw.casefold() in account_status_values
+                or account_email.fullmatch(raw)
+                or service_account_logical.fullmatch(raw)
+            ):
                 return
             start = physical_account_positions[logical_span[0]]
             end = physical_account_positions[logical_span[1] - 1] + 1
@@ -2350,15 +2378,13 @@ class Anonymizer:
 
         for account_pattern in contextual_account_patterns:
             for label_match in account_pattern.finditer(logical_account_source):
-                if label_match.group(1).casefold() in account_status_values:
-                    continue
                 append_contextual_account(label_match.span(1), label_match.group(1))
                 cursor = label_match.end(1)
                 while (item_match := account_list_item.match(logical_account_source, cursor)) is not None:
                     raw = item_match.group(1)
                     cursor = item_match.end(1)
                     if raw.casefold() in account_status_values:
-                        break
+                        continue
                     append_contextual_account(item_match.span(1), raw)
         if re.search(r"\b(?:Enterprise|Schema)\s+Admins\b", source, re.I):
             privileged_login_matches = add(
