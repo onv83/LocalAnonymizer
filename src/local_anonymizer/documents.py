@@ -852,6 +852,93 @@ def _trusted_docx_strings() -> tuple[frozenset[str], frozenset[tuple[str, str, s
     return frozenset(style_ids), frozenset(quadruples)
 
 
+_WORD_COMPATIBILITY_SETTINGS = frozenset({
+    ("compatibilityMode", "10"),
+    ("compatibilityMode", "11"),
+    ("compatibilityMode", "12"),
+    ("compatibilityMode", "14"),
+    ("compatibilityMode", "15"),
+    ("overrideTableStyleFontSizeAndJustification", "0"),
+    ("overrideTableStyleFontSizeAndJustification", "1"),
+    ("enableOpenTypeFeatures", "0"),
+    ("enableOpenTypeFeatures", "1"),
+    ("doNotFlipMirrorIndents", "0"),
+    ("doNotFlipMirrorIndents", "1"),
+    ("differentiateMultirowTableHeaders", "0"),
+    ("differentiateMultirowTableHeaders", "1"),
+    ("useWord2013TrackBottomHyphenation", "0"),
+    ("useWord2013TrackBottomHyphenation", "1"),
+})
+
+_WORD_CNF_STYLE_FLAGS = (
+    "firstRow", "lastRow", "firstColumn", "lastColumn", "firstRowFirstColumn",
+    "firstRowLastColumn", "lastRowFirstColumn", "lastRowLastColumn", "oddVBand",
+    "evenVBand", "oddHBand", "evenHBand",
+)
+
+
+def _is_discardable_word_metadata_element(parent, child) -> bool:
+    """Return whether a standard Word-only metadata node may be silently dropped."""
+    parent_qname = etree.QName(parent)
+    child_qname = etree.QName(child)
+    if parent_qname.namespace != _WML_NS or child_qname.namespace != _WML_NS:
+        return False
+    attributes = child.attrib
+    val = attributes.get(qn("w:val"))
+    if child_qname.localname == "id" and parent_qname.localname == "sdtPr":
+        return (
+            set(attributes) == {qn("w:val")}
+            and re.fullmatch(r"-?\d{1,10}", val or "") is not None
+            and -(2 ** 31) <= int(val) <= 2 ** 31 - 1
+            and len(child) == 0
+            and not (child.text or "").strip()
+            and not (child.tail or "").strip()
+        )
+    if child_qname.localname == "cnfStyle" and parent_qname.localname == "trPr":
+        expected_keys = {qn("w:val")} | {qn(f"w:{flag}") for flag in _WORD_CNF_STYLE_FLAGS}
+        return (
+            qn("w:val") in attributes
+            and set(attributes).issubset(expected_keys)
+            and re.fullmatch(r"[01]{12}", val or "") is not None
+            and all(
+                value in {"0", "1"}
+                for key, value in attributes.items()
+                if key != qn("w:val")
+            )
+            and all(
+                attributes.get(qn(f"w:{flag}"), "0") == val[index]
+                for index, flag in enumerate(_WORD_CNF_STYLE_FLAGS)
+            )
+            and len(child) == 0
+            and not (child.text or "").strip()
+            and not (child.tail or "").strip()
+        )
+    if child_qname.localname == "compatSetting" and parent_qname.localname == "compat":
+        return (
+            set(attributes) == {qn("w:name"), qn("w:uri"), qn("w:val")}
+            and (
+                attributes.get(qn("w:name")), val
+            ) in _WORD_COMPATIBILITY_SETTINGS
+            and attributes.get(qn("w:uri")) == "http://schemas.microsoft.com/office/word"
+            and len(child) == 0
+            and not (child.text or "").strip()
+            and not (child.tail or "").strip()
+        )
+    return False
+
+
+def _is_discardable_word_metadata_attribute(element, attr_qname, value: str) -> bool:
+    """Return whether a known non-content Word metadata attribute may be dropped."""
+    element_qname = etree.QName(element)
+    if element_qname.namespace != _WML_NS or attr_qname.namespace != _WML_NS:
+        return False
+    if attr_qname.localname == "tplc" and element_qname.localname == "lvl":
+        return re.fullmatch(r"[0-9A-Fa-f]{8}", value) is not None
+    if attr_qname.localname == "defUIPriority" and element_qname.localname == "latentStyles":
+        return value in {"0", "99"}
+    return False
+
+
 def _safe_known_attribute_value(
     name: str, element_local: str, attr_local: str, value: str
 ) -> bool:
@@ -1386,8 +1473,21 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 parent.remove(element)
             continue
         allowed_localnames = allowed_elements_by_ns.get(element_qname.namespace, set())
+        parent = element.getparent()
+        if parent is not None and _is_discardable_word_metadata_element(parent, element):
+            parent.remove(element)
+            continue
+        if (
+            parent is not None
+            and element_qname.namespace == _WML_NS
+            and element_qname.localname == "compatSetting"
+            and etree.QName(parent).namespace == _WML_NS
+            and etree.QName(parent).localname == "compat"
+        ):
+            parent.remove(element)
+            found = True
+            continue
         if allowed_localnames is not None and element_qname.localname not in allowed_localnames:
-            parent = element.getparent()
             if parent is not None:
                 parent.remove(element)
                 found = True
@@ -1492,8 +1592,14 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                     name, element_qname.localname, attr_qname.localname, element.attrib[attr]
                 )
             if not allowed_attribute:
+                value = element.attrib[attr]
                 del element.attrib[attr]
-                if attr_qname.localname not in benign_extension_attributes:
+                if (
+                    attr_qname.localname not in benign_extension_attributes
+                    and not _is_discardable_word_metadata_attribute(
+                        element, attr_qname, value
+                    )
+                ):
                     found = True
     etree.cleanup_namespaces(root)
     return root, found
