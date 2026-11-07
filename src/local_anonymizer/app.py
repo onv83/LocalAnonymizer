@@ -38,7 +38,7 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "0.3.1"
 INDEX_ASSET = "index-v1.8.23.html"
 ENGLISH_INDEX_ASSET = "index-en-v1.8.23.html"
 
@@ -1686,7 +1686,10 @@ def main(argv: list[str] | None = None) -> int:
     language = api.get_language()
     entry_asset = ENGLISH_INDEX_ASSET if language == "en" else INDEX_ASSET
     entry_url = asset_path(entry_asset).as_uri()
-    title = "Local Document Anonymizer" if language == "en" else "Локальный обезличиватель документов"
+    title = (
+        f"Local Document Anonymizer — {APP_VERSION}" if language == "en"
+        else f"Локальный обезличиватель документов — {APP_VERSION}"
+    )
     geometry = _preferred_window_geometry(getattr(webview, "screens", ()))
     window = webview.create_window(
         title,

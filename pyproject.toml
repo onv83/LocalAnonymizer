@@ -1,6 +1,6 @@
 [project]
 name = "local-anonymizer"
-version = "0.3.0"
+version = "0.3.1"
 description = "Локальный обезличиватель документов"
 requires-python = ">=3.11,<3.12"
 license = "Apache-2.0"

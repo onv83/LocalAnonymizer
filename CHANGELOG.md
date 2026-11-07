@@ -4,6 +4,28 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.3.1] — 2026-11-08
+
+### Восстановление DOCX
+
+- Восстановление пересобирает документ на проверенном снимке исходника: возвращаются исходные стили, нумерация, настройки, поля TOC, закладки, гиперссылки, таблицы и форматирование runs, а пользовательские правки сохраняются.
+- Исправлены абзацы с несколькими группами текста и жёсткими разрывами, пустые marker-группы, formatting-only изменения bold/italic, объединённые Word runs и идентификаторы `w:num/@w:numId`.
+- Добавлена настоящая Word-saved регрессионная пара с двумя изображениями, таблицей, нумерацией и разрывами. Удалённые изображения не воскресают; смешанные и многомаркерные группы используют безопасный restore без dangling relationships.
+- Полный исходный набор перед упаковкой: **1222 passed, 3 warnings**. Проверка реальной пары выполняется только на forensic-копиях, без изменения пользовательских файлов.
+
+### Быстродействие
+
+- Проверка возможности точного восстановления больше не запускает полный анализ всех XML: используется общий registry irreversible-правил с сохранением whitelist/disabled semantics.
+- Форматированный preview не строит ненужный recovery snapshot и style/font maps.
+- Повторные XPath-запросы заменены линейными структурными идентификаторами. На синтетических замерах после warmup DOCX со 100 email: **10,21 → 2,12 с (~4,8×)**; rewrite на 16 000 абзацев: **5,57 → 0,53 с (~10,5×)**. Это измерения конкретных тестов, а не гарантия для любого документа.
+
+### English
+
+- DOCX restore now rebuilds on the verified original snapshot, preserving styles, numbering, settings, TOC fields, bookmarks, hyperlinks, tables and run formatting while retaining user edits.
+- Fixed multi-group and empty marker groups, formatting-only bold/italic edits, Word-merged runs and numbering IDs. Added a real Word-saved regression pair with two images; deleted or complex graphics use safe restoration without dangling relationships.
+- Reduced repeated DOCX analysis and XPath work. Warmed synthetic benchmarks measured about **4.8×** for a 100-email DOCX and **10.5×** for a 16,000-paragraph rewrite; results vary by document.
+- Source verification before packaging: **1222 passed, 3 warnings**.
+
 ## [0.3.0] — 2026-11-06
 
 ### Правила и исключения

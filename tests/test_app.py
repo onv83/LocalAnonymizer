@@ -2352,7 +2352,7 @@ def test_gui_starts_in_the_persisted_english_language(tmp_path, monkeypatch):
 
     assert app_module.main([]) == 0
     assert captured["url"].endswith(f"/{app_module.ENGLISH_INDEX_ASSET}")
-    assert captured["title"] == "Local Document Anonymizer"
+    assert captured["title"] == f"Local Document Anonymizer — {app_module.APP_VERSION}"
 
 
 def test_clipboard_read_is_exposed_through_native_api(tmp_path, monkeypatch):
@@ -3389,6 +3389,16 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
     document_id = api.import_paths([str(source)])["ids"][0]
 
     assert "Безопасный текст" in api.preview_document(document_id)["rich_html"]
+
+
+def test_active_ui_displays_release_version_in_header_footer_and_scripts():
+    assert app_module.APP_VERSION == "0.3.1"
+    for language in ("", "-en"):
+        html = app_module.asset_path(f"index{language}-v1.8.23.html").read_text(encoding="utf-8")
+        javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
+        assert "· 0.3.1</h1>" in html
+        assert "0.3.1.</footer>" in html
+        assert "APP_VERSION='0.3.1'" in javascript
 
 
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():
