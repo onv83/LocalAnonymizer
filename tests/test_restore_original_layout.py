@@ -6,11 +6,15 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
 from docx import Document
+from docx.oxml import OxmlElement
 from docx.enum.style import WD_STYLE_TYPE
 from lxml import etree
 
 from local_anonymizer.service import AnonymizerService
-from local_anonymizer.documents import RestorationError, _preflight_docx_package
+from local_anonymizer.documents import (
+    RestorationError, _is_benign_run_toggle_markup,
+    _paragraph_format_signature, _preflight_docx_package,
+)
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -205,6 +209,41 @@ def test_restore_rebuilds_original_layout_after_word_resave(tmp_path):
         for style in document_xml.iter(f"{{{W}}}pStyle")
     ), "original style identifiers must be referenced again"
     _preflight_docx_package(restored)
+
+
+def test_formatting_only_edit_cannot_drop_original_field_runs(tmp_path, monkeypatch):
+    service, edited = _export_pair(tmp_path)
+    with ZipFile(edited) as archive:
+        parts = {info.filename: archive.read(info.filename) for info in archive.infolist()}
+    document_xml = etree.fromstring(parts["word/document.xml"])
+    field_paragraph = next(
+        paragraph for paragraph in document_xml.iter(f"{{{W}}}p")
+        if "Contents entry" in "".join(node.text or "" for node in paragraph.iter(f"{{{W}}}t"))
+    )
+    first_run = next(field_paragraph.iter(f"{{{W}}}r"))
+    properties = first_run.find(f"{{{W}}}rPr")
+    if properties is None:
+        properties = etree.Element(f"{{{W}}}rPr")
+        first_run.insert(0, properties)
+    etree.SubElement(properties, f"{{{W}}}noProof")
+    parts["word/document.xml"] = etree.tostring(
+        document_xml, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    with ZipFile(edited, "w", ZIP_DEFLATED) as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    layout_results = _spy_layout_results(monkeypatch)
+
+    restored = tmp_path / "restored.docx"
+    report = service.restore_from_pair(edited, restored)
+
+    assert report["unknown_markers"] == []
+    assert layout_results and all(result is not None for result in layout_results)
+    parts = _read_parts(restored)
+    assert list(parts["document"].iter(f"{{{W}}}fldChar"))
+    assert any(
+        "TOC" in (node.text or "") for node in parts["document"].iter(f"{{{W}}}instrText")
+    )
 
 
 def test_restore_rebuilds_original_layout_without_style_renames(tmp_path):
@@ -447,6 +486,125 @@ def test_word_saved_pair_with_graphics_restores_user_edits_and_layout(
     names = next(p for p in restored_document.paragraphs if "Иванов Сергей Петрович" in p.text)
     assert any(run.bold and "Иванов Сергей Петрович" in run.text for run in names.runs)
     assert any(run.italic and "Смирнова Анна Олеговна" in run.text for run in names.runs)
+
+
+def test_paragraph_format_signature_ignores_namespaces_but_preserves_run_order():
+    first = etree.fromstring(
+        f'<w:p xmlns:w="{W}"><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>b</w:t></w:r></w:p>'.encode()
+    )
+    swapped = etree.fromstring(
+        f'<w:p xmlns:w="{W}"><w:r><w:rPr><w:i/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:b/></w:rPr><w:t>b</w:t></w:r></w:p>'.encode()
+    )
+    namespace_noise = etree.fromstring(
+        f'<w:p xmlns:w="{W}" xmlns:unused="urn:unused">'
+        f'<w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>b</w:t></w:r></w:p>'.encode()
+    )
+    language_noise = etree.fromstring(
+        f'<w:p xmlns:w="{W}"><w:pPr><w:rPr><w:lang w:val="ru-RU"/></w:rPr></w:pPr>'
+        f'<w:r><w:rPr><w:b/><w:lang w:val="en-US"/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>b</w:t></w:r></w:p>'.encode()
+    )
+
+    assert _paragraph_format_signature(first) != _paragraph_format_signature(swapped)
+    assert _paragraph_format_signature(first) == _paragraph_format_signature(namespace_noise)
+    assert _paragraph_format_signature(first) == _paragraph_format_signature(language_noise)
+
+    styled_original = etree.fromstring(
+        f'<w:p xmlns:w="{W}"><w:pPr><w:pStyle w:val="TOC1"/></w:pPr>'
+        f'<w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t>a</w:t></w:r></w:p>'.encode()
+    )
+    styled_anonymized = etree.fromstring(
+        f'<w:p xmlns:w="{W}"><w:pPr><w:pStyle w:val="LocalStyle023"/></w:pPr>'
+        f'<w:r><w:rPr><w:rStyle w:val="LocalStyle015"/></w:rPr><w:t>a</w:t></w:r></w:p>'.encode()
+    )
+    assert _paragraph_format_signature(styled_original) != _paragraph_format_signature(styled_anonymized)
+    assert _paragraph_format_signature(styled_original, ignore_style_ids=True) == (
+        _paragraph_format_signature(styled_anonymized, ignore_style_ids=True)
+    )
+    assert _paragraph_format_signature(
+        first, ignore_style_ids=True, merge_equivalent_runs=True
+    ) != _paragraph_format_signature(
+        swapped, ignore_style_ids=True, merge_equivalent_runs=True
+    )
+
+    merged_original = etree.fromstring(
+        f'<w:p xmlns:w="{W}">'
+        f'<w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:i/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>b</w:t></w:r>'
+        f'<w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:i/></w:rPr><w:t>c</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>d</w:t></w:r></w:p>'.encode()
+    )
+    merged_edited = etree.fromstring(
+        f'<w:p xmlns:w="{W}">'
+        f'<w:r><w:rPr><w:rStyle w:val="LocalStyle015"/><w:i/></w:rPr><w:t>a</w:t></w:r>'
+        f'<w:r><w:rPr><w:i/></w:rPr><w:t>b</w:t></w:r></w:p>'.encode()
+    )
+    assert _paragraph_format_signature(
+        merged_original, ignore_style_ids=True, merge_equivalent_runs=True
+    ) == _paragraph_format_signature(
+        merged_edited, ignore_style_ids=True, merge_equivalent_runs=True
+    )
+
+
+def test_graft_run_toggle_allows_only_finite_values_on_leaf_bold_italic():
+    parent = etree.QName(f"{{{W}}}rPr")
+    valid = etree.fromstring(f'<w:b xmlns:w="{W}" w:val="0"/>')
+    wrong_value = etree.fromstring(f'<w:b xmlns:w="{W}" w:val="CANARY"/>')
+    wrong_parent = etree.QName(f"{{{W}}}pPr")
+    with_child = etree.fromstring(f'<w:i xmlns:w="{W}"><w:b/></w:i>')
+
+    assert _is_benign_run_toggle_markup(valid, parent)
+    assert not _is_benign_run_toggle_markup(wrong_value, parent)
+    assert not _is_benign_run_toggle_markup(valid, wrong_parent)
+    assert not _is_benign_run_toggle_markup(with_child, parent)
+
+
+def test_formatting_only_run_swap_is_restored_with_user_formatting(tmp_path, monkeypatch):
+    source = tmp_path / "source.docx"
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Alpha").bold = True
+    paragraph.add_run(" beta").italic = True
+    numbering = document.part.numbering_part.element
+    num_id = next(element.get(f"{{{W}}}numId") for element in numbering.iter(f"{{{W}}}num"))
+    num_properties = OxmlElement("w:numPr")
+    level = OxmlElement("w:ilvl")
+    level.set(f"{{{W}}}val", "0")
+    num = OxmlElement("w:numId")
+    num.set(f"{{{W}}}val", num_id)
+    num_properties.extend((level, num))
+    paragraph._p.get_or_add_pPr().insert(0, num_properties)
+    document.save(source)
+    service = AnonymizerService(tmp_path / "app")
+    document_id = service.import_file(source)
+    service.anonymize(document_id)
+    pair = service.export_pair(document_id, tmp_path / "edited.docx")
+    service.storage.delete_document(document_id)
+    edited = pair["anonymized_path"]
+
+    changed = Document(edited)
+    paragraph = changed.paragraphs[0]
+    paragraph.runs[0].bold = False
+    paragraph.runs[0].italic = True
+    paragraph.runs[1].italic = False
+    paragraph.runs[1].bold = True
+    changed.save(edited)
+    layout_results = _spy_layout_results(monkeypatch)
+
+    restored = tmp_path / "restored.docx"
+    report = service.restore_from_pair(edited, restored)
+
+    assert report["unknown_markers"] == []
+    assert layout_results and all(result is not None for result in layout_results)
+    restored_paragraph = Document(restored).paragraphs[0]
+    assert restored_paragraph.text == "Alpha beta"
+    assert restored_paragraph.runs[0].bold is False
+    assert restored_paragraph.runs[0].italic is True
+    assert restored_paragraph.runs[1].italic is False
+    assert restored_paragraph.runs[1].bold is True
 
 
 def test_hostile_graft_candidate_fails_closed(tmp_path):

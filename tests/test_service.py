@@ -315,3 +315,30 @@ def test_failed_operation_commit_keeps_previous_output_mapping_and_status(tmp_pa
     assert after["operation_id"] == before["operation_id"] and after["output_path"] == before["output_path"]
     assert Path(after["output_path"]).is_file()
     assert service.storage.load_mapping(doc_id, after["operation_id"]) == first_mapping
+
+
+def test_docx_formatted_preview_skips_recovery_snapshot_work(tmp_path, monkeypatch):
+    source = tmp_path / "source.docx"
+    document = Document()
+    document.add_paragraph("Иванов Сергей Петрович")
+    document.save(source)
+    service = AnonymizerService(tmp_path / "app")
+    document_id = service.import_file(source)
+
+    import local_anonymizer.documents as documents_module
+
+    def forbidden_recovery_work(*args, **kwargs):
+        raise AssertionError("formatted preview must skip recovery-only work")
+
+    monkeypatch.setattr(
+        documents_module, "_source_archive_is_reversible", forbidden_recovery_work
+    )
+    monkeypatch.setattr(
+        documents_module, "_original_identifier_maps", forbidden_recovery_work
+    )
+
+    preview = service.preview_anonymized_document(document_id)
+
+    assert preview["replacement_count"] == 1
+    assert "[ФИО-1]" in preview["rich_html"]
+    assert preview["warnings"] == []

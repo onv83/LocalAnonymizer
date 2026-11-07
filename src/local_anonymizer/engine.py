@@ -18,6 +18,12 @@ MARKER_RE = re.compile(MARKER_PATTERN)
 # bounded by MARKER_PATTERN, so protection never implies integer conversion.
 LITERAL_MARKER_RE = re.compile(rf"\[{LABEL_PATTERN}-\d+\]|\[уязвимость\]")
 
+# Irreversible detectors are registered once so lightweight eligibility probes
+# cannot drift from the patterns and semantics used by the full analysis.
+_IRREVERSIBLE_RULES = (
+    (r"\b(?:CVE-\d{4}-\d{4,7}|БДУ[:\s]*\d{4}-\d{5})\b", "уязвимость", 86, "[уязвимость]"),
+)
+
 COMPACT_MARKER_LABELS = {
     "ФИО": "Ф",
     "ОРГАНИЗАЦИЯ": "ОРГ",
@@ -703,6 +709,18 @@ class Anonymizer:
         if " " not in x:
             x = re.sub(r"[аяоеиыуюь]$", "", x)
         return x
+
+    def has_irreversible(self, source: str) -> bool:
+        """Conservatively probe registered irreversible rules without a full pass."""
+        for pattern, category, _priority, _fixed in _IRREVERSIBLE_RULES:
+            if category in self.disabled_categories and category != "SECRET":
+                continue
+            for match in re.finditer(pattern, source, re.I):
+                value = match.group().replace("\ufdd3", "")
+                if category != "SECRET" and value.casefold() in self.whitelist:
+                    continue
+                return True
+        return False
 
     def anonymize(self, source: str) -> AnonymizationResult:
         found: list[Detection] = []
@@ -2044,7 +2062,8 @@ class Anonymizer:
         remember_exact(disk_matches, "ДИСК", minimum_length=3)
 
         # Security/product/task identifiers.
-        add(r"\b(?:CVE-\d{4}-\d{4,7}|БДУ[:\s]*\d{4}-\d{5})\b", "уязвимость", 86, irreversible=True, fixed="[уязвимость]")
+        for pattern, category, priority, fixed in _IRREVERSIBLE_RULES:
+            add(pattern, category, priority, irreversible=True, fixed=fixed)
         add(r"\b(?!CVE-|ОКПД2?-|ГОСТ-|RFC-)[A-ZА-ЯЁ][A-ZА-ЯЁ0-9]{1,9}-\d{1,6}\b", "ЗАДАЧА", 79, flags=0)
         add(r"\b(?:Secret\s?Net(?:\s?Studio)?|Dallas\s?Lock|ViPNet|Випнет|КриптоПро|Kaspersky|Касперск[а-яё]+|Dr\.?\s?Web|UserGate|MaxPatrol)(?:\s+(?:Client|Server|Studio|Enterprise|Endpoint|Security|Center|VPN|CSP))*(?:\s+v?\d[\w.-]*)?\b", "СЗИ", 78)
 

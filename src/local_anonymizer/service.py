@@ -323,7 +323,7 @@ class AnonymizerService:
             output = Path(folder) / f"anonymized-preview{suffix}"
             if suffix == ".docx":
                 result = DocxProcessor(engine).anonymize(
-                    source, output, redact_graphics=redact_graphics
+                    source, output, redact_graphics=redact_graphics, include_recovery=False
                 )
                 rich_html = render_docx_preview(Document(output))
             else:

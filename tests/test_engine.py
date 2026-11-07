@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from local_anonymizer.engine import Anonymizer
 
 
@@ -746,6 +748,21 @@ def test_disabled_vulnerability_category_leaves_cve_unchanged():
     assert result.mapping == {}
     assert result.candidates == []
     assert result.hint_count == 0
+
+
+@pytest.mark.parametrize(
+    "text, engine",
+    [
+        ("Обычный текст с user@example.test", Anonymizer()),
+        ("Уязвимость CVE-2024-12345", Anonymizer()),
+        ("БДУ:2024-12345", Anonymizer()),
+        ("Уязвимость CVE-2024-12345", Anonymizer(whitelist={"CVE-2024-12345"})),
+        ("Уязвимость CVE-2024-12345", Anonymizer(disabled_categories={"уязвимость"})),
+    ],
+)
+def test_irreversible_fast_path_matches_full_analysis(text, engine):
+    expected = any(part.get("irreversible") for part in engine.anonymize(text).parts)
+    assert engine.has_irreversible(text) is expected
 
 
 def test_contextual_software_alias_uses_one_compact_reversible_marker():
