@@ -1972,6 +1972,129 @@ def test_docx_deleting_one_of_two_graphics_restores_only_retained_placeholder(tm
     Document(restored)
 
 
+def _graphics_package_state(path):
+    with ZipFile(path) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+        names = package.namelist()
+        relationships = etree.fromstring(package.read("word/_rels/document.xml.rels"))
+    embedded_ids = {
+        value for element in root.iter() for attr, value in element.attrib.items()
+        if etree.QName(attr).namespace == qn("r:embed").split("}")[0][1:]
+        and etree.QName(attr).localname == "embed"
+    }
+    image_rel_ids = {
+        rel.get("Id") for rel in relationships
+        if rel.get("Type", "").endswith("/image")
+    }
+    return {
+        "drawings": len(list(root.iter(qn("w:drawing")))),
+        "media": len([name for name in names if name.startswith("word/media/")]),
+        "dangling_embeds": embedded_ids - image_rel_ids,
+        "text": "".join(node.text or "" for node in root.iter(qn("w:t"))),
+    }
+
+
+def _spy_layout_restore(monkeypatch):
+    import local_anonymizer.documents as documents_module
+
+    calls = []
+    real_layout = documents_module._restore_original_layout
+
+    def spy(*args, **kwargs):
+        result = real_layout(*args, **kwargs)
+        calls.append(result)
+        return result
+
+    monkeypatch.setattr(documents_module, "_restore_original_layout", spy)
+    return calls
+
+
+def test_docx_empty_deleted_graphics_placeholder_uses_safe_legacy_restore(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "source.docx"
+    image = tmp_path / "synthetic.png"
+    anonymized = tmp_path / "anonymized.docx"
+    edited = tmp_path / "edited.docx"
+    restored = tmp_path / "restored.docx"
+    image.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    document = Document()
+    document.add_paragraph("Обычный текст")
+    document.add_picture(str(image), width=Inches(1))
+    document.save(source)
+    result = DocxProcessor().anonymize(source, anonymized)
+    changed = Document(anonymized)
+    for paragraph in changed.paragraphs:
+        if "[СХЕМА-" in paragraph.text:
+            paragraph.clear()
+    changed.save(edited)
+    layout_calls = _spy_layout_restore(monkeypatch)
+
+    unknown = DocxProcessor().restore(
+        edited, restored, result.mapping, package_archive=result.package_archive
+    )
+
+    assert unknown == []
+    assert layout_calls == [None], "an empty deleted placeholder must not use layout restore"
+    state = _graphics_package_state(restored)
+    assert state["drawings"] == 0
+    assert state["media"] == 0
+    assert state["dangling_embeds"] == set()
+    Document(restored)
+
+
+@pytest.mark.parametrize("case, expected_drawings", [("multi", 2), ("mixed", 1)])
+def test_docx_complex_graphics_group_uses_safe_legacy_restore(
+    tmp_path, monkeypatch, case, expected_drawings
+):
+    source = tmp_path / "source.docx"
+    image = tmp_path / "synthetic.png"
+    anonymized = tmp_path / "anonymized.docx"
+    edited = tmp_path / "edited.docx"
+    restored = tmp_path / "restored.docx"
+    image.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    document = Document()
+    document.add_paragraph("Обычный текст")
+    paragraph = document.add_paragraph()
+    if case == "mixed":
+        paragraph.add_run("До изображения ")
+    run = paragraph.add_run()
+    run.add_picture(str(image), width=Inches(1))
+    if case == "multi":
+        run.add_picture(str(image), width=Inches(1))
+    else:
+        paragraph.add_run(" после изображения")
+    document.save(source)
+    result = DocxProcessor().anonymize(source, anonymized)
+    changed = Document(anonymized)
+    for item in changed.paragraphs:
+        if item.text == "Обычный текст":
+            item.text = "Обычный текст изменён"
+            break
+    changed.save(edited)
+    layout_calls = _spy_layout_restore(monkeypatch)
+
+    unknown = DocxProcessor().restore(
+        edited, restored, result.mapping, package_archive=result.package_archive
+    )
+
+    assert unknown == []
+    assert layout_calls == [None], "mixed/multi-marker groups must not use layout restore"
+    state = _graphics_package_state(restored)
+    assert state["drawings"] == expected_drawings
+    assert state["media"] == 1
+    assert state["dangling_embeds"] == set()
+    assert "[СХЕМА-" not in state["text"]
+    if case == "mixed":
+        assert "До изображения" in state["text"]
+        assert "после изображения" in state["text"]
+    assert len(Document(restored).inline_shapes) == expected_drawings
+
+
 def test_docx_graphics_placeholder_does_not_collide_with_existing_text(tmp_path):
     source = tmp_path / "source.docx"
     image = tmp_path / "synthetic.png"

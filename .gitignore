@@ -13,6 +13,8 @@ artifacts/
 
 # Local runtime data and exported recovery material
 *.larecovery
+# Reviewed synthetic regression fixture; contains no user recovery data.
+!tests/fixtures/word-restore/recovery.larecovery
 *.db
 *.db-shm
 *.db-wal

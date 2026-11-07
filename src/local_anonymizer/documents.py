@@ -155,7 +155,7 @@ def _replace_xml_text_nodes(nodes, new_text: str) -> None:
             node.attrib.pop(xml_space, None)
 
 
-def _xml_text_node_groups(paragraph) -> list[list[object]]:
+def _xml_text_node_groups(paragraph, *, preserve_empty=False) -> list[list[object]]:
     """Split visible text nodes at hard breaks without editing separators."""
     text_tag = qn("w:t")
     boundary_tags = {qn("w:br"), qn("w:cr"), qn("w:tab")}
@@ -165,7 +165,7 @@ def _xml_text_node_groups(paragraph) -> list[list[object]]:
         if element.tag == text_tag:
             current.append(element)
         elif element.tag in boundary_tags:
-            if current:
+            if current or preserve_empty:
                 groups.append(current)
                 current = []
     if current:
@@ -669,26 +669,41 @@ def _validate_grafted_paragraph(paragraph, pairs: set, attributes: set, rel_ids:
 
 
 def _restore_paragraph_bookmarks(original_paragraph, grafted_paragraph) -> None:
-    """Re-anchor bookmarks that lived entirely inside the original paragraph."""
-    starts = {
-        node.get(qn("w:id")): node
-        for node in original_paragraph.iter(qn("w:bookmarkStart"))
+    """Re-anchor bookmarks that were anchored inside the original paragraph.
+
+    A bookmark that starts inside the grafted paragraph but ends outside it
+    keeps its end element elsewhere in the document; the start is re-anchored
+    at the head of the graft so the pair stays in valid document order (and
+    vice versa for ends whose starts live outside).
+    """
+    starts = [
+        node for node in original_paragraph.iter(qn("w:bookmarkStart"))
         if node.get(qn("w:id"))
-    }
-    ends = {
+    ]
+    ends = [
+        node for node in original_paragraph.iter(qn("w:bookmarkEnd"))
+        if node.get(qn("w:id"))
+    ]
+    grafted_ids = {
         node.get(qn("w:id"))
-        for node in original_paragraph.iter(qn("w:bookmarkEnd"))
-        if node.get(qn("w:id"))
+        for node in grafted_paragraph.iter(qn("w:bookmarkStart"))
+    } | {
+        node.get(qn("w:id"))
+        for node in grafted_paragraph.iter(qn("w:bookmarkEnd"))
     }
-    for bookmark_id, start in starts.items():
-        if bookmark_id not in ends:
+    anchor = grafted_paragraph.find(qn("w:pPr"))
+    insert_at = 1 if anchor is not None else 0
+    for start in starts:
+        bookmark_id = start.get(qn("w:id"))
+        if bookmark_id in grafted_ids:
             continue
-        anchor = grafted_paragraph.find(qn("w:pPr"))
-        grafted_paragraph.insert(
-            1 if anchor is not None else 0, _clone_element(start)
-        )
-        end = etree.SubElement(grafted_paragraph, qn("w:bookmarkEnd"))
-        end.set(qn("w:id"), bookmark_id)
+        grafted_paragraph.insert(insert_at, _clone_element(start))
+        insert_at += 1
+    for end in ends:
+        bookmark_id = end.get(qn("w:id"))
+        if bookmark_id in grafted_ids:
+            continue
+        grafted_paragraph.append(_clone_element(end))
 
 
 def _style_table(styles_root) -> dict[str, tuple[str, str, object]]:
@@ -723,6 +738,117 @@ def _part_relationship_ids(package: ZipFile, part_name: str) -> set[str]:
         return set()
     root = etree.fromstring(package.read(rels_name))
     return {child.get("Id") for child in root if child.get("Id")}
+
+
+def _graphics_layout_plan(
+    archive: dict | None, edited_roots: dict[str, object], original_package: ZipFile, parser
+) -> tuple[set[str], dict[str, bytes], dict[str, tuple[str, object]]]:
+    """Graphics plan for the original-snapshot restore path.
+
+    The layout path rebuilds the output on the original snapshot, which would
+    silently resurrect images whose placeholders the user removed in Word.
+    Returns the media parts to drop, the rewritten relationship parts, and the
+    surviving marker to graphic mapping. Media parts and image relationships
+    of deleted graphics are dropped unless a surviving graphic still uses them.
+    """
+    if not isinstance(archive, dict):
+        return set(), {}, {}
+    fragments = archive.get("fragments")
+    relationships = archive.get("relationships")
+    if not isinstance(fragments, list) or not fragments:
+        return set(), {}, {}
+    if not isinstance(relationships, list):
+        raise _LayoutRestoreUnavailable()
+    surviving: set[tuple[str, str]] = set()
+    deleted: set[tuple[str, str]] = set()
+    surviving_graphics: dict[str, tuple[str, object]] = {}
+    for item in fragments:
+        if not isinstance(item, dict):
+            raise _LayoutRestoreUnavailable()
+        marker, source_part, encoded = item.get("marker"), item.get("part"), item.get("xml")
+        if (
+            not isinstance(marker, str)
+            or re.fullmatch(r"\[СХЕМА-[1-9]\d*\]", marker) is None
+            or not isinstance(source_part, str)
+            or _REVERSIBLE_GRAPHIC_SOURCE.fullmatch(source_part) is None
+            or source_part not in edited_roots
+            or not isinstance(encoded, str)
+        ):
+            raise _LayoutRestoreUnavailable()
+        try:
+            graphic = _decode_reversible_graphic_fragment(encoded)
+        except (RestorationError, etree.XMLSyntaxError):
+            raise _LayoutRestoreUnavailable() from None
+        rel_ids = {
+            (source_part, element.attrib[attr])
+            for element in graphic.iter()
+            for attr in element.attrib
+            if etree.QName(attr).namespace == _OFFICE_REL_NS
+        }
+        present = any(node.text == marker for node in edited_roots[source_part].iter(qn("w:t")))
+        if present:
+            surviving.update(rel_ids)
+            surviving_graphics[marker] = (source_part, graphic)
+        else:
+            deleted.update(rel_ids)
+    deleted -= surviving
+    if not deleted:
+        return set(), {}, surviving_graphics
+    media_names: set[str] = set()
+    rels_roots: dict[str, object] = {}
+    matched_deleted: set[tuple[str, str]] = set()
+    for item in relationships:
+        if not isinstance(item, dict):
+            raise _LayoutRestoreUnavailable()
+        rels_part, old_id, target = item.get("part"), item.get("id"), item.get("target")
+        if (
+            not isinstance(rels_part, str)
+            or not re.fullmatch(r"word/_rels/(?:document|header\d+|footer\d+)\.xml\.rels", rels_part)
+            or not isinstance(old_id, str)
+            or not re.fullmatch(r"rId[1-9]\d*", old_id)
+            or item.get("type")
+            != "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+            or not isinstance(target, str)
+        ):
+            raise _LayoutRestoreUnavailable()
+        source_part = rels_part.replace("/_rels/", "/")[:-5]
+        if (source_part, old_id) not in deleted:
+            continue
+        matched_deleted.add((source_part, old_id))
+        resolved = _resolve_package_target(source_part, target)
+        if resolved is not None and _REVERSIBLE_GRAPHIC_PART.fullmatch(resolved):
+            media_names.add(resolved)
+        if rels_part not in rels_roots:
+            if rels_part not in original_package.namelist():
+                raise _LayoutRestoreUnavailable()
+            rels_roots[rels_part] = etree.fromstring(original_package.read(rels_part), parser)
+        root = rels_roots[rels_part]
+        for child in list(root):
+            if child.get("Id") == old_id:
+                root.remove(child)
+    if deleted - matched_deleted:
+        raise _LayoutRestoreUnavailable()
+    rels_payloads = {
+        name: etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+        for name, root in rels_roots.items()
+    }
+    return media_names, rels_payloads, surviving_graphics
+
+
+def _reembed_layout_graphic(nodes, graphic, mapping: dict[str, str]) -> None:
+    """Swap a graphics-marker text group for the original drawing element."""
+    clone = _clone_element(graphic)
+    for text_node in clone.iter(qn("w:t")):
+        if text_node.text:
+            text_node.text = _restore_text(text_node.text, mapping)
+    first = nodes[0]
+    parent = first.getparent()
+    if parent is None:
+        return
+    clone.tail = first.tail
+    parent.replace(first, clone)
+    for node in nodes[1:]:
+        node.text = ""
 
 
 def _restore_original_layout(
@@ -774,11 +900,13 @@ def _restore_original_layout_package(
     # Edited sequence in package order, with contexts for separator computation.
     edited_entries: list[tuple[str, object, list, str, tuple]] = []
     edited_groups_by_part: dict[str, list[tuple[str, object, list, str, tuple]]] = {}
+    edited_roots: dict[str, object] = {}
     for info in edited_package.infolist():
         name = info.filename
         if not _LAYOUT_TEXT_PART.fullmatch(name):
             continue
         root = etree.fromstring(edited_package.read(name), parser)
+        edited_roots[name] = root
         for paragraph in root.iter(qn("w:p")):
             tree = root.getroottree()
             table = next((a for a in paragraph.iterancestors() if a.tag == qn("w:tbl")), None)
@@ -817,18 +945,49 @@ def _restore_original_layout_package(
     for entry, target in zip(edited_entries, targets):
         targets_by_part.setdefault(entry[0], []).append(target)
 
+    # Edited entries grouped into per-paragraph buckets with their targets, so
+    # graft decisions are made once per paragraph instead of once per text group.
+    edited_paragraphs_by_part: dict[str, list[tuple[object, list]]] = {}
+    for part_name, part_entries in edited_groups_by_part.items():
+        buckets: list[tuple[object, list]] = []
+        for entry, target in zip(part_entries, targets_by_part.get(part_name, [])):
+            if not buckets or buckets[-1][0] is not entry[1]:
+                buckets.append((entry[1], []))
+            buckets[-1][1].append((entry, target))
+        edited_paragraphs_by_part[part_name] = buckets
+
     original_roots: dict[str, object] = {}
-    original_groups_by_part: dict[str, list[tuple[object, list, str]]] = {}
+    original_paragraphs_by_part: dict[str, list[tuple[object, list]]] = {}
     for name in original_text_parts:
         root = etree.fromstring(original_package.read(name), parser)
         original_roots[name] = root
-        groups: list[tuple[object, list, str]] = []
+        paragraphs: list[tuple[object, list]] = []
         for paragraph in root.iter(qn("w:p")):
-            for nodes in (_xml_text_node_groups(paragraph) or [[]]):
-                groups.append((paragraph, nodes, "".join(node.text or "" for node in nodes)))
-        original_groups_by_part[name] = groups
-        if len(groups) != len(edited_groups_by_part.get(name, [])):
+            paragraphs.append((
+                paragraph,
+                [(nodes, "".join(node.text or "" for node in nodes))
+                 for nodes in (_xml_text_node_groups(paragraph) or [[]])],
+            ))
+        original_paragraphs_by_part[name] = paragraphs
+        edited_paragraphs = edited_paragraphs_by_part.get(name, [])
+        if len(paragraphs) != len(edited_paragraphs):
             raise _LayoutRestoreUnavailable()
+        for index, (paragraph, groups) in enumerate(paragraphs):
+            edited_count = len(edited_paragraphs[index][1])
+            if len(groups) == edited_count:
+                continue
+            # A graphic or empty line has no original w:t nodes, while its
+            # anonymized marker (or a user's new text) creates a group. Keep
+            # empty boundary-delimited slots only when they are needed to
+            # align the two paragraph shapes; the graft guard below handles
+            # newly non-empty targets instead of silently dropping them.
+            groups_with_empty = _xml_text_node_groups(paragraph, preserve_empty=True)
+            if len(groups_with_empty) != edited_count:
+                raise _LayoutRestoreUnavailable()
+            paragraphs[index] = (paragraph, [
+                (nodes, "".join(node.text or "" for node in nodes))
+                for nodes in groups_with_empty
+            ])
 
     original_styles_root = (
         etree.fromstring(original_package.read("word/styles.xml"), parser)
@@ -903,12 +1062,11 @@ def _restore_original_layout_package(
                 return False
             node_qname = etree.QName(node)
             parent = node.getparent()
-            if parent is None or not isinstance(parent.tag, str):
-                continue
-            parent_qname = etree.QName(parent)
-            if (parent_qname.namespace, parent_qname.localname,
-                    node_qname.namespace, node_qname.localname) not in styles_pairs:
-                return False
+            if parent is not None and isinstance(parent.tag, str):
+                parent_qname = etree.QName(parent)
+                if (parent_qname.namespace, parent_qname.localname,
+                        node_qname.namespace, node_qname.localname) not in styles_pairs:
+                    return False
             for key in node.attrib:
                 attr_qname = etree.QName(key)
                 if (node_qname.namespace, node_qname.localname,
@@ -933,21 +1091,52 @@ def _restore_original_layout_package(
         raise _LayoutRestoreUnavailable()
 
     changed: dict[str, object] = {}
+    deleted_media, deleted_rels, surviving_graphics = _graphics_layout_plan(
+        archive, edited_roots, original_package, parser
+    )
+    archived_fragments = archive.get("fragments") if isinstance(archive, dict) else None
+    if isinstance(archived_fragments, list) and len(surviving_graphics) != len(archived_fragments):
+        # The legacy package path removes deleted drawings and their package
+        # relationships together. The original-snapshot path must not keep an
+        # original drawing after its media/relationship was classified deleted.
+        raise _LayoutRestoreUnavailable()
+    for entry in edited_entries:
+        group_text = entry[3]
+        if group_text in surviving_graphics:
+            continue
+        if any(
+            marker in surviving_graphics
+            for marker in re.findall(MARKER_PATTERN, group_text)
+        ):
+            # Mixed text+graphics and multiple graphics in one boundary group
+            # need node-level replacement, which the legacy path already
+            # performs. Grafting the whole group could drop a drawing or leave
+            # a literal marker behind.
+            raise _LayoutRestoreUnavailable()
     for name in original_text_parts:
         root = original_roots[name]
         pairs, attributes = _part_contexts(root)
         rel_ids = _part_relationship_ids(original_package, name)
         part_changed = False
-        for (paragraph, nodes, original_text), entry, target in zip(
-            original_groups_by_part[name], edited_groups_by_part[name], targets_by_part[name]
+        for (paragraph, original_groups), (edited_paragraph, edited_groups) in zip(
+            original_paragraphs_by_part[name], edited_paragraphs_by_part[name]
         ):
-            if target == original_text:
+            if all(
+                target == original_text or entry[3] in surviving_graphics
+                for (_, original_text), (entry, target) in zip(original_groups, edited_groups)
+            ):
                 continue
             part_changed = True
-            edited_paragraph = entry[1]
-            edited_nodes = entry[2]
-            if _paragraph_format_signature(paragraph) == _paragraph_format_signature(edited_paragraph):
-                _replace_xml_text_nodes(nodes, target)
+            if (
+                _paragraph_format_signature(paragraph) == _paragraph_format_signature(edited_paragraph)
+                and all(
+                    entry[3] in surviving_graphics or nodes or not target
+                    for (nodes, _), (entry, target) in zip(original_groups, edited_groups)
+                )
+            ):
+                for (nodes, _), (entry, target) in zip(original_groups, edited_groups):
+                    if entry[3] not in surviving_graphics:
+                        _replace_xml_text_nodes(nodes, target)
                 continue
             _strip_word_session_ids(edited_paragraph)
             if not _validate_grafted_paragraph(edited_paragraph, pairs, attributes, rel_ids):
@@ -970,7 +1159,13 @@ def _restore_original_layout_package(
                         value = element.get(attr)
                         if value:
                             element.set(attr, resolve_font_name(value))
-            _replace_xml_text_nodes(edited_nodes, target)
+            for (entry, target) in edited_groups:
+                if entry[3] in surviving_graphics:
+                    _reembed_layout_graphic(
+                        entry[2], surviving_graphics[entry[3]][1], mapping
+                    )
+                else:
+                    _replace_xml_text_nodes(entry[2], target)
             grafted = _clone_element(edited_paragraph)
             _restore_paragraph_bookmarks(paragraph, grafted)
             paragraph.getparent().replace(paragraph, grafted)
@@ -984,7 +1179,11 @@ def _restore_original_layout_package(
         with ZipFile(temp, "w") as output_package:
             for info in original_infos:
                 name = info.filename
-                if name in changed:
+                if name in deleted_media:
+                    continue
+                if name in deleted_rels:
+                    payload = deleted_rels[name]
+                elif name in changed:
                     payload = etree.tostring(
                         changed[name], xml_declaration=True, encoding="UTF-8", standalone=True
                     )
@@ -995,7 +1194,16 @@ def _restore_original_layout_package(
         _atomic_publish(temp, output)
     finally:
         temp.unlink(missing_ok=True)
-    return sorted(set(unknown))
+    # Graphic markers are reported by the text restorer before their structural
+    # fragments are re-embedded. Suppress only markers whose edited groups were
+    # exact placeholders; a marker mixed with other text must remain visible in
+    # the report instead of hiding a possible residue.
+    mixed_graphic_markers = {
+        marker for marker in surviving_graphics
+        if any(marker in entry[3] and entry[3] != marker for entry in edited_entries)
+    }
+    restored_graphic_markers = set(surviving_graphics) - mixed_graphic_markers
+    return sorted(set(unknown) - restored_graphic_markers)
 
 
 def _temp_path(output: Path) -> Path:

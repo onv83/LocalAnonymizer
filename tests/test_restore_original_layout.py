@@ -1,4 +1,7 @@
 """Restore must rebuild on the original snapshot, preserving Word fields and styles."""
+import hashlib
+import shutil
+from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
@@ -234,6 +237,216 @@ def test_restore_with_added_paragraph_still_uses_legacy_path(tmp_path):
     texts = "".join(body.itertext())
     assert "Иванов Сергей Петрович" in texts
     assert "Word edit remains" in texts
+
+
+def _build_multigroup_source(path):
+    """One paragraph: plain name run, hard break, bold name run (two text groups)."""
+    document = Document()
+    document.add_paragraph("placeholder")
+    document.save(path)
+    with ZipFile(path) as archive:
+        parts = {info.filename: archive.read(info.filename) for info in archive.infolist()}
+    document_xml = etree.fromstring(parts["word/document.xml"])
+    paragraph = next(iter(document_xml.iter(f"{{{W}}}p")))
+    run = paragraph.find(f"{{{W}}}r")
+    paragraph.remove(run)
+    first = etree.SubElement(paragraph, f"{{{W}}}r")
+    first_text = etree.SubElement(first, f"{{{W}}}t")
+    first_text.text = "Иванов Сергей Петрович"
+    breaker = etree.SubElement(paragraph, f"{{{W}}}r")
+    etree.SubElement(breaker, f"{{{W}}}br")
+    third = etree.SubElement(paragraph, f"{{{W}}}r")
+    third_properties = etree.SubElement(third, f"{{{W}}}rPr")
+    third.insert(0, third_properties)
+    etree.SubElement(third_properties, f"{{{W}}}b")
+    third_text = etree.SubElement(third, f"{{{W}}}t")
+    third_text.text = "Смирнова Анна Олеговна"
+    parts["word/document.xml"] = etree.tostring(
+        document_xml, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+
+
+def _export_multigroup_pair(tmp_path):
+    service = AnonymizerService(tmp_path / "app")
+    source = tmp_path / "source.docx"
+    _build_multigroup_source(source)
+    document_id = service.import_file(source)
+    service.anonymize(document_id)
+    pair = service.export_pair(document_id, tmp_path / "edited.docx")
+    service.storage.delete_document(document_id)
+    return service, pair["anonymized_path"]
+
+
+def _edit_multigroup(edited, first_text, second_text=None):
+    with ZipFile(edited) as archive:
+        parts = {info.filename: archive.read(info.filename) for info in archive.infolist()}
+    document_xml = etree.fromstring(parts["word/document.xml"])
+    paragraph = next(iter(document_xml.iter(f"{{{W}}}p")))
+    texts = [node for node in paragraph.iter(f"{{{W}}}t")]
+    texts[0].text = first_text
+    if second_text is not None:
+        texts[-1].text = second_text
+    run = paragraph.find(f"{{{W}}}r")
+    if run.find(f"{{{W}}}rPr") is None:
+        properties = etree.SubElement(run, f"{{{W}}}rPr")
+        run.insert(0, properties)
+        etree.SubElement(properties, f"{{{W}}}b")
+    parts["word/document.xml"] = etree.tostring(
+        document_xml, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    with ZipFile(edited, "w", ZIP_DEFLATED) as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+
+
+def _restored_text(path):
+    with ZipFile(path) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+    return "".join(node.text or "" for node in root.iter(f"{{{W}}}t"))
+
+
+def _spy_layout_results(monkeypatch):
+    from local_anonymizer import documents
+
+    results = []
+    real_layout = documents._restore_original_layout
+
+    def spy(*args, **kwargs):
+        result = real_layout(*args, **kwargs)
+        results.append(result)
+        return result
+
+    monkeypatch.setattr(documents, "_restore_original_layout", spy)
+    return results
+
+
+def test_multigroup_paragraph_graft_restores_every_group(tmp_path, monkeypatch):
+    service, edited = _export_multigroup_pair(tmp_path)
+    _edit_multigroup(edited, "Правка один", "Правка два")
+    layout_results = _spy_layout_results(monkeypatch)
+
+    restored = tmp_path / "restored.docx"
+    report = service.restore_from_pair(edited, restored)
+
+    assert layout_results and all(result is not None for result in layout_results)
+
+    assert report["unknown_markers"] == []
+    text = _restored_text(restored)
+    assert "Правка один" in text
+    assert "Правка два" in text
+    assert "[ФИО-" not in text
+
+
+def test_multigroup_paragraph_graft_with_partial_group_change(tmp_path, monkeypatch):
+    service, edited = _export_multigroup_pair(tmp_path)
+    _edit_multigroup(edited, "Изменено пользователем")
+    layout_results = _spy_layout_results(monkeypatch)
+
+    restored = tmp_path / "restored.docx"
+    report = service.restore_from_pair(edited, restored)
+
+    assert layout_results and all(result is not None for result in layout_results)
+
+    assert report["unknown_markers"] == []
+    text = _restored_text(restored)
+    assert "Изменено пользователем" in text
+    assert "Смирнова Анна Олеговна" in text
+    assert "[ФИО-" not in text
+
+
+def test_word_saved_pair_with_graphics_restores_user_edits_and_layout(
+    tmp_path, monkeypatch
+):
+    """A real Word-saved pair: two pictures, table, numbering and hard breaks."""
+    fixture_dir = Path(__file__).parent / "fixtures" / "word-restore"
+    expected_hashes = {
+        "source.docx": "cf02f17fc483fc2942130aab21717f797d6d8cb2a696fe8b4037eff1cc4d1e33",
+        "edited.docx": "728566195da21769ab859cfb7ec9cbbca1114a323aedf262bb8ca30d82d1ab19",
+        "recovery.larecovery": "5c83ee24ec8eed9a42cbb0db69a7f9be0b7ffae529e1f48db0b2e4933cad13a7",
+    }
+    for name, expected in expected_hashes.items():
+        assert hashlib.sha256((fixture_dir / name).read_bytes()).hexdigest() == expected
+
+    edited = tmp_path / "edited.docx"
+    recovery = tmp_path / "recovery.larecovery"
+    shutil.copyfile(fixture_dir / "edited.docx", edited)
+    shutil.copyfile(fixture_dir / "recovery.larecovery", recovery)
+
+    from local_anonymizer import documents
+
+    layout_results = []
+    real_layout = documents._restore_original_layout
+
+    def layout_spy(*args, **kwargs):
+        result = real_layout(*args, **kwargs)
+        layout_results.append(result)
+        return result
+
+    monkeypatch.setattr(documents, "_restore_original_layout", layout_spy)
+    restored = tmp_path / "restored.docx"
+    report = AnonymizerService(tmp_path / "app").restore_from_pair(
+        edited, restored, recovery_path=recovery
+    )
+
+    assert report["unknown_markers"] == []
+    assert layout_results and all(result is not None for result in layout_results)
+
+    with ZipFile(fixture_dir / "source.docx") as archive:
+        source_media = {
+            name: archive.read(name) for name in archive.namelist()
+            if name.startswith("word/media/")
+        }
+        source_parts = {name: archive.read(name) for name in (
+            "word/document.xml", "word/settings.xml", "word/styles.xml", "word/numbering.xml"
+        )}
+    with ZipFile(restored) as archive:
+        restored_media = {
+            name: archive.read(name) for name in archive.namelist()
+            if name.startswith("word/media/")
+        }
+        restored_parts = {name: archive.read(name) for name in source_parts}
+    assert len(source_media) == 2
+    assert restored_media == source_media
+    for name in ("word/settings.xml", "word/styles.xml", "word/numbering.xml"):
+        assert restored_parts[name] == source_parts[name]
+
+    source_root = etree.fromstring(source_parts["word/document.xml"])
+    restored_root = etree.fromstring(restored_parts["word/document.xml"])
+    assert len(list(restored_root.iter(f"{{{W}}}drawing"))) == len(
+        list(source_root.iter(f"{{{W}}}drawing"))
+    ) == 2
+    assert len(list(restored_root.iter(f"{{{W}}}br"))) == len(
+        list(source_root.iter(f"{{{W}}}br"))
+    )
+    assert len(list(restored_root.iter(f"{{{W}}}vMerge"))) == len(
+        list(source_root.iter(f"{{{W}}}vMerge"))
+    ) > 0
+
+    def paragraph_with_text(root, needle):
+        return next(
+            paragraph for paragraph in root.iter(f"{{{W}}}p")
+            if needle in "".join(node.text or "" for node in paragraph.iter(f"{{{W}}}t"))
+        )
+
+    assert etree.tostring(
+        paragraph_with_text(restored_root, "Синтетический документ"), method="c14n"
+    ) == etree.tostring(
+        paragraph_with_text(source_root, "Синтетический документ"), method="c14n"
+    )
+    text = "".join(node.text or "" for node in restored_root.iter(f"{{{W}}}t"))
+    assert "Иванов Сергей Петрович — первая правка" in text
+    assert "Смирнова Анна Олеговна — вторая правка" in text
+    assert "Подпись ко второму рисунку — правка рядом с рисунком" in text
+    assert "[ФИО-" not in text
+    assert "[СХЕМА-" not in text
+
+    restored_document = Document(restored)
+    names = next(p for p in restored_document.paragraphs if "Иванов Сергей Петрович" in p.text)
+    assert any(run.bold and "Иванов Сергей Петрович" in run.text for run in names.runs)
+    assert any(run.italic and "Смирнова Анна Олеговна" in run.text for run in names.runs)
 
 
 def test_hostile_graft_candidate_fails_closed(tmp_path):
