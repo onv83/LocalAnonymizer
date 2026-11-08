@@ -4,6 +4,23 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.4.0] — 2026-11-08
+
+### Имена и фамилии
+
+- Офлайн-словарь расширен до **11 719 имён / 54 436 базовых и падежных форм**: добавлены Kazakh/Ukrainian extended-Cyrillic spellings и русскоязычные naming traditions, включая татарские имена. Приоритет — обычная русская кириллица; `ұлы/қызы` поддерживаются только как дополнительная редкая форма.
+- Добавлены **109 477 generic форм фамилий** (109 329 normalized keys) из pinned public source, включая татарские, славянские, тюркские и другие традиции. Этнические метки и полные персональные записи не включаются.
+- Pair/triple/initials и alias-проходы поддерживают Unicode Cyrillic, украинские падежи, оба порядка ФИО, split DOCX runs/cells и точное восстановление. Одиночная фамилия маскируется по person role label; unknown-given + known-surname требует явного person-context, чтобы юридические, географические и технические фразы не становились ФИО.
+- Добавлен обязательный packaged proof `extended_cyrillic_names_ok`; источники, лицензии, pinned hashes и детерминированная пересборка ресурсов задокументированы.
+
+### English
+
+- Expanded the offline vocabulary to **11,719 given names / 54,436 base and inflected forms**, including Tatar and other Russian-written naming traditions plus Kazakh and Ukrainian extended Cyrillic. Russian-script forms are the primary path; native patronymic endings are only an additional case.
+- Added **109,477 generic surname forms** (109,329 normalized keys) from a pinned public source, without ethnic labels or full-person records.
+- Unicode Cyrillic pairs, triples, initials and aliases now cover both name orders, Ukrainian cases and split DOCX runs/cells with exact restoration. Unknown-given surname anchors require explicit person context to avoid legal, geographic and technical false positives.
+- Added mandatory `extended_cyrillic_names_ok` packaged verification and reproducible pinned-source/license evidence.
+- Final source verification: **1341 passed, 3 warnings**; independent exact-snapshot review: **GO, no blockers**.
+
 ## [0.3.1] — 2026-11-08
 
 ### Восстановление DOCX
@@ -11,7 +28,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Восстановление пересобирает документ на проверенном снимке исходника: возвращаются исходные стили, нумерация, настройки, поля TOC, закладки, гиперссылки, таблицы и форматирование runs, а пользовательские правки сохраняются.
 - Исправлены абзацы с несколькими группами текста и жёсткими разрывами, пустые marker-группы, formatting-only изменения bold/italic, объединённые Word runs и идентификаторы `w:num/@w:numId`.
 - Добавлена настоящая Word-saved регрессионная пара с двумя изображениями, таблицей, нумерацией и разрывами. Удалённые изображения не воскресают; смешанные и многомаркерные группы используют безопасный restore без dangling relationships.
-- Полный исходный набор перед упаковкой: **1242 passed, 3 warnings**. Проверка реальной пары выполняется только на forensic-копиях, без изменения пользовательских файлов.
+- Полный исходный набор перед упаковкой: **1311 passed, 3 warnings**. Проверка реальной пары выполняется только на forensic-копиях, без изменения пользовательских файлов.
 
 ### Быстродействие
 
@@ -30,6 +47,17 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Полное ФИО с известным именем из офлайн-словаря теперь служит document-level якорем: одиночные упоминания этого имени и его грамматические формы маскируются во всём документе без point-правил для конкретных людей.
 - Одиночные упоминания получают отдельную identity от полного ФИО, поэтому разные люди с одинаковым именем не объединяются с полными ФИО-якорями. Без полного ФИО-якоря одиночное имя автоматически не маскируется; whitelist и отключение `ФИО` сохраняют прежнее поведение.
 - Реальный DOCX проверен с полностью пустым пользовательским словарём: полные ФИО и одиночные упоминания отсутствуют в output XML, исходник сохранён. Packaged self-test включает базовую и склонённую формы имени.
+- В начале предложения неоднозначные имена-существительные не переносятся автоматически из полного ФИО-якоря; whitelist учитывает каноническую форму имени. Пакетная проверка обязательно требует `person_name_alias_ok`.
+
+### Инфраструктурные отчёты и повторная обработка
+
+- Добавлены контекстные правила для имён GPO и privileged-групп, подтверждённых инвентарных таблиц, Windows/Linux OS, версий и текущих продуктовых систем, structured host IDs, AD schema/functional levels и метаданных документа. Правила используют табличные/смысловые границы и не зависят от конкретных значений отчёта.
+- Новая категория `МЕТРИКА` скрывает параметры паролей, блокировок, Kerberos, журналов, retention и ёмкости инфраструктуры только в подтверждённом контексте. Для неё добавлен отдельный RU/EN checkbox и manual-picker category; количество страниц/документов и обычные числовые значения вне инфраструктурного контекста не маскируются.
+- Для VM-, software-, network- и quantity-таблиц добавлены структурные classifiers; полные версии и upgrade chains не разбиваются на частичные маркеры. Поддержаны подтверждённые product/site aliases, роли, метаданные дат и ячейки с уже существующими маркерами.
+- Structured IDs требуют явного naming/example context либо связанного IP: слово `например`, обычные принтеры/рабочие станции и произвольные смешанные токены больше не создают `УЗЕЛ`. Naming context ограничен текущим предложением; заголовок `№ п/п`, em-dash разделители и punctuation-only residue обработаны отдельными regressions.
+- Повторный проход VM-инвентаризации учитывает существующие `[МЕТРИКА-N]` как занятые capacity-слоты и не маскирует маску подсети повторно. Денежные `тыс.` остаются `СУММА`, suffix-контекст `пользователей` поддержан, а многословные продукты с номером/`версии` маскируются целиком.
+- Исправлена повторная обработка уже обезличенных документов: SECRET-правила не создают вложенные маркеры и не захватывают соседний текст через границу Word runs. Внешняя подпись секрета по-прежнему имеет приоритет над literal marker; служебные наречия вроде «автоматически» не принимаются за пароль.
+- Добавлен packaged self-test `report_residuals_ok`; старый EXE без новых правил не проходит обязательную проверку пакета. Реальный отчёт проверен на forensic-копии: контрольные остатки удалены, исходник не изменён, восстановление побайтно совпадает с исходником.
 
 ### English
 
@@ -40,7 +68,14 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - Contextual logins take precedence over partial domain matches; full emails remain `ПОЧТА`, and common status values such as `enabled`/`disabled` are not relabelled as accounts. A real-DOCX forensic probe passed with the point account rules removed from the engine.
 - Full-name anchors now redact standalone and inflected given-name mentions throughout the document using the offline vocabulary, without person-specific dictionary entries. Bare mentions keep a separate identity from full names and still require a surviving full-name anchor.
 - A real DOCX was verified with an empty user dictionary: full names and standalone mentions are absent from the output XML, and the source remains unchanged. The packaged self-test covers base and inflected forms.
-- Source verification before packaging: **1242 passed, 3 warnings**.
+- Sentence-initial common-noun homonyms are no longer propagated as person aliases, canonical whitelist forms are honoured, and packaged verification requires `person_name_alias_ok`.
+- Added context-constrained detection for GPO and privileged directory names, confirmed inventory rows, Windows/Linux OS cells, current-use products and versions, structured host identifiers, AD schema/functional levels, and document metadata. Rules use structural and semantic context rather than report-specific literals.
+- Added the reversible `МЕТРИКА` category for labelled password, lockout, Kerberos, audit, retention and infrastructure-capacity values, including explicit RU/EN checkbox and manual-picker controls. Document/page counts and ordinary prose remain unmasked.
+- Added structural VM, software, network and quantity table classifiers, complete version/upgrade-chain handling, confirmed product/site aliases and date metadata. Structured IDs now require explicit sentence-bounded naming/example context or a related IP; `№ п/п`, em-dash separators and punctuation-only cells are covered by regressions.
+- VM reprocessing treats existing `[МЕТРИКА-N]` cells as occupied capacity slots instead of remasking subnet values. Currency thousands remain money, suffix capacity nouns are supported, and multiword product/version phrases are masked as a whole.
+- Reprocessing no longer creates nested SECRET markers or consumes text across a Word-run boundary from inside a literal marker; an external secret label still takes precedence, while password-policy adverbs are not treated as secrets.
+- Added the mandatory `report_residuals_ok` packaged self-test. A forensic copy of the real report passed controlled residual checks, source immutability and byte-exact restoration.
+- Source verification before packaging: **1311 passed, 3 warnings**.
 
 ## [0.3.0] — 2026-11-06
 

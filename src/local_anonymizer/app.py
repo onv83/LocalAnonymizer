@@ -38,7 +38,7 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.4.0"
 INDEX_ASSET = "index-v1.8.23.html"
 ENGLISH_INDEX_ASSET = "index-en-v1.8.23.html"
 
@@ -804,6 +804,52 @@ def _person_name_alias_self_test(anonymizer=None) -> bool:
     )
 
 
+def _extended_cyrillic_names_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    source = "Айгүл Леснов; Леснов Айгүл; Андрій Крау; Крау Андрія; Айрат Хабибуллин; Хабибуллин Айрат"
+    result = detector.anonymize(source)
+    ordinary = detector.anonymize("Айгүл")
+    disabled = Anonymizer(disabled_categories={"ФИО"}).anonymize(source)
+    return (
+        result.text == "[ФИО-1]; [ФИО-1]; [ФИО-2]; [ФИО-2]; [ФИО-3]; [ФИО-3]"
+        and result.counts.get("ФИО") == 6
+        and ordinary.text == "Айгүл"
+        and ordinary.mapping == {}
+        and disabled.text == source
+        and disabled.mapping == {}
+    )
+
+
+def _report_residuals_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    metric_source = "Установлена минимальная длина пароля 14 символов. Срок хранения 45 дней."
+    metric = detector.anonymize(metric_source)
+    ordinary = detector.anonymize("В документе 14 символов и 45 минут")
+    disabled = Anonymizer(disabled_categories={"МЕТРИКА"}).anonymize(metric_source)
+    secret = detector.anonymize("Domain [SECRET-4]\ufdd3Для")
+    fqdn = detector.anonymize("Сервер qz-db-01.example.local (10.15.24.18)")
+    identifier = detector.anonymize("Пример: сервер QZ_v10_RF")
+    product = detector.anonymize("Используется Qzbackup 9.4.")
+    return (
+        "14 символов" not in metric.text
+        and "45 дней" not in metric.text
+        and metric.text.count("[МЕТРИКА-") == 2
+        and "[МЕТРИКА-" not in ordinary.text
+        and disabled.text == metric_source
+        and disabled.mapping == {}
+        and "[SECRET-4]" in secret.text
+        and "[SECRET-[SECRET-" not in secret.text
+        and "qz-db-01" not in fqdn.text
+        and "example.local" not in fqdn.text
+        and "[ДОМЕН-" in fqdn.text
+        and "QZ_v10_RF" not in identifier.text
+        and "[УЗЕЛ-" in identifier.text
+        and "Qzbackup" not in product.text
+        and "9.4" not in product.text
+        and "[ПРОГРАММА-" in product.text
+    )
+
+
 def _split_service_account_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     intra = "\ufdd3"
@@ -1432,6 +1478,8 @@ class AppApi:
         split_service_account_ok = _split_service_account_self_test()
         directory_identifiers_ok = _directory_identifiers_self_test()
         person_name_alias_ok = _person_name_alias_self_test()
+        extended_cyrillic_names_ok = _extended_cyrillic_names_self_test()
+        report_residuals_ok = _report_residuals_self_test()
         word_settings_restore_ok = _word_settings_restore_self_test()
         audit_secret_marker_ok = _audit_secret_marker_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
@@ -1469,6 +1517,8 @@ class AppApi:
                 and split_service_account_ok
                 and directory_identifiers_ok
                 and person_name_alias_ok
+                and extended_cyrillic_names_ok
+                and report_residuals_ok
                 and word_settings_restore_ok
                 and audit_secret_marker_ok
                 and graphics_roundtrip_ok
@@ -1510,6 +1560,8 @@ class AppApi:
             "split_service_account_ok": split_service_account_ok,
             "directory_identifiers_ok": directory_identifiers_ok,
             "person_name_alias_ok": person_name_alias_ok,
+            "extended_cyrillic_names_ok": extended_cyrillic_names_ok,
+            "report_residuals_ok": report_residuals_ok,
             "word_settings_restore_ok": word_settings_restore_ok,
             "audit_secret_marker_ok": audit_secret_marker_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,

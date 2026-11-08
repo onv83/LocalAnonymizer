@@ -30,6 +30,7 @@ COMPACT_MARKER_LABELS = {
     "ПОЧТА": "ПЧ",
     "ТЕЛЕФОН": "ТЕЛ",
     "АККАУНТ": "АКК",
+    "МЕТРИКА": "МЕТ",
     "ЛОГИН": "ЛОГ",
     "ДОМЕН": "ДОМ",
     "ПОРТ": "ПРТ",
@@ -590,7 +591,7 @@ LAT_NAMES = set("alexander alexey andrey anton artem boris dmitry evgeny ivan ig
 from .russian_geography import find_locations
 from .passport_rules import register_passport_rules
 COMMON_SURNAMES = set("Иванов Смирнов Кузнецов Попов Васильев Петров Соколов Михайлов Новиков Фёдоров Морозов Волков Алексеев Лебедев Семёнов Егоров Павлов Козлов Степанов Николаев Орлов Андреев Макаров Никитин Захаров Зайцев Соловьёв Борисов Романов Кудряшов Медведев Сидоров".lower().replace("ё", "е").split())
-STOP_PROPER = set("договор приложение заказчик исполнитель подрядчик система программа продукт документ данные информация доступ проект отдел управление департамент служба компания организация общество банк начальник директор руководитель специалист инженер менеджер".split())
+STOP_PROPER = set("договор приложение заказчик исполнитель подрядчик система программа продукт документ данные информация доступ проект отдел управление департамент служба компания организация общество фирма банк начальник директор руководитель специалист инженер менеджер".split())
 
 def _stem_surname(value: str) -> str:
     x = value.casefold().replace("ё", "е")
@@ -637,6 +638,18 @@ def _canonical_name_component(value: str) -> str:
 
 
 from .given_names import GIVEN_NAMES, GIVEN_NAME_FORMS, canonical_given_name, normalize_given_name
+from .surnames import is_surname
+
+
+CYRILLIC_RANGE = r"\u0400-\u04ff"
+CYRILLIC_TOKEN = rf"[{CYRILLIC_RANGE}]+(?:-[{CYRILLIC_RANGE}]+)?"
+
+
+def _capitalized_cyrillic(value: str) -> bool:
+    return all(
+        len(part) >= 2 and part[0].isupper() and part[1:].islower()
+        for part in value.split("-")
+    )
 
 
 def _name_like(value: str) -> bool:
@@ -738,6 +751,14 @@ class Anonymizer:
                 allow_boundary_context: bool = False,
                 case_sensitive_canonical: bool = False) -> list[re.Match]:
             matches = list(re.finditer(pattern, source, flags))
+            if category == "SECRET":
+                matches = [
+                    m for m in matches
+                    if not any(
+                        start <= m.start() < end
+                        for start, end in literal_marker_spans
+                    )
+                ]
             if category in self.disabled_categories and category != "SECRET":
                 for m in matches:
                     value = m.group(group)
@@ -829,9 +850,19 @@ class Anonymizer:
                     ))
 
         literal_markers = list(LITERAL_MARKER_RE.finditer(source))
+        literal_marker_spans = [match.span() for match in literal_markers]
         protected = [m.span() for m in literal_markers]
         for m in re.finditer(r"(?i)\b(?:верси[яи]|version|build|сборк[а-яё]*)\s+(?:платформы\s+)?(\d+(?:\.\d+){1,4})", source):
-            protected.append(m.span(1))
+            product_prefixed = re.search(
+                r"[A-Z][A-Za-z0-9_-]+\s+$", source[max(0, m.start() - 60):m.start()]
+            ) is not None
+            if not m.group(0).casefold().lstrip().startswith("версии") and not product_prefixed:
+                protected.append(m.span(1))
+
+        security_product_pattern = r"\b(?:Secret\s?Net(?:\s?Studio)?|Dallas\s?Lock|ViPNet|Випнет|КриптоПро|Kaspersky|Касперск[а-яё]+|Dr\.?\s?Web|UserGate|MaxPatrol)(?:\s+(?:Client|Server|Studio|Enterprise|Endpoint|Security|Center|VPN|CSP))*(?:\s+v?\d[\w.-]*)?\b"
+        security_product_spans = [
+            match.span() for match in re.finditer(security_product_pattern, source, re.I)
+        ]
 
         # Secrets use the same marker and recovery mapping as every other
         # detected category.  The portable recovery companion is therefore
@@ -839,8 +870,15 @@ class Anonymizer:
         add(r"-----BEGIN [A-Z ]{1,48}-----.*?-----END [A-Z ]{1,48}-----", "SECRET", 110,
             flags=re.I | re.S)
         secret_word = r"(?:парол(?:ь|я|ю|ем|и)|password|passwd|pwd|passphrase|секрет(?:ная фраза)?|secret|token|токен|api[ _-]?key|apikey|access[ _-]?key|private[ _-]?key|client[ _-]?secret|ключ доступа)"
-        quoted_or_token = r'(?:"(?:\\[^\r\n\ufdd0]|[^"\\\r\n\ufdd0])+"|\'(?:\\[^\r\n\ufdd0]|[^\'\\\r\n\ufdd0])+\'|«[^»\r\n\ufdd0]+»|[^\s,;"\'«»\ufdd0]+)'
-        add(rf"\b{secret_word}[\"']?\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1)
+        quoted_or_token = r'(?:"(?:\\[^\r\n\ufdd0\ufdd3]|[^"\\\r\n\ufdd0\ufdd3])+"|\'(?:\\[^\r\n\ufdd0\ufdd3]|[^\'\\\r\n\ufdd0\ufdd3])+\'|«[^»\r\n\ufdd0\ufdd3]+»|[^\s,;"\'«»\ufdd0\ufdd3]+)'
+        secret_non_values = {
+            "автоматически", "вручную", "периодически", "регулярно",
+            "немедленно", "сразу", "обязательно", "необходимо", "следует", "нужно",
+        }
+        add(rf"\b{secret_word}[\"']?\s*[:=—-]\s*({quoted_or_token})", "SECRET", 109, group=1,
+            validate=lambda m: m.group(1).strip("\"'«»").casefold() not in secret_non_values and not any(
+                start <= m.start() < end for start, end in protected
+            ))
         add(rf"\b[A-Za-z_][A-Za-z0-9_]*(?:PASS|PASSWD|PASSWORD|PWD|PSWD|PSW|SECRET|TOKEN|APIKEY|API_KEY|ACCESSKEY|ACCESS_KEY|PRIVATE_KEY|CRED|CREDS|AUTH)[A-Za-z0-9_]*[\"']?\s*[:=]\s*({quoted_or_token})", "SECRET", 109, group=1,
             validate=lambda m: not (re.search(r"TOKENS\s*[:=]", m.group(0), re.I) and m.group(1).rstrip(";,)").isdigit()))
         add(r"\b(?:парол[а-яё]*|password|пасс[а-яё]*|pwd|секретн[а-яё]+\s+фраз[а-яё]+|кодов[а-яё]+\s+слов[а-яё]*)\s+(?:(?:от|для|к|на)\s+)?(?:[а-яё]+\s+){0,3}((?=[^\s]*[\d!@#$%^&*_+])[A-Za-zА-Яа-яЁё0-9!@#$%^&*_+.\-]{4,})", "SECRET", 108, group=1)
@@ -1544,6 +1582,821 @@ class Anonymizer:
                 spans.append((start, end, value[start:end]))
                 start = end + len(delimiter)
 
+        def add_sensitive_table_cell(category: str, priority: int, absolute_start: int, raw: str) -> None:
+            marker_spans = [match.span() for match in LITERAL_MARKER_RE.finditer(raw)]
+            segments: list[tuple[int, int]] = []
+            cursor = 0
+            for marker_start, marker_end in marker_spans:
+                segments.append((cursor, marker_start))
+                cursor = marker_end
+            segments.append((cursor, len(raw)))
+            for segment_start, segment_end in segments:
+                meaningful = [
+                    position for position in range(segment_start, segment_end)
+                    if raw[position] != intra_cell_boundary and not raw[position].isspace()
+                ]
+                if not meaningful:
+                    continue
+                local_start, local_end = meaningful[0], meaningful[-1] + 1
+                physical = raw[local_start:local_end]
+                logical = physical.replace(intra_cell_boundary, "")
+                if not logical or LITERAL_MARKER_RE.fullmatch(logical) or re.search(r"[^\W_]", logical) is None:
+                    continue
+                left = absolute_start + local_start
+                right = absolute_start + local_end
+                if logical.casefold() in self.whitelist:
+                    continue
+                if category in self.disabled_categories:
+                    disabled_spans.append((left, right))
+                    continue
+                found.append(Detection(
+                    left, right, category, priority,
+                    physical.replace(intra_cell_boundary, "\n"), logical,
+                    scope_start=left, scope_end=right,
+                    case_sensitive_canonical=True,
+                ))
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                prefix = source[max(0, current_start - 500):current_start]
+                if re.search(r"групповы[а-яё]+\s+политик|Group\s+Policy|GPO", prefix, re.I) is None:
+                    continue
+                for row_offset, _, row_text in split_spans(block, row_boundary):
+                    cells = split_spans(row_text, "\ufdd0")
+                    if len(cells) != 2:
+                        continue
+                    index_value = cells[0][2].replace(intra_cell_boundary, "").strip()
+                    if not index_value.isdigit():
+                        continue
+                    add_sensitive_table_cell(
+                        "СТРУКТУРА-AD", 94,
+                        current_start + row_offset + cells[1][0], cells[1][2],
+                    )
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                for header_index, (_, _, row_text) in enumerate(rows):
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in split_spans(row_text, "\ufdd0")
+                    ]
+                    name_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"(?:система|наименование(?:\s+системы)?)", heading, re.I)
+                    ), None)
+                    description_index = next((
+                        position for position, heading in enumerate(headings)
+                        if re.fullmatch(r"(?:описание|тип|назначение)", heading, re.I)
+                    ), None)
+                    if name_index is None or description_index is None or not any(
+                        re.fullmatch(r"№(?:\s+п/п)?", heading) for heading in headings
+                    ):
+                        continue
+                    candidates = []
+                    for row_offset, _, data_row in rows[header_index + 1:]:
+                        cells = split_spans(data_row, "\ufdd0")
+                        if len(cells) != len(headings):
+                            continue
+                        if not cells[0][2].replace(intra_cell_boundary, "").strip().isdigit():
+                            continue
+                        candidates.append((row_offset, cells[name_index]))
+                    if len(candidates) >= 2:
+                        for row_offset, (cell_start, _cell_end, raw) in candidates:
+                            add_sensitive_table_cell(
+                                "СИСТЕМА", 94,
+                                current_start + row_offset + cell_start, raw,
+                            )
+                    break
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                for row_offset, _, row_text in split_spans(block, row_boundary):
+                    if "[IP-" not in row_text:
+                        continue
+                    for cell_start, _cell_end, raw in split_spans(row_text, "\ufdd0"):
+                        logical = re.sub(
+                            r"\s+", " ", raw.replace(intra_cell_boundary, " ")
+                        ).strip().strip("\"'«»")
+                        if re.fullmatch(
+                            r"(?:Microsoft\s+)?Windows\s+Server(?:\s+Windows\s+Server)?\s+\d{4}(?:\s+R2)?(?:\s+(?:Standard|Enterprise|Datacenter|St\.))?",
+                            logical,
+                            re.I,
+                        ) is None and re.search(
+                            r"(?:Alt\s+Linux\s+\(64-bit\)|AstraLinux\s+x64|Astra\s+Linux\s+\d+(?:\.\d+)+|Server\s+Linx\s+\(x86_64\))",
+                            logical,
+                            re.I,
+                        ) is None:
+                            continue
+                        add_sensitive_table_cell(
+                            "ПРОГРАММА", 94,
+                            current_start + row_offset + cell_start, raw,
+                        )
+
+        if table_boundary in source:
+            vm_host = re.compile(r"[a-z][a-z0-9]{1,7}-[a-z]{2,12}v-\d{4}", re.I)
+            general_vm_host = re.compile(r"[a-z][a-z0-9-]{1,30}-\d{3,4}", re.I)
+            ipv4_prefix = re.compile(r"(?:\d{1,3}\.){2}\d{1,3}\.-")
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                for row_offset, _, row_text in split_spans(block, row_boundary):
+                    cells = split_spans(row_text, "\ufdd0")
+                    host_index = None
+                    for index, (_cell_start, _cell_end, raw) in enumerate(cells):
+                        logical = raw.replace(intra_cell_boundary, "").strip().strip("\"'«»")
+                        if vm_host.fullmatch(logical) or re.fullmatch(r"\[УЗЕЛ-\d+\]", logical):
+                            host_index = index
+                            break
+                        if general_vm_host.fullmatch(logical):
+                            following = [
+                                cell[2].replace(intra_cell_boundary, "").strip().strip("\"'«»")
+                                for cell in cells[index + 1:]
+                            ]
+                            numeric_count = sum(
+                                re.fullmatch(r"\d+(?:[.,]\d+)?", value) is not None
+                                for value in following
+                            )
+                            if numeric_count >= 3 and any(
+                                value.startswith("/") or ipv4_prefix.fullmatch(value)
+                                for value in following
+                            ):
+                                host_index = index
+                                break
+                    if host_index is None:
+                        continue
+                    host_start, _host_end, host_raw = cells[host_index]
+                    add_sensitive_table_cell(
+                        "УЗЕЛ", 96, current_start + row_offset + host_start, host_raw,
+                    )
+                    numeric_capacity = 0
+                    for cell_start, _cell_end, raw in cells[host_index + 1:]:
+                        logical = raw.replace(intra_cell_boundary, "").strip().strip("\"'«»")
+                        absolute = current_start + row_offset + cell_start
+                        numeric_cell = re.fullmatch(r"\d+(?:[.,]\d+)?", logical) is not None
+                        capacity_marker = re.fullmatch(r"\[МЕТРИКА-\d+\]", logical) is not None
+                        if numeric_capacity < 3 and (numeric_cell or capacity_marker):
+                            if numeric_cell:
+                                add_sensitive_table_cell("МЕТРИКА", 96, absolute, raw)
+                            numeric_capacity += 1
+                            continue
+                        if logical.startswith("/"):
+                            add_sensitive_table_cell("МЕТРИКА", 96, absolute, raw)
+                            continue
+                        if ipv4_prefix.fullmatch(logical):
+                            octets = logical.rstrip(".-").split(".")
+                            if all(0 <= int(octet) <= 255 for octet in octets):
+                                add_sensitive_table_cell("IP", 96, absolute, raw)
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                for header_index, (_, _, header_row) in enumerate(rows):
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in split_spans(header_row, "\ufdd0")
+                    ]
+                    if not any(re.fullmatch(r"№(?:\s+п/п)?", heading) for heading in headings) or "Версия" not in headings or "Лицензия" not in headings:
+                        continue
+                    subsystem_index = next((i for i, value in enumerate(headings) if value == "Подсистема"), None)
+                    version_index = headings.index("Версия")
+                    if subsystem_index is None or version_index <= subsystem_index + 1:
+                        continue
+                    product_index = version_index - 1
+                    if not (
+                        headings[product_index] in {"ПО", "Программное обеспечение"}
+                        or LITERAL_MARKER_RE.fullmatch(headings[product_index])
+                    ):
+                        continue
+                    for row_offset, _, data_row in rows[header_index + 1:]:
+                        cells = split_spans(data_row, "\ufdd0")
+                        if len(cells) != len(headings):
+                            continue
+                        if not cells[0][2].replace(intra_cell_boundary, "").strip().isdigit():
+                            continue
+                        product_start, _product_end, product_raw = cells[product_index]
+                        add_sensitive_table_cell(
+                            "ПРОГРАММА", 96, current_start + row_offset + product_start, product_raw,
+                        )
+                        product_logical = product_raw.replace(intra_cell_boundary, "").strip()
+                        if len(product_logical) >= 4 and LITERAL_MARKER_RE.search(product_logical) is None:
+                            exact_aliases.append((product_logical, product_logical, "ПРОГРАММА", True))
+                            words = product_logical.split()
+                            if len(words) >= 3:
+                                acronym = "".join(word[0] for word in words[1:4] if word and word[0].isalpha())
+                                short_alias = f"{words[0]} {acronym}"
+                                for alias_match in re.finditer(re.escape(short_alias), source, re.I):
+                                    start, end = alias_match.span()
+                                    if any(marker_start <= start < marker_end for marker_start, marker_end in literal_marker_spans):
+                                        continue
+                                    if alias_match.group().casefold() in self.whitelist:
+                                        continue
+                                    if "ПРОГРАММА" in self.disabled_categories:
+                                        disabled_spans.append((start, end))
+                                        continue
+                                    found.append(Detection(
+                                        start, end, "ПРОГРАММА", 96,
+                                        alias_match.group(), product_logical,
+                                        scope_start=start, scope_end=end,
+                                    ))
+                        version_start, _version_end, version_raw = cells[version_index]
+                        version_logical = version_raw.replace(intra_cell_boundary, "").strip()
+                        if re.fullmatch(r"\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?", version_logical):
+                            add_sensitive_table_cell(
+                                "ПРОГРАММА", 96, current_start + row_offset + version_start, version_raw,
+                            )
+                    break
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                for header_index, (_, _, header_row) in enumerate(rows):
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in split_spans(header_row, "\ufdd0")
+                    ]
+                    if "Порт" not in headings or "Источник" not in headings or "Назначение" not in headings:
+                        continue
+                    port_index = headings.index("Порт")
+                    for row_offset, _, data_row in rows[header_index + 1:]:
+                        cells = split_spans(data_row, "\ufdd0")
+                        if len(cells) != len(headings):
+                            continue
+                        port_start, _port_end, port_raw = cells[port_index]
+                        logical = port_raw.replace(intra_cell_boundary, " ").strip()
+                        if re.fullmatch(r"\d[\d\s,;–-]*", logical) is None:
+                            continue
+                        values = [int(value) for value in re.findall(r"\d+", logical)]
+                        if values and all(1 <= value <= 65535 for value in values):
+                            add_sensitive_table_cell(
+                                "ПОРТ", 96, current_start + row_offset + port_start, port_raw,
+                            )
+                    break
+
+        if table_boundary in source:
+            block_start = 0
+            for block in source.split(table_boundary):
+                current_start = block_start
+                block_start += len(block) + len(table_boundary)
+                rows = split_spans(block, row_boundary)
+                for header_index, (_, _, header_row) in enumerate(rows):
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in split_spans(header_row, "\ufdd0")
+                    ]
+                    quantity_indices = [
+                        index for index, heading in enumerate(headings)
+                        if re.match(r"Количество\b", heading, re.I)
+                    ]
+                    if not quantity_indices:
+                        continue
+                    for row_offset, _, data_row in rows[header_index + 1:]:
+                        cells = split_spans(data_row, "\ufdd0")
+                        if len(cells) != len(headings):
+                            continue
+                        for index in quantity_indices:
+                            cell_start, _cell_end, raw = cells[index]
+                            logical = raw.replace(intra_cell_boundary, "").strip()
+                            if re.fullmatch(r"\d+", logical):
+                                add_sensitive_table_cell(
+                                    "МЕТРИКА", 96, current_start + row_offset + cell_start, raw,
+                                )
+                    break
+
+        metric_duration = r"\d+(?:[.,]\d+)?\s+(?:символов|минут|часов|дней|дня|дням|байт)"
+        add(
+            rf"\b(?:Установлена\s+минимальная\s+длина\s+пароля|Длительность\s+блокировки\s+учетной\s+записи|Защита\s+от\s+брутфорса|Установлено\s+максимальное\s+отклонение|Журнал\s+[^.\ufdd0]{{0,60}}?установлен|Срок(?:ом)?\s+хранения)\s*[-–—]?\s*({metric_duration})(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            rf"\bМаксимальн[а-яё]+\s+(?:жизнь|обновление)[^.\ufdd0]{{0,60}}?({metric_duration})(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bУстановлено\s+количество\s+неправильных\s+попыток\s+ввода\s+(\d+)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bОбновление\s+пароля\s+[^.\ufdd0]{0,60}?\bв\s+(\d+\s+дней)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bСмена\s+пароля\s+не\s+чаще\s+чем\s+(один\s+раз\s+в\s+день)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bпредупреждени[а-яё]+\s+об\s+истечении\s+время\s+действия\s+пароля\s+за\s+(\d+\s+дней)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bSecurity\s+(в\s+два\s+раза\s+больше)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:Общее\s+количество|Количество|Целевое\s+количество)[^.\ufdd0]{0,120}?(\d+(?:[.,]\d+)?\s*тыс\.)(?!\w)",
+            "МЕТРИКА", 86, group=1,
+            validate=lambda m: re.search(
+                r"(?:пользовател|аккаунт|сервер|компьютер|устройств|филиал|сайт|АРМ|гостевых|рабоч)",
+                m.group(0), re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"(?<![\w.])(\d+(?:[.,]\d+)?\s*[-–]\s*\d+(?:[.,]\d+)?\s*Мб/с)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+
+        add(
+            r"(?<!\w)(?:Exported|\[СКРЫТО-\d+\])\s+on\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})",
+            "ДОКУМЕНТ", 93, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        month_names = r"(?:янв|фев|мар|апр|ма[йя]|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*"
+        add(
+            r"\b(\d{4}-\d{2}-\d{2})(?=[-\s])",
+            "ДОКУМЕНТ", 93, group=1,
+            validate=lambda m: re.search(
+                r"(?:Встреча|Синк|Обсуждение|Передача|демонстрация|Предварительная)",
+                source[m.end():m.end() + 100], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:с|по|до|на)\s+(\d{2}\.\d{2}\.\d{4})\b",
+            "ДОКУМЕНТ", 93, group=1,
+            validate=lambda m: re.search(
+                r"(?:оплат|сч[её]т|стоимост|сумм|бюджет|расход|аванс)",
+                source[max(0, m.start() - 40):m.start()], re.I,
+            ) is None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b(\d{2}\.\d{2}\.\d{4})(?=\s+\[ОРГАНИЗАЦИЯ-)",
+            "ДОКУМЕНТ", 93, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            rf"(?m)(?:^|(?<=\ufdd0))(\d{{2}}\.\d{{2}}\.\d{{4}})(?=\s)",
+            "ДОКУМЕНТ", 93, group=1,
+            validate=lambda m: re.search(
+                r"(?:\[ОРГАНИЗАЦИЯ-|Сопровождение|Протокол|Проект|Техническ)",
+                source[m.end():m.end() + 100], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            rf"(?m)(?:^|(?<=\ufdd0))((?:Янв|Фев|Мар|Апр|Май|Июн|Июл|Авг|Сен|Окт|Ноя|Дек)[а-яё–-]*\s+\d{{4}})(?=\s+—)",
+            "ДОКУМЕНТ", 93, group=1, flags=re.I, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            rf"\b(\d{{1,2}}(?:[–-]\d{{1,2}})?\s+{month_names}\.?\s+\d{{4}}(?:\s+г\.)?)",
+            "ДОКУМЕНТ", 93, group=1, flags=re.I, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bПриказом\s+от\s+(\d{2}\.\d{2}\.\d{4}\s+№\s*[\w/-]+)(?![\w/-])",
+            "ДОКУМЕНТ", 93, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"(?<![\w-])([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9_-]{7,31})(?![\w-]|\.[A-Za-zА-Яа-яЁё])",
+            "УЗЕЛ", 92, group=1, flags=0,
+            validate=lambda m: (
+                re.search(r"\d", m.group(1)) is not None
+                and re.search(r"[A-Za-zА-Яа-яЁё]", m.group(1)) is not None
+                and (
+                    re.search(
+                        r"(?:\bпример\s*(?::|—|-)|именование\s+объект|имя\s+(?:узла|сервера|хоста)|имена\s+узлов|hostname|формат\s+имени)",
+                        re.split(
+                            r"[!?\n\ufdd0]|\.(?=\s|$)",
+                            source[max(0, m.start() - 240):m.start()],
+                        )[-1], re.I,
+                    ) is not None
+                    or re.search(r"\[IP-\d+\]", source[m.end():m.end() + 120]) is not None
+                )
+            ),
+            canonical=lambda m: m.group(1), case_sensitive_canonical=True,
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,5}\s+\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1, flags=0,
+            validate=lambda m: re.search(r"[a-z]", m.group(1)) is not None and not any(
+                start <= m.start() and m.end() <= end for start, end in security_product_spans
+            ),
+            canonical=lambda m: m.group(1),
+        )
+        add(
+            r"\b([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,5}\s+верси[яи]\s+\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1, flags=0,
+            validate=lambda m: re.search(r"[a-z]", m.group(1)) is not None and not any(
+                start <= m.start() and m.end() <= end for start, end in security_product_spans
+            ),
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\[СОКРАЩЕНИЯ-\d+\](?:\s+[A-Z][A-Za-z0-9_-]+)?\s+(\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1, flags=0, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"→\s*(\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"->\s*(\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"(?<![\w.])(\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?=\s*→)",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bпод\s+(\d+(?:\.\d+)+(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 94, group=1,
+            validate=lambda m: re.search(
+                r"(?:шаблон|конфигурац|обновлен|стенд)", source[max(0, m.start() - 120):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b[Пп]очтов(?:ого|ый)\s+сервера?\s+([A-Z][A-Za-z0-9_-]+)",
+            "СИСТЕМА", 93, group=1, flags=0,
+            validate=lambda m: re.search(r"[a-z]", m.group(1)) is not None,
+            canonical=lambda m: m.group(1).casefold(),
+        )
+        add(
+            r"\bс\s+([a-z][a-z0-9_-]+)\b",
+            "СИСТЕМА", 93, group=1, flags=0,
+            validate=lambda m: re.search(
+                r"Интеграционной\s+Платформы", source[max(0, m.start() - 100):m.start()]
+            ) is not None,
+            canonical=lambda m: m.group(1).casefold(),
+        )
+        product_name = r"([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+)?)"
+
+        def current_product_value(m: re.Match) -> bool:
+            return re.search(r"[a-z]", m.group(1)) is not None
+
+        def add_current_product(pattern: str):
+            matches = add(
+                pattern, "СИСТЕМА", 93, group=1, flags=0,
+                validate=current_product_value,
+                canonical=lambda m: self._canon(m.group(1)), allow_boundary_context=True,
+            )
+            remember_exact(matches, "СИСТЕМА", minimum_length=4, case_sensitive=False)
+
+        add_current_product(
+            r"\b[Нн]а\s+базе\s+(?:интегрированного\s+сервера\s+)?[\"']?([A-Z][A-Za-z0-9-]+(?:\s+[A-Z][A-Za-z0-9-]+){0,4})"
+        )
+        add_current_product(
+            r"\b(?:[Пп]рограммных\s+продуктов|[Пп]рограммного\s+средства|[Пп]родукта)\s+[\"']?([A-Z][A-Za-z0-9-]+(?:\s+[A-Z][A-Za-z0-9-]+){0,5})"
+        )
+        product_list_item = add(
+            r"\bи\s+([A-Z][A-Za-z0-9-]+)(?=\s+(?:на|по|для|в)\b|[.,;])",
+            "СИСТЕМА", 93, group=1, flags=0,
+            validate=lambda m: current_product_value(m) and re.search(
+                r"(?:программных\s+продуктов|программного\s+средства|продукта)",
+                source[max(0, m.start() - 200):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: self._canon(m.group(1)), allow_boundary_context=True,
+        )
+        remember_exact(product_list_item, "СИСТЕМА", minimum_length=4, case_sensitive=False)
+        add_current_product(
+            r"\b[Кк]омпоненты\s+([A-Z][A-Za-z0-9-]+(?:\s+[A-Za-z][A-Za-z0-9-]+)?)"
+        )
+        add_current_product(
+            r"\b[Цц]ентр\s+(?:сертификации|регистрации)\s+([A-Z][A-Za-z0-9-]+(?:\s+[A-Z][A-Za-z0-9-]+){0,4})"
+        )
+        add_current_product(
+            r"\b[Сс]лужба\s+([A-Z][A-Za-z0-9-]+(?:\s+[A-Z][A-Za-z0-9-]+)?)"
+        )
+        add_current_product(
+            r"\b[Вв]еб-сервера\s+\(([A-Z][A-Za-z0-9-]+)\)"
+        )
+        add_current_product(
+            r"\b[Oo]pen\s+source\s+решен(?:ии|ие|ием)\s+([A-Z][A-Za-z0-9-]+)"
+        )
+        add_current_product(
+            r"\(([A-Z][A-Za-z]+\s+[A-Z][A-Za-z]+)\s+\[СОКРАЩЕНИЯ-\d+\]\)"
+        )
+        add(
+            rf"\b(?:мониторинга|виртуализации|[Сс]истема)\s+(?:[^.\ufdd0]{{0,50}}?\s+)?{product_name}",
+            "СИСТЕМА", 93, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            validate=current_product_value, allow_boundary_context=True,
+        )
+        add(
+            rf"\b[Ии]спользуется\s+{product_name}",
+            "СИСТЕМА", 93, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            validate=current_product_value, allow_boundary_context=True,
+        )
+        add(
+            rf"\bвходит\s+{product_name}",
+            "СИСТЕМА", 93, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            validate=current_product_value, allow_boundary_context=True,
+        )
+        add(
+            rf"\b{product_name}\s+использует\s+встроенный",
+            "СИСТЕМА", 93, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            validate=current_product_value, allow_boundary_context=True,
+        )
+        add(
+            rf"\b{product_name}\s+информация\s+об\s+изменениях",
+            "СИСТЕМА", 93, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            validate=current_product_value, allow_boundary_context=True,
+        )
+        add(
+            rf"[-–]\s+{product_name}(?=,)",
+            "СИСТЕМА", 93, group=1, flags=0,
+            validate=lambda m: current_product_value(m) and re.search(
+                r"(?:виртуализации|используется)", source[max(0, m.start() - 100):m.start()]
+            ) is not None,
+            canonical=lambda m: m.group(1).casefold(), allow_boundary_context=True,
+        )
+        add(
+            r"\bверсии\s+(\d+(?:\.\d+)*(?:[A-Za-z]+\d+)?)(?!\d|\.\d)",
+            "ПРОГРАММА", 93, group=1,
+            validate=lambda m: re.match(
+                r"\s+(?:спецификации|документа|стандарта|регламента)",
+                source[m.end():m.end() + 24], re.I,
+            ) is None,
+            canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+
+        add(
+            r"(?<![\w-])([a-z][a-z0-9]{1,7}_(?:ald|acm|pki|sso)_[a-z_]{2,48})(?![\w-])",
+            "СТРУКТУРА-AD", 95, group=1, flags=re.I,
+            validate=lambda m: re.search(r"(?:admin|operator|support|auditor)", m.group(1), re.I) is not None,
+            canonical=lambda m: m.group(1).casefold(), allow_boundary_context=True,
+        )
+        add(
+            r"(?<![\w-])([a-z][a-z0-9-]{1,40}-(?:users|events|realm|admin))(?![\w-])",
+            "СТРУКТУРА-AD", 95, group=1, flags=0,
+            validate=lambda m: re.search(
+                r"(?:keycloak|роль|реалм|пользовател|прав|доступ)",
+                source[max(0, m.start() - 100):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1).casefold(), allow_boundary_context=True,
+        )
+        add(
+            r"(?<![\w-])([a-z][a-z0-9-]{2,60}-service)(?![\w-])",
+            "СИСТЕМА", 93, group=1, flags=0,
+            validate=lambda m: re.search(
+                r"(?:сервис|служб|подсистем|адаптер|certificate|keycloak|aladdin)",
+                source[max(0, m.start() - 100):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1).casefold(), allow_boundary_context=True,
+        )
+        add(
+            r"\bКаталог\s+ou=([А-ЯЁ][а-яё-]+)",
+            "ГОРОД", 94, group=1, flags=0, canonical=lambda m: self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bсайт\s+([А-ЯЁ][а-яё-]+)",
+            "ГОРОД", 94, group=1, flags=0, canonical=lambda m: self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:Региональн[а-яё]+\s+(?:оператор[а-яё]*|администратор[а-яё]*|поддержки)|Специалист\s+региональной\s+поддержки)(?:\s+\[[A-ZА-ЯЁ-]+-\d+\])?\s*\(([А-ЯЁ][а-яё-]+)\)",
+            "ГОРОД", 94, group=1, flags=0, canonical=lambda m: self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bсубъектов\s+([А-ЯЁ][а-яё-]+)",
+            "ГОРОД", 94, group=1, flags=0,
+            validate=lambda m: re.search(r"сертификат", source[max(0, m.start() - 80):m.start()], re.I) is not None,
+            canonical=lambda m: self._canon(m.group(1)), allow_boundary_context=True,
+        )
+        add(
+            r"\b[Сс]татический\s+каталог\s+([А-ЯЁ][а-яё-]+)",
+            "ГОРОД", 94, group=1, flags=0, canonical=lambda m: self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        for location_list in re.finditer(r"\(([^()\n\ufdd0]{0,300})(?:\)|(?=\ufdd0|$))", source):
+            if "[ГОРОД-" not in location_list.group(1):
+                continue
+            for token in re.finditer(r"(?<![\w-])[А-ЯЁ][а-яё-]+(?![\w-])", location_list.group(1)):
+                start = location_list.start(1) + token.start()
+                end = location_list.start(1) + token.end()
+                if any(marker_start <= start < marker_end for marker_start, marker_end in literal_marker_spans):
+                    continue
+                value = token.group()
+                if value.casefold() in self.whitelist:
+                    continue
+                if "ГОРОД" in self.disabled_categories:
+                    disabled_spans.append((start, end))
+                    continue
+                found.append(Detection(
+                    start, end, "ГОРОД", 95, value, self._canon(value),
+                    scope_start=start, scope_end=end,
+                ))
+        add(
+            r"\bаэропорт\s+([А-ЯЁ][а-яё-]+)",
+            "ГОРОД", 94, group=1, flags=0, canonical=lambda m: self._canon(m.group(1)),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bпроект(?:а|у|ом)?\s+по\s+([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9&-]*(?:\s+[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9&-]*)?)",
+            "ОРГАНИЗАЦИЯ", 94, group=1, flags=0, canonical=lambda m: m.group(1).casefold(),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:[a-z]?domain|enterprise|schema)\s+admins\b(?!\s*\.{2,}\s*\d+)",
+            "СТРУКТУРА-AD", 95, canonical=lambda m: m.group().casefold(),
+        )
+        add(
+            r"\bгруппы\s+это\s*[\"']([A-Za-z][\w-]{2,})[\"']",
+            "СТРУКТУРА-AD", 95, group=1, canonical=lambda m: m.group(1).casefold(),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b[a-z]{2}\s+и\s+[a-z]{2}\b",
+            "ДОМЕН", 90, flags=0,
+            validate=lambda m: re.search(r"доменах", source[max(0, m.start() - 80):m.start()], re.I) is not None,
+            canonical=lambda m: m.group().casefold(),
+        )
+        add(
+            r"\bAdminCount=1\b",
+            "СТРУКТУРА-AD", 95, canonical=lambda m: m.group().casefold(),
+        )
+        add(
+            r"\bучастник\s*[-–—]?\s*(administrator)\b",
+            "ЛОГИН", 95, group=1, canonical=lambda m: m.group(1).casefold(),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:[a-z]?domain|enterprise|schema)\s+admins\s*[-–—]?\s*(\d+)(?=\s+участник)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\bAdminCount=1\s*[-–—]\s*(\d+)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(\d+)\s+(?=пользовател(?:я|ей)|сервер(?:а|ов)?|аэропорт(?:а|ов|ах)?|ВМ\b)",
+            "МЕТРИКА", 86, group=1,
+            validate=lambda m: re.search(
+                r"(?:итого|\bсумм(?:а|е|у|ой|ы|ам|ами|ах)?\b|оплат|стоимост|бюджет|расход|\bцен(?:а|у|е|ой|ы|ам|ами|ах|ов)?\b)",
+                source[max(0, m.start() - 36):m.start()], re.I,
+            ) is None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b(\d+)\s+шт\.",
+            "МЕТРИКА", 86, group=1,
+            validate=lambda m: re.search(
+                r"(?:аэропорт|площадк|сервер|узел|кластерн|подчин)", source[max(0, m.start() - 120):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\[СОКРАЩЕНИЯ-\d+\]\s*\((\d+)\s+шт\.\)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b(\d+)\s+часов\b",
+            "МЕТРИКА", 86, group=1,
+            validate=lambda m: re.search(
+                r"(?:консультац|поддержк|услуг|работ)", source[max(0, m.start() - 120):m.start()], re.I,
+            ) is not None,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        capacity_context = re.compile(
+            r"(?:сервер|пользовател|аккаунт|рабоч|устройств|филиал|сайт|компьютер|ноутбук|планшет|хост|гостевых|\bАРМ\b)",
+            re.I,
+        )
+
+        def capacity_thousands_context(m: re.Match) -> bool:
+            suffix = source[m.end():m.end() + 32]
+            if re.match(
+                r"\s*(?:документ|страниц|файл|запис|слов|строк)",
+                suffix, re.I,
+            ):
+                return False
+            if re.match(
+                r"\s*(?:руб(?:\.|л[а-яё]*)?|₽|[$€]|доллар|евро|usd|eur)",
+                suffix, re.I,
+            ):
+                return False
+            if re.match(
+                r"\s*(?:пользовател|сервер|компьютер|устройств|аккаунт|рабоч|хост|филиал|сайт|АРМ)",
+                suffix, re.I,
+            ):
+                return True
+            prefix = source[max(0, m.start() - 140):m.start()]
+            if re.search(
+                r"(?:\bсумм(?:а|е|у|ой|ы|ам|ами|ах)?\b|оплат|стоимост|бюджет|расход|закуп)",
+                prefix[-48:], re.I,
+            ):
+                return False
+            recent = re.split(r"[!?;]|\.(?=\s+[A-ZА-ЯЁ])", prefix)[-1]
+            if capacity_context.search(recent):
+                return True
+            return (
+                re.search(r"\[СОКРАЩЕНИЯ-\d+\]", recent) is not None
+                and capacity_context.search(prefix) is not None
+            )
+
+        add(
+            r"(?<![\w.,])(\d+(?:[.,]\d+)?\s*тыс\.?)(?!\w)",
+            "МЕТРИКА", 86, group=1,
+            validate=capacity_thousands_context,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bSchema\s*\ufdd0\s*(\(\d+\)\s*-\s*Windows Server \d{4})",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\[УЗЕЛ-\d+\];\"\[IP-\d+\]\";\"(Windows Server \d{4}(?:\s+R2)?\s+(?:Standard|Enterprise|Datacenter))\"",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        def password_policy_context(m: re.Match) -> bool:
+            return re.search(r"парол", source[max(0, m.start() - 220):m.start()], re.I) is not None
+
+        add(
+            r"\bне\s+менее\s+(\d+\s+символов)(?!\w)",
+            "МЕТРИКА", 86, group=1, validate=password_policy_context,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bмаксимальный\s+срок\s+действия\s*[-–—]?\s*(\d+\s+дней)(?!\w)",
+            "МЕТРИКА", 86, group=1, validate=password_policy_context,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bПороговое\s+значение\s+блокировки[^:]{0,80}:\s*(\d+)(?=\s+неуспешных\s+попыток)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bПороговое\s+значение\s+блокировки[^:]{0,80}:\s*\d+\s+неуспешных\s+попыток\s+в\s+течение\s+(\d+\s+минут)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\b[Дд]лительность\s+блокировки\s*[-–—]?\s*(\d+\s+минут)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bиз\s+(трёх|четырёх|пяти|шести|семи|восьми|девяти|десяти)\s+предыдущих\s+паролей\b",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bне\s+менее\s+чем\s+((?:трёх|четырёх|пяти|двух)\s+групп\s+из\s+(?:трёх|четырёх|пяти))",
+            "МЕТРИКА", 86, group=1, validate=password_policy_context,
+            canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bданные\s+в\s+журнале\s+изменений\s+хранятся\s+в\s+течение\s+(\d+\s+дней)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+        add(
+            r"\bСрок\s+локального\s+оперативного\s+хранения[^.]{0,140}?равным\s+(\d+\s+дням)(?!\w)",
+            "МЕТРИКА", 86, group=1, canonical=lambda m: m.group(1), allow_boundary_context=True,
+        )
+
+        add(
+            r"\bDomain\s+mode\s*\ufdd0\s*(\d{4}(?:\s+R2)?)",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+        add(
+            r"\b(?:лес|доменов)\s*[-–]\s*(Windows Server \d{4}(?:\s+R2)?)",
+            "ПРОГРАММА", 94, group=1, canonical=lambda m: m.group(1),
+            allow_boundary_context=True,
+        )
+
         # Ambiguous code-code-label values become identifiers only when a DOCX
         # table repeats the same namespace/scope pair in one column.  This
         # covers short policy names without globally masking prose such as
@@ -2065,7 +2918,7 @@ class Anonymizer:
         for pattern, category, priority, fixed in _IRREVERSIBLE_RULES:
             add(pattern, category, priority, irreversible=True, fixed=fixed)
         add(r"\b(?!CVE-|ОКПД2?-|ГОСТ-|RFC-)[A-ZА-ЯЁ][A-ZА-ЯЁ0-9]{1,9}-\d{1,6}\b", "ЗАДАЧА", 79, flags=0)
-        add(r"\b(?:Secret\s?Net(?:\s?Studio)?|Dallas\s?Lock|ViPNet|Випнет|КриптоПро|Kaspersky|Касперск[а-яё]+|Dr\.?\s?Web|UserGate|MaxPatrol)(?:\s+(?:Client|Server|Studio|Enterprise|Endpoint|Security|Center|VPN|CSP))*(?:\s+v?\d[\w.-]*)?\b", "СЗИ", 78)
+        add(security_product_pattern, "СЗИ", 78)
 
         # Finance requires currency or explicit commercial context.
         fnum = r"(?:\d{1,3}(?:[ \u00A0.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
@@ -2134,7 +2987,7 @@ class Anonymizer:
         def full_person_key(match: re.Match, surname_group: int) -> str:
             surname_span = match.span(surname_group)
             components: list[str] = []
-            for token in re.finditer(r"[A-Za-zА-Яа-яЁё-]+", match.group()):
+            for token in re.finditer(rf"[A-Za-z{CYRILLIC_RANGE}-]+", match.group()):
                 absolute_span = (match.start() + token.start(), match.start() + token.end())
                 if absolute_span != surname_span:
                     components.append(_canonical_name_component(token.group()))
@@ -2161,11 +3014,21 @@ class Anonymizer:
                 found.append(Detection(*m.span(), "ФИО", priority, m.group(), key))
                 surnames.append((surname, key))
 
-        patr = r"(?:[её]вич(?:а|у|ем|е)?|ович(?:а|у|ем|е)?|ич(?:а|у|ем|е)?|[её]вн(?:а|ы|е|у|ой)|овн(?:а|ы|е|у|ой)|ичн(?:а|ы|е|у|ой)|оглы|кызы)"
-        person(rf"\b([А-ЯЁ][а-яё-]+)\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+{patr}\b", 68, 1, full_key=True)
-        person(rf"\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+{patr}\s+([А-ЯЁ][а-яё-]+)\b", 68, 1, full_key=True)
-        person(r"\b([А-ЯЁ][а-яё-]{2,})\s+[А-ЯЁ][^\S\x0d\x0a]*\.[^\S\x0d\x0a]*[А-ЯЁ][^\S\x0d\x0a]*\.", 67, 1)
-        person(r"\b[А-ЯЁ][^\S\x0d\x0a]*\.[^\S\x0d\x0a]*[А-ЯЁ][^\S\x0d\x0a]*\.[^\S\x0d\x0a]*([А-ЯЁ][а-яё-]{2,})\b", 67, 1)
+        patr = r"(?:[её]вич(?:а|у|ем|е)?|ович(?:а|у|ем|е)?|ич(?:а|у|ем|е)?|[её]вн(?:а|ы|е|у|ой)|овн(?:а|ы|е|у|ой)|ичн(?:а|ы|е|у|ой)|оглы|кызы|ұлы|қызы)"
+
+        def valid_capitalized_person(m: re.Match) -> bool:
+            return all(_capitalized_cyrillic(token) for token in m.group().split())
+
+        cyr_initial = rf"[{CYRILLIC_RANGE}][^\S\x0d\x0a]*\."
+
+        def valid_cyrillic_initials(m: re.Match) -> bool:
+            letters = re.findall(rf"([{CYRILLIC_RANGE}])[^\S\x0d\x0a]*\.", m.group())
+            return _capitalized_cyrillic(m.group(1)) and all(letter.isupper() for letter in letters)
+
+        person(rf"\b({CYRILLIC_TOKEN})\s+{CYRILLIC_TOKEN}\s+{CYRILLIC_TOKEN}{patr}\b", 68, 1, full_key=True, validate=valid_capitalized_person)
+        person(rf"\b{CYRILLIC_TOKEN}\s+{CYRILLIC_TOKEN}{patr}\s+({CYRILLIC_TOKEN})\b", 68, 1, full_key=True, validate=valid_capitalized_person)
+        person(rf"\b({CYRILLIC_TOKEN})[ \t\u00a0]+{cyr_initial}[ \t\u00a0]+{cyr_initial}", 67, 1, validate=valid_cyrillic_initials)
+        person(rf"\b{cyr_initial}[ \t\u00a0]+{cyr_initial}[ \t\u00a0]+({CYRILLIC_TOKEN})\b", 67, 1, validate=valid_cyrillic_initials)
         latin_pair = r"(?<![\w.-])([A-Z][a-z]{2,})\s+([A-Z][a-z]{2,})(?![\w-])"
         def valid_labelled_contact(match: re.Match) -> bool:
             parts = match.group(1).split()
@@ -2199,13 +3062,19 @@ class Anonymizer:
         person(r"\b([А-ЯЁ][а-яё]{2,}(?:ов|ев|ёв|ин|ын|енко|ко|ук|юк|чук|швили|дзе|ян|ский|цкий)(?:а|у|ым|ом|е|ой)?)[ \t\u00a0]+([А-ЯЁ][а-яё]{2,})\b", 65, 1, validate=lambda m: _name_like(m.group(2)), full_key=True)
         # B72: exact vocabulary anchor + adjacent capitalized surname, bounded
         # to one line/cell. Do not infer surnames from arbitrary title-case pairs.
-        pair = r"(?<![\w-])([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?)[ \t\u00a0]+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?)(?![\w-])"
+        pair = rf"(?<![\w-])({CYRILLIC_TOKEN})[ \t\u00a0]+({CYRILLIC_TOKEN})(?![\w-])"
         non_person = STOP_PROPER | set("война победа мир труд версия сервер кабинет технический рабочий новый платформа модуль сервис роман".split())
 
         def contextual_pair(m: re.Match, name_group: int) -> bool:
+            if not _capitalized_cyrillic(m.group(1)) or not _capitalized_cyrillic(m.group(2)):
+                return False
             name = normalize_given_name(m.group(name_group))
             surname = normalize_given_name(m.group(3 - name_group))
-            if name not in GIVEN_NAME_FORMS and name not in NAMES:
+            known_given = name in GIVEN_NAME_FORMS or name in NAMES
+            if name in non_person and not known_given:
+                return False
+            known_surname = is_surname(m.group(3 - name_group))
+            if not known_given and not known_surname:
                 return False
             if surname in non_person or surname in GIVEN_NAMES or surname in NAMES:
                 return False
@@ -2215,6 +3084,21 @@ class Anonymizer:
                    and item.start <= m.start() and item.end >= m.end() for item in found):
                 return False
             prefix = source[max(0, m.start() - 45):m.start()]
+            if not known_given:
+                ambiguous_non_person = {
+                    "российская", "российской", "федерация", "федерации", "субъект",
+                    "тракт", "залога", "предметов", "центр", "корневой", "корневым", "корневом",
+                    "политика", "москва", "школа", "секретарь", "город",
+                }
+                if name in ambiguous_non_person or surname in ambiguous_non_person:
+                    return False
+                person_prefix = source[max(0, m.start() - 400):m.start()]
+                person_prefix = re.split(r"[!?\n]|\.(?=\s|$)", person_prefix)[-1]
+                if not re.search(
+                    r"(?:участник|ответственн|исполнител|контакт|менеджер|куратор|представител|коллег|сотрудник|инженер|администратор|директор|руководител|начальник|специалист|подпис|автор|инициатор|медиатор)",
+                    person_prefix, re.I,
+                ):
+                    return False
             return not re.search(r'(?:ООО|АО|ПАО|компания|продукт|система|роман|книга|фильм)[ \t«"“]*$', prefix, re.I)
 
         person(pair, 64, 2, validate=lambda m: contextual_pair(m, 1), full_key=True)
@@ -2229,7 +3113,7 @@ class Anonymizer:
                 resolved_people.append(item)
                 continue
             stem = item.canonical.removeprefix("фио:")
-            initial_letters = re.findall(r"([А-ЯЁ])[^\S\x0d\x0a]*\.", item.value)
+            initial_letters = re.findall(rf"([{CYRILLIC_RANGE}])[^\S\x0d\x0a]*\.", item.value)
             initials = {letter.casefold().replace("ё", "е") for letter in initial_letters}
             compatible = [
                 key for key in full_by_surname.get(stem, ())
@@ -2252,15 +3136,21 @@ class Anonymizer:
         found = resolved_people
         surnames = [(raw, key) for raw, key in surnames if key.startswith("фио-полное:")]
         role_name = r"(?:ответственн[а-яё]+|исполнител[а-яё]+|контакт[а-яё]*|менеджер[а-яё]*|куратор[а-яё]*|представител[а-яё]+|коллег[а-яё]+|сотрудник[а-яё]*|инженер[а-яё]*|администратор[а-яё]*|директор[а-яё]*|руководител[а-яё]+|начальник[а-яё]*|специалист[а-яё]*|звонить|писать)"
-        for m in re.finditer(rf"\b{role_name}\s*[—:-]?\s+((?-i:[А-ЯЁ][а-яё]{{2,}}))\b", source, re.I):
-            name = m.group(1)
-            if _name_like(name) or re.search(r"(?:ов|ев|ин|ский|цкий)(?:а|у|ым|ом|е|ой)?$", name.casefold()):
+        physical_cyrillic_token = rf"[{CYRILLIC_RANGE}\ufdd3-]+"
+        for m in re.finditer(rf"\b{role_name}[\s\ufdd0\ufdd3]*[—:-]?[\s\ufdd0\ufdd3]+({physical_cyrillic_token})\b", source, re.I):
+            raw_name = m.group(1)
+            name = raw_name.replace(intra_cell_boundary, "")
+            following = re.match(rf"[ \t\u00a0]+({CYRILLIC_TOKEN})", source[m.end(1):])
+            if following and _capitalized_cyrillic(following.group(1)):
+                continue
+            if _capitalized_cyrillic(name) and (_name_like(name) or is_surname(name) or re.search(r"(?:ов|ев|ин|ский|цкий)(?:а|у|ым|ом|е|ой)?$", name.casefold())):
                 if "ФИО" in self.disabled_categories:
                     disabled_spans.append(m.span(1))
                 else:
                     key = "фио-имя:" + _name_stem(name)
-                    found.append(Detection(*m.span(1), "ФИО", 64, name, key,
-                                           scope_start=m.start(), scope_end=m.end()))
+                    stored_name = raw_name.replace(intra_cell_boundary, "\n")
+                    found.append(Detection(*m.span(1), "ФИО", 64, stored_name, key,
+                                           scope_start=m.start(1), scope_end=m.end(1)))
 
         # Login/account names are reversible, unlike passwords. U+FDD3 is a
         # protected DOCX boundary inside one paragraph/cell; accept it between
@@ -2695,20 +3585,34 @@ class Anonymizer:
         for item in accepted:
             if item.category != "ФИО" or not item.canonical or not item.canonical.startswith("фио-полное:"):
                 continue
-            for token in re.finditer(r"[А-Яа-яЁё-]+", item.value):
+            for token in re.finditer(rf"[{CYRILLIC_RANGE}-]+", item.value):
                 normalized = normalize_given_name(token.group())
                 if normalized not in GIVEN_NAME_FORMS and normalized not in NAMES:
                     continue
                 surviving_given_names.add(canonical_given_name(token.group()) or normalized)
+        sentence_initial_name_homonyms = {"вера", "роман", "любовь", "надежда", "лев"}
+
+        def is_sentence_start(position: int) -> bool:
+            prefix = source[:position].rstrip(" \t")
+            return not prefix or prefix[-1] in ".!?\n"
+
         if surviving_given_names and "ФИО" not in self.disabled_categories:
-            for match in re.finditer(r"(?<![\w-])[А-ЯЁ][А-Яа-яЁё-]+(?![\w-])", source):
-                if match.group().casefold() in self.whitelist:
+            for match in re.finditer(rf"(?<![\w-]){CYRILLIC_TOKEN}(?![\w-])", source):
+                if not _capitalized_cyrillic(match.group()):
                     continue
                 normalized = normalize_given_name(match.group())
                 if normalized not in GIVEN_NAME_FORMS and normalized not in NAMES:
                     continue
                 given_key = canonical_given_name(match.group()) or normalized
+                if (
+                    match.group().casefold() in self.whitelist
+                    or normalized.casefold() in self.whitelist
+                    or given_key.casefold() in self.whitelist
+                ):
+                    continue
                 if given_key not in surviving_given_names:
+                    continue
+                if given_key in sentence_initial_name_homonyms and is_sentence_start(match.start()):
                     continue
                 if any(match.start() < end and match.end() > start for start, end in occupied):
                     continue
@@ -2724,7 +3628,7 @@ class Anonymizer:
             stem for stem, keys in surname_keys.items()
             if len(stem) >= 3 and len(keys) == 1 and ("ФИО", next(iter(keys))) in surviving_keys
         }
-        for m in re.finditer(r"(?<![\w-])[А-Яа-яЁё][А-Яа-яЁё-]{2,}(?![\w-])", source):
+        for m in re.finditer(rf"(?<![\w-])[{CYRILLIC_RANGE}][{CYRILLIC_RANGE}-]{{2,}}(?![\w-])", source):
             if _stem_surname(m.group()) not in surviving_surname_stems:
                 continue
             if not any(m.start() < e and m.end() > s for s, e in occupied):
@@ -2742,6 +3646,17 @@ class Anonymizer:
             seen_exact_aliases.add(alias)
             flags = 0 if case_sensitive else re.I
             for match in re.finditer(rf"(?<![\w-]){re.escape(raw)}(?![\w-])", source, flags):
+                if category == "ФИО":
+                    normalized_alias = normalize_given_name(match.group())
+                    given_alias = canonical_given_name(match.group()) or normalized_alias
+                    if (
+                        match.group().casefold() in self.whitelist
+                        or normalized_alias.casefold() in self.whitelist
+                        or given_alias.casefold() in self.whitelist
+                    ):
+                        continue
+                    if given_alias in sentence_initial_name_homonyms and is_sentence_start(match.start()):
+                        continue
                 if any(match.start() < end and match.end() > start for start, end in occupied):
                     continue
                 accepted.append(Detection(

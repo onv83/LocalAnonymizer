@@ -1,11 +1,11 @@
-# LocalAnonymizer v0.3.1 — установка на Mac после публикации
+# LocalAnonymizer v0.4.0 — установка на Mac после публикации
 
 **Предварительная версия для Apple Silicon ARM64 (M-серия). Python, uv и pip не нужны.**
 
 ### macOS: установка и первый запуск (предварительная версия)
 
 1. В меню Apple → «Об этом Mac» убедитесь, что указан чип Apple M-серии. Для Intel работоспособность не обещается.
-2. Скачайте [macOS ARM64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.3.1/LocalAnonymizer-0.3.1-macos-arm64.zip), а не GitHub `Source code`.
+2. Скачайте [macOS ARM64 ZIP](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-macos-arm64.zip), а не GitHub `Source code`.
 3. Дважды щёлкните ZIP в Finder. В распакованной папке `native-macos-package` найдите `LocalAnonymizer.app` (Finder может скрывать расширение `.app`).
 4. Перетащите **LocalAnonymizer.app** в «Программы» (`Applications`). Не разбирайте пакет приложения и не запускайте отдельные файлы внутри него.
 5. Откройте приложение из «Программ» двойным щелчком.
@@ -32,6 +32,6 @@
 
 ## Об этой упаковке
 
-v0.3.1 улучшает восстановление исходного форматирования DOCX и картинок после правок в Word и ускоряет обработку документов. Автоматические проверки сборки и пакета будут зафиксированы на странице выпуска после публикации.
+v0.4.0 расширяет офлайн-распознавание имён и фамилий (включая татарские и extended-Cyrillic формы), улучшает восстановление исходного форматирования DOCX и картинок после правок в Word и ускоряет обработку документов. Автоматические проверки сборки и пакета будут зафиксированы на странице выпуска после публикации.
 
-Выпуск и SHA256SUMS.txt: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.3.1
+Выпуск и SHA256SUMS.txt: https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.0

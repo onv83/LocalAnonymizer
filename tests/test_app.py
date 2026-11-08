@@ -225,6 +225,10 @@ def test_person_name_alias_self_test_requires_full_anchor_and_inflection():
     assert app_module._person_name_alias_self_test(PartialDetector()) is False
 
 
+def test_report_residuals_self_test_requires_metrics_markers_fqdn_and_identifiers():
+    assert app_module._report_residuals_self_test() is True
+
+
 def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode_behavior():
     assert app_module._single_two_letter_abbreviation_self_test() is True
 
@@ -274,6 +278,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["split_service_account_ok"] is True
     assert summary["directory_identifiers_ok"] is True
     assert summary["person_name_alias_ok"] is True
+    assert summary["report_residuals_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert summary["domain_inventory_subject_ok"] is True
     assert "Иванов" not in str(summary)
@@ -3425,13 +3430,13 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
 
 
 def test_active_ui_displays_release_version_in_header_footer_and_scripts():
-    assert app_module.APP_VERSION == "0.3.1"
+    assert app_module.APP_VERSION == "0.4.0"
     for language in ("", "-en"):
         html = app_module.asset_path(f"index{language}-v1.8.23.html").read_text(encoding="utf-8")
         javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
-        assert "· 0.3.1</h1>" in html
-        assert "0.3.1.</footer>" in html
-        assert "APP_VERSION='0.3.1'" in javascript
+        assert "· 0.4.0</h1>" in html
+        assert "0.4.0.</footer>" in html
+        assert "APP_VERSION='0.4.0'" in javascript
 
 
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():

@@ -15,15 +15,20 @@ _ROOT = files("local_anonymizer").joinpath("assets/given_names")
 GIVEN_NAMES = frozenset(normalize_given_name(line) for line in
                         _ROOT.joinpath("names.txt").read_text(encoding="utf-8").splitlines())
 _GENDERS = json.loads(_ROOT.joinpath("genders.json").read_text(encoding="utf-8"))
+_DECLENSIONS = json.loads(_ROOT.joinpath("declensions.json").read_text(encoding="utf-8"))
 
 
-def _case_forms(name: str, gender: str) -> set[str]:
+def _case_forms(name: str, gender: str, locale: str | None = None) -> set[str]:
     # Foreign vowel-final names and female consonant-final names stay unchanged.
     # These paradigms deliberately do not claim accent/ethnicity-complete morphology.
     if name == "лев":
         return {"льва", "льву", "львом", "льве"}
     if name == "павел":
         return {"павла", "павлу", "павлом", "павле"}
+    if locale == "uk" and gender == "m" and name.endswith("ій"):
+        return {name[:-2] + end for end in ("ія", "ію", "ієм", "іє", "ієві")}
+    if locale == "uk" and name.endswith("ія"):
+        return {name[:-1] + end for end in ("ї", "ю", "єю")}
     if name.endswith("ия"):
         return {name[:-1] + end for end in ("и", "ю", "ей", "ею")}
     if name.endswith("ья"):
@@ -46,7 +51,7 @@ def _case_forms(name: str, gender: str) -> set[str]:
 
 _candidates: dict[str, set[str]] = {}
 for _base, _gender in _GENDERS.items():
-    for _form in _case_forms(_base, _gender):
+    for _form in _case_forms(_base, _gender, _DECLENSIONS.get(_base)):
         _candidates.setdefault(_form, set()).add(_base)
 GIVEN_NAME_FORMS = GIVEN_NAMES | _candidates.keys()
 _CANONICAL = {form: next(iter(bases)) for form, bases in _candidates.items()

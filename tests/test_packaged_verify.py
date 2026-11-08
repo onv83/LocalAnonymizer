@@ -67,6 +67,9 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
             "service_account_ok": True,
             "split_service_account_ok": True,
             "directory_identifiers_ok": True,
+            "person_name_alias_ok": True,
+            "extended_cyrillic_names_ok": True,
+            "report_residuals_ok": True,
             "graphics_roundtrip_ok": True,
             "audit_secret_marker_ok": True,
             "word_settings_restore_ok": True,
@@ -101,7 +104,7 @@ def test_packaged_smoke_accepts_all_required_fail_closed_results():
     "underscored_dns_fqdn_ok",
     "domain_inventory_subject_ok", "domain_inventory_row_ok",
     "device_inventory_identifier_ok", "service_account_ok", "split_service_account_ok",
-    "directory_identifiers_ok", "address_review_parity_ok", "audit_secret_marker_ok", "word_settings_restore_ok",
+    "directory_identifiers_ok", "person_name_alias_ok", "extended_cyrillic_names_ok", "report_residuals_ok", "address_review_parity_ok", "audit_secret_marker_ok", "word_settings_restore_ok",
 ))
 def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
     required = (
@@ -118,7 +121,7 @@ def test_packaged_smoke_rejects_build_without_new_detector_proofs(missing):
         "contextual_location_table_ok", "server_inventory_name_ok",
         "split_server_inventory_name_ok", "semantic_server_capacity_node_ok",
         "underscored_dns_fqdn_ok", "service_account_ok",
-        "split_service_account_ok", "directory_identifiers_ok",
+        "split_service_account_ok", "directory_identifiers_ok", "person_name_alias_ok", "extended_cyrillic_names_ok", "report_residuals_ok",
         "graphics_roundtrip_ok", "domain_inventory_subject_ok", "domain_inventory_row_ok",
         "device_inventory_identifier_ok", "audit_secret_marker_ok", "word_settings_restore_ok",
     )
@@ -272,6 +275,9 @@ def test_packaged_smoke_rejects_stale_frequency_only_build_without_single_token_
             "service_account_ok": True,
             "split_service_account_ok": True,
             "directory_identifiers_ok": True,
+            "person_name_alias_ok": True,
+            "extended_cyrillic_names_ok": True,
+            "report_residuals_ok": True,
             "graphics_roundtrip_ok": True,
             "audit_secret_marker_ok": True,
             "word_settings_restore_ok": True,

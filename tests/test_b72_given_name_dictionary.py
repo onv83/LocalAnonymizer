@@ -40,6 +40,14 @@ def test_bare_given_name_requires_a_full_name_anchor_and_preserves_identity():
     assert len(set(full_name_markers)) == 2
 
 
+def test_sentence_initial_common_noun_homonym_is_not_a_name_alias():
+    source = "Сидорова Вера подписала акт. Вера в успех проекта сохраняется."
+
+    result = Anonymizer().anonymize(source)
+
+    assert result.text == "[ФИО-1] подписала акт. Вера в успех проекта сохраняется."
+
+
 @pytest.mark.parametrize("given,surname", [("Айсылу", "Ли"), ("Баир", "Шо"), ("Нино", "Дюма"), ("Аветик", "Крау")])
 def test_atypical_surname_both_orders_and_identity(given, surname):
     source = f"{given} {surname}; {surname} {given}"
@@ -71,8 +79,9 @@ def test_dictionary_resource_and_manifest():
     names = raw.decode("utf-8").splitlines()
     manifest = json.loads(root.joinpath("manifest.json").read_text(encoding="utf-8"))
     assert names == sorted(set(names))
-    assert len(names) == manifest["spellings"] == 10283
-    assert len(GIVEN_NAMES) == manifest["normalized_keys"] == 10275
+    assert len(names) == manifest["spellings"] == 11719
+    assert len(GIVEN_NAMES) == manifest["normalized_keys"] == 11711
+    assert manifest["datacoon_spellings"] == 10283
     assert hashlib.sha256(raw).hexdigest() == manifest["resource_sha256"]
     assert all(name.isalpha() and name == name.casefold() for name in names)
     assert {"айсылу", "доржи", "патимат", "аветик", "нино", "гульчачак"} <= GIVEN_NAMES
@@ -81,7 +90,7 @@ def test_dictionary_resource_and_manifest():
     assert set(genders) == GIVEN_NAMES
     assert set(genders.values()) <= {"m", "f", "fm"}
     from local_anonymizer.given_names import GIVEN_NAME_FORMS, canonical_given_name
-    assert len(GIVEN_NAME_FORMS) == 48191
+    assert len(GIVEN_NAME_FORMS) == 54436
     assert canonical_given_name("Давиду") == "давид"
     # An exact lexical base must not be silently merged into a different person.
     assert canonical_given_name("Романа") == "романа"

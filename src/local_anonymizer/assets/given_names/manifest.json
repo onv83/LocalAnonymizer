@@ -1,15 +1,34 @@
 {
   "source_rows": 32134,
   "source_sha256": "edf0bbe77afcfb121fa5a8a50b089cdf73b9b2cb51c0f876562b6f3476472cd0",
-  "spellings": 10283,
-  "normalized_keys": 10275,
+  "datacoon_spellings": 10283,
+  "spellings": 11719,
+  "normalized_keys": 11711,
   "yo_spellings": 8,
-  "resource_bytes": 142779,
-  "resource_sha256": "210b548917a31032dae991142b871ab2eb5ed76cbab4b96b08c87807076d4950",
+  "resource_bytes": 163585,
+  "resource_sha256": "97ff6f3ea766fcfba5b765ff27f75d84c80e96470b8acd4980f9c8fc5f944a81",
   "excluded_ambiguous_words": [
     "антенна",
     "кабинет",
     "мета",
     "сервер"
-  ]
+  ],
+  "mimesis_revision": "8897e1c879cba8ec3088246c0cf1e79d6888d0d9",
+  "mimesis_archive_sha256": "8be7d058fee2b716a84bf94cd3abc6aa261f787a00fe57d18b904da828aa4d57",
+  "mimesis_locales": [
+    "kk",
+    "ru",
+    "uk"
+  ],
+  "mimesis_spellings": 2163,
+  "mimesis_extended_cyrillic_spellings": 644,
+  "mimesis_license_sha256": "cdd80c8f3af16e9c39e3b9dff1e60955fd9e867462aea7ebad3be5f3fd5bc16f",
+  "mimesis_new_spellings": 1436,
+  "surnames_source_rows": 375449,
+  "surnames_source_sha256": "8c7a263eb0e1886f9482f01fd0f2d22e5132d51ff45266e3b592902abc8f8c6d",
+  "surname_min_count": 5,
+  "surname_spellings": 109477,
+  "surname_normalized_keys": 109329,
+  "surname_resource_bytes": 1845697,
+  "surname_resource_sha256": "a964d28361d16802ed43a7f75aaf6424f24b37dead56e6e6629c42af32cfec9a"
 }

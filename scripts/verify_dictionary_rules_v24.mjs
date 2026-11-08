@@ -134,7 +134,7 @@ const result = await evaluate(`(async()=>{
   const dialogContained=list.top>=dialog.top&&list.bottom<=dialog.bottom&&actions.bottom<=dialog.bottom;
   const keyboardListbox=$('#dictionaryRuleLabelList').getAttribute('role')==='listbox';
   const labelOptions=[...$('#dictionaryRuleLabelList').querySelectorAll('[role="option"]')];
-  const categoryInventory=labelOptions.length===49&&!labelOptions.some(option=>option.dataset.dictionaryLabel==='HINTS');
+  const categoryInventory=labelOptions.length===50&&!labelOptions.some(option=>option.dataset.dictionaryLabel==='HINTS');
   const narrowNoOverflow=document.documentElement.scrollWidth<=window.innerWidth;
   const box=node=>node.getBoundingClientRect();
   const sourceCard=box($('#sourceColumn>.pane')),outputCard=box($('#anonymizedColumn>.pane')),settingsCard=box($('#anonymizationSettings')),reviewCard=box($('#manualReview')),workbench=box($('#anonymizationSettings .settings-workbench')),sourceText=box($('#sourceColumn .editor-stack')),outputText=box($('#richOutput'));
