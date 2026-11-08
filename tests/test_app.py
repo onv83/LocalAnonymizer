@@ -3439,6 +3439,17 @@ def test_active_ui_displays_release_version_in_header_footer_and_scripts():
         assert "APP_VERSION='0.4.0'" in javascript
 
 
+def test_active_ui_secret_markers_describe_file_pair_recovery():
+    cases = (
+        ("", "удалено безвозвратно", "Секрет восстанавливается через пару «документ + .larecovery»"),
+        ("-en", "permanently removed", "Secret is restored through the document + .larecovery pair"),
+    )
+    for language, stale, required in cases:
+        javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
+        assert stale not in javascript.casefold()
+        assert required in javascript
+
+
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():
     assert app_module.INDEX_ASSET == "index-v1.8.23.html"
     assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.23.html"
