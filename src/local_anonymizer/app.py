@@ -787,6 +787,23 @@ def _directory_identifiers_self_test(anonymizer=None) -> bool:
     )
 
 
+def _person_name_alias_self_test(anonymizer=None) -> bool:
+    detector = anonymizer if anonymizer is not None else Anonymizer()
+    source = "Айсылу уточнила статус. С Давидом связались. Участники: Айсылу Ли, Давид Шо"
+    result = detector.anonymize(source)
+    ordinary = detector.anonymize("Давид уточнил статус")
+    disabled = Anonymizer(disabled_categories={"ФИО"}).anonymize(source)
+    return (
+        set(result.mapping.values()) == {"Айсылу", "Давидом", "Айсылу Ли", "Давид Шо"}
+        and result.counts.get("ФИО") == 4
+        and "Айсылу" not in result.text
+        and "Давидом" not in result.text
+        and "[ФИО-" not in ordinary.text
+        and disabled.text == source
+        and disabled.mapping == {}
+    )
+
+
 def _split_service_account_self_test(anonymizer=None) -> bool:
     detector = anonymizer if anonymizer is not None else Anonymizer()
     intra = "\ufdd3"
@@ -1414,6 +1431,7 @@ class AppApi:
         service_account_ok = _service_account_self_test()
         split_service_account_ok = _split_service_account_self_test()
         directory_identifiers_ok = _directory_identifiers_self_test()
+        person_name_alias_ok = _person_name_alias_self_test()
         word_settings_restore_ok = _word_settings_restore_self_test()
         audit_secret_marker_ok = _audit_secret_marker_self_test()
         graphics_roundtrip_ok = _graphics_roundtrip_self_test()
@@ -1450,6 +1468,7 @@ class AppApi:
                 and service_account_ok
                 and split_service_account_ok
                 and directory_identifiers_ok
+                and person_name_alias_ok
                 and word_settings_restore_ok
                 and audit_secret_marker_ok
                 and graphics_roundtrip_ok
@@ -1490,6 +1509,7 @@ class AppApi:
             "service_account_ok": service_account_ok,
             "split_service_account_ok": split_service_account_ok,
             "directory_identifiers_ok": directory_identifiers_ok,
+            "person_name_alias_ok": person_name_alias_ok,
             "word_settings_restore_ok": word_settings_restore_ok,
             "audit_secret_marker_ok": audit_secret_marker_ok,
             "graphics_roundtrip_ok": graphics_roundtrip_ok,

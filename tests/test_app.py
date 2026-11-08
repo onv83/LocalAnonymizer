@@ -215,6 +215,16 @@ def test_directory_identifiers_self_test_requires_universal_user_login_detection
     assert app_module._directory_identifiers_self_test(ReviewLegacyDetector()) is False
 
 
+def test_person_name_alias_self_test_requires_full_anchor_and_inflection():
+    assert app_module._person_name_alias_self_test() is True
+
+    class PartialDetector:
+        def anonymize(self, source):
+            return SimpleNamespace(text=source, mapping={}, counts={})
+
+    assert app_module._person_name_alias_self_test(PartialDetector()) is False
+
+
 def test_single_two_letter_abbreviation_self_test_requires_unconditional_unicode_behavior():
     assert app_module._single_two_letter_abbreviation_self_test() is True
 
@@ -263,6 +273,7 @@ def test_bundled_ui_and_api_smoke(tmp_path, monkeypatch):
     assert summary["service_account_ok"] is True
     assert summary["split_service_account_ok"] is True
     assert summary["directory_identifiers_ok"] is True
+    assert summary["person_name_alias_ok"] is True
     assert summary["graphics_roundtrip_ok"] is True
     assert summary["domain_inventory_subject_ok"] is True
     assert "Иванов" not in str(summary)

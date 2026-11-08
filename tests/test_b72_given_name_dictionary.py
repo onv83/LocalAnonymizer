@@ -15,6 +15,31 @@ def test_broad_given_name_dictionary_is_integrated(given):
     assert result.mapping == {"[ФИО-1]": source}
 
 
+def test_full_name_anchor_masks_bare_and_inflected_given_name_mentions():
+    source = "Айсылу уточнила статус. С Давидом связались. Участники: Айсылу Ли, Давид Шо"
+
+    result = Anonymizer().anonymize(source)
+
+    assert "Айсылу" not in result.text
+    assert "Давидом" not in result.text
+    assert "Айсылу Ли" not in result.text
+    assert "Давид Шо" not in result.text
+    assert set(result.mapping.values()) == {"Айсылу", "Давидом", "Айсылу Ли", "Давид Шо"}
+    assert Anonymizer(disabled_categories={"ФИО"}).anonymize(source).text == source
+
+
+def test_bare_given_name_requires_a_full_name_anchor_and_preserves_identity():
+    ordinary = "Давид уточнил статус"
+    assert "[ФИО-" not in Anonymizer().anonymize(ordinary).text
+
+    source = "Давид уточнил. Участники: Давид Ли, Давид Шо"
+    result = Anonymizer().anonymize(source)
+    assert "Давид" not in result.text
+    assert set(result.mapping.values()) == {"Давид", "Давид Ли", "Давид Шо"}
+    full_name_markers = [marker for marker, value in result.mapping.items() if value != "Давид"]
+    assert len(set(full_name_markers)) == 2
+
+
 @pytest.mark.parametrize("given,surname", [("Айсылу", "Ли"), ("Баир", "Шо"), ("Нино", "Дюма"), ("Аветик", "Крау")])
 def test_atypical_surname_both_orders_and_identity(given, surname):
     source = f"{given} {surname}; {surname} {given}"

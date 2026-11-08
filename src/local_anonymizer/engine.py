@@ -2691,6 +2691,32 @@ class Anonymizer:
             for m in re.finditer(rf"(?<![\w-]){pattern}(?![\w-])", source, re.I):
                 if not any(m.start() < e and m.end() > s for s, e in occupied):
                     accepted.append(Detection(*m.span(), category, 50, m.group(), key)); occupied.append(m.span())
+        surviving_given_names: set[str] = set()
+        for item in accepted:
+            if item.category != "ФИО" or not item.canonical or not item.canonical.startswith("фио-полное:"):
+                continue
+            for token in re.finditer(r"[А-Яа-яЁё-]+", item.value):
+                normalized = normalize_given_name(token.group())
+                if normalized not in GIVEN_NAME_FORMS and normalized not in NAMES:
+                    continue
+                surviving_given_names.add(canonical_given_name(token.group()) or normalized)
+        if surviving_given_names and "ФИО" not in self.disabled_categories:
+            for match in re.finditer(r"(?<![\w-])[А-ЯЁ][А-Яа-яЁё-]+(?![\w-])", source):
+                if match.group().casefold() in self.whitelist:
+                    continue
+                normalized = normalize_given_name(match.group())
+                if normalized not in GIVEN_NAME_FORMS and normalized not in NAMES:
+                    continue
+                given_key = canonical_given_name(match.group()) or normalized
+                if given_key not in surviving_given_names:
+                    continue
+                if any(match.start() < end and match.end() > start for start, end in occupied):
+                    continue
+                accepted.append(Detection(
+                    *match.span(), "ФИО", 48, match.group(), "фио-имя:" + given_key,
+                ))
+                occupied.append(match.span())
+
         surname_keys: dict[str, set[str]] = {}
         for raw, key in surnames:
             surname_keys.setdefault(_stem_surname(raw), set()).add(key)
