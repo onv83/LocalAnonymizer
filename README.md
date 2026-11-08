@@ -6,8 +6,8 @@
 
 | Платформа | Скачать готовое приложение | Статус |
 | --- | --- | --- |
-| Windows x64 | [LocalAnonymizer-0.4.0-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-windows-x64.zip) | Будет опубликован после завершения сборки и проверок |
-| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.0-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-macos-arm64.zip) | Будет опубликован как **предварительная версия** после native CI |
+| Windows x64 | [LocalAnonymizer-0.4.0-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-windows-x64.zip) | Проверено: 1341 tests + packaged smoke/pair/platform |
+| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.0-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-macos-arm64.zip) | **Предварительная версия**; требуются native CI и ручная приёмка на Mac |
 
 [Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.0) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
@@ -46,7 +46,7 @@
 ### Проверки перед публикацией
 
 - Исходный код: полный набор v0.4.0 завершён с **1341 passed** и 3 предупреждениями duplicate-ZIP canary; известных незакрытых падений в этом прогоне нет.
-- До публикации Windows-архива будут выполнены сборка, проверки EXE (ядро, пара файлов восстановления, платформенные службы) и GUI-проверка синтетического DOCX с таблицами и разорванными фрагментами.
+- Windows-архив: PyInstaller, EXE smoke/pair/platform checks и GUI-запуск установленной сборки завершены.
 - До публикации macOS ARM64-архива native CI должен подтвердить WebKit bridge, системный буфер, текстовое восстановление и packaged core/pair/platform проверки. Это не заменяет ручную приёмку на Mac.
 
 ## Что изменилось в 0.4.0
@@ -85,7 +85,7 @@
 
 ## English installation and status
 
-**v0.4.0 release publication is in progress.** The Windows archive will be published after the packaged checks; the macOS ARM64 archive will remain preliminary and requires native CI plus real-Mac manual acceptance. No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
+**v0.4.0 is the current version.** Windows packaged verification is complete; the macOS ARM64 archive remains preliminary and requires native CI plus real-Mac manual acceptance. No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
 
 - [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
 - [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.0/LocalAnonymizer-0.4.0-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
