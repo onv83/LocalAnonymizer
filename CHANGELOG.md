@@ -4,6 +4,28 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; releases since v0.2.12 also include a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
+## [0.4.2] — 2026-11-09
+
+### Производительность движка и обработка документов
+
+- Разрешение пересечений через отсортированный интервальный индекс: повторные линейные пересмотры растущего списка занятых диапазонов в проходах псевдонимов, имён, фамилий, точных псевдонимов, подсказок, логических подсказок, локаций и fallback-сокращений заменены bisect-индексом отсортированных непересекающихся интервалов. Точная семантика строгого пересечения сохранена: нулевые диапазоны блокируют только строго содержащие их захваты, невалидные диапазоны ничего не блокируют, а касающиеся интервалы не сливаются. Порядок детекций и идентичности маркеров не изменились — прогоновые digests совпадают побайтово; рандомизированная дифференциальная регрессия закрепляет соответствие прежней линейной семантике.
+- Вынос schema-работы санитайзера DOCX из цикла элементов: классификация части пакета мемоизирована, горячие валидаторы прекомпилированы, а lookups ключа части, разрешённых пар элементов, доверенных контекстов и видимого текста вынесены из цикла очистки каждого элемента. Результат очистки побайтово идентичен прежнему.
+- Один проход движка на действие с документом: результат движка (текст, карта замен, участки, легенда, счётчики) сохраняется вместе с результатом документа и переиспользуется. Форматированный предпросмотр рендерит соответствующий экспортированный артефакт вместо повторного запуска движка, а идентичные запросы (настройки, текст) через `anonymize_text` обслуживаются из небольшого LRU. При любом изменении настроек, текста или артефакта выполняется свежий проход; формы ответов и порядок ключей не изменились, UI-ассеты не менялись.
+
+Синтетические замеры: корпус движка 48u — **6,05 → 3,12 с (~1,9×)**; очистка DOCX `word/document.xml` — **0,298 → 0,189 с (~1,6×)**, `styles.xml` — **0,412 → 0,212 с (~1,9×)**; медиана UI-действия «применить настройки к файлу» — **5,561 → 2,545 с** при неизменных настройках (один проход движка вместо 2–3) и **5,286 → 2,831 с** при изменённых настройках. Это измерения конкретных синтетических сценариев, а не гарантия для любого документа.
+
+### English
+
+- Sorted-interval overlap resolution: repeated linear rescans of the growing occupied-span list in the alias, given-name, surname, exact-alias, hint, logical-hint, location and abbreviation-fallback passes are replaced by a bisect-based index of sorted non-overlapping intervals. The exact strict-overlap semantics are preserved: zero-length spans block only spans strictly containing them, invalid spans never block, and touching intervals are never merged. Detection order and marker identity are unchanged (probe digests are byte-identical), and a randomized differential regression pins the new index to the historical linear semantics.
+- DOCX sanitizer schema hoisting: package-part classification is memoized, hot-path validators are precompiled, and part-key, allowed element/attribute pair, trusted-context and visible-text lookups are hoisted out of the per-element scrub loop. The sanitized output is byte-identical.
+- One engine pass per document action: the engine result (text, replacement mapping, parts, legend, counts) now travels with the document result and is reused. The formatted preview renders the matching exported artifact instead of re-running the engine, and identical (settings, text) `anonymize_text` requests are served from a small LRU. Any settings, text or artifact mismatch triggers a fresh pass; response shapes and key order are unchanged and no UI asset was touched.
+- Synthetic benchmarks: engine 48u corpus **6.05 → 3.12 s (~1.9×)**; DOCX scrub of `word/document.xml` **0.298 → 0.189 s (~1.6×)** and `styles.xml` **0.412 → 0.212 s (~1.9×)**; median «apply settings to file» UI action **5.561 → 2.545 s** with unchanged settings (one engine pass instead of 2–3) and **5.286 → 2.831 s** with changed settings. These are measurements of specific synthetic scenarios, not a guarantee for every document.
+
+### Проверки / Verification
+
+- Полный source suite: **1387 passed, 3 warnings**; независимый review производительности — **GO**.
+- Сборка, установка и публикация 0.4.2 на момент этого снимка документации не выполнялись; до релиза они остаются обязательными шагами.
+
 ## [0.4.1] — 2026-11-09
 
 ### Сетевой инвентарь и серверные списки (B101)

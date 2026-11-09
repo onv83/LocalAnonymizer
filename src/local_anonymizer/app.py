@@ -40,7 +40,7 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 INDEX_ASSET = "index-v1.8.23.html"
 ENGLISH_INDEX_ASSET = "index-en-v1.8.23.html"
 
