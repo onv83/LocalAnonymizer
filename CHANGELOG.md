@@ -4,7 +4,15 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
-## [Unreleased]
+## [0.4.1] — 2026-11-09
+
+### Сетевой инвентарь и серверные списки (B101)
+
+- Универсальные inventory hostnames: компактные буквенно-цифровые, multi-segment значения с внутренними дефисами и mixed-case имена узлов маскируются целиком обратимым `[УЗЕЛ-N]`, когда строка инвентаризации содержит row-local IPv4/CIDR либо существующий `[IP-N]` плюс host-колоночное/структурное, OS или числовое доказательство. Категория `УЗЕЛ` приоритетнее `ЗАДАЧА`/`СОКРАЩЕНИЯ`, поэтому structured hostname не фрагментируется; правая граница точная, повторы значения переиспользуют один маркер, разный регистр сохраняет отдельные идентичности, а контекст строки не переносится в соседние разделы.
+- Серверные списки вне таблиц: ограниченный block-parser открывает список только явным заголовком «Сервер»/«Имя узла»/`Hostname` (допускаются нумерация заголовка и префиксы списка), принимает marker-only промежуточные строки, захватывает каждый hostname целиком и останавливается на следующем заголовке раздела, содержательном абзаце или границе таблицы/документа. Обычная фраза «Сервер работает штатно» список не открывает.
+- CIDR-префикс рядом с существующим маркером: открытый суффикс `/8…/32` после `[IP-N]`, `[ДОМЕН-N]` или маркера сайта/подписи больше не остаётся в тексте. Обрабатываются только валидные длины префикса; обычные дроби, пути, даты, версии и произвольные `[КАТЕГОРИЯ-N]/NN` не захватываются.
+- Белый список и отключение категорий: значение префикса из белого списка (например `/19`) остаётся в тексте без замены и без перемаркировки в другие категории; отключение категории сохраняет суффикс и значение без relabel.
+- DOCX, идемпотентность и дифференциальная приёмка: split runs, split cells, таблицы и списки обрабатываются с изоляцией строки; исходник не изменяется, пара восстанавливает документ, физическая проверка OOXML подтверждает отсутствие исходных сетевых значений во всех XML-частях пакета, повторный проход не создаёт новых и вложенных маркеров. Дифференциальная проверка подтвердила отсутствие необоснованных потерь прежних detections: отказ от прежних host-строк «mount-path + ≥3 чисто числовых ячеек» без row-local IP-доказательства — намеренное ужесточение по утверждённому требованию A5, а не регрессия.
 
 ### Исправления текста и документации
 
@@ -14,8 +22,18 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 ### English
 
+- Universal inventory hostnames: compact alphanumeric, multi-segment hyphenated and mixed-case host tokens are masked as one reversible `[УЗЕЛ-N]` when the inventory row carries row-local IPv4/CIDR or an existing `[IP-N]` plus host-column/structural, OS or numeric evidence. The `УЗЕЛ` category takes precedence over `ЗАДАЧА`/`СОКРАЩЕНИЯ`, so structured hostnames are not fragmented; captures keep exact right boundaries, repeated values reuse one marker, distinct spellings keep distinct identities, and row context never leaks into adjacent sections.
+- Bounded server lists outside tables: a block parser opens the list only on an explicit `Сервер`/`Hostname` heading (heading numbering and list prefixes allowed), accepts marker-only intermediate lines, captures each hostname whole, and stops at the next section heading, substantive paragraph or table/document boundary. Ordinary prose such as «Сервер работает штатно» does not open a list.
+- Marker-adjacent CIDR: an exposed `/8…/32` suffix after an existing `[IP-N]`, `[ДОМЕН-N]` or site/label marker no longer remains in the text. Only valid prefix lengths are handled; ordinary fractions, paths, dates, versions and arbitrary `[CATEGORY-N]/NN` stay untouched.
+- Whitelist and category controls: a whitelisted prefix value (for example `/19`) stays in the text without masking and without relabelling into another category; a disabled category keeps the suffix and the value without relabel.
+- DOCX, idempotence and differential acceptance: split runs, split cells, tables and lists are handled with row isolation; the source stays unchanged, the pair restores the document, a physical OOXML check proves the source network values are absent from every XML part of the package, and a second pass creates no new or nested markers. Differential verification confirmed no unjustified loss of earlier detections: dropping former «mount-path + ≥3 purely numeric cells» host rows without row-local IP evidence is the approved A5 tightening, not a regression.
 - RU/EN secret-marker tooltips now describe recovery through the document + `.larecovery` pair instead of permanent removal.
 - README now documents the actual rule/allow-list tables and current secret recovery flow; the 0.4.0 notes cover the full changes since public 0.3.0.
+
+### Проверки / Verification
+
+- Полный source suite: **1377 passed, 3 warnings**; независимый exact-snapshot re-review: **GO, без blockers**.
+- Сборка, установка и публикация 0.4.1 на момент этого снимка документации не выполнялись; до релиза они остаются обязательными шагами.
 
 ## [0.4.0] — 2026-11-08
 

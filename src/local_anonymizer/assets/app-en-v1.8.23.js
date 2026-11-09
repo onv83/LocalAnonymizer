@@ -1,5 +1,5 @@
 const $ = s => document.querySelector(s);
-const APP_VERSION='0.4.0';
+const APP_VERSION='0.4.1';
 const THEME_KEY='local-anonymizer-theme';
 const UNCERTAIN_MODES=new Set(['off','review','auto']);
 function normalizeUncertainMode(mode,paranoid=false,reviewHints=true){return UNCERTAIN_MODES.has(mode)?mode:(paranoid?'auto':(reviewHints?'review':'off'));}
