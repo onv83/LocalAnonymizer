@@ -59,6 +59,41 @@ COMPACT_MARKER_LABELS = {
     "СТАВКА": "СТВ",
 }
 
+# Reverse map from a marker label (compact or full) to its output category.
+# Network rules use it to resolve the category of a marker that already
+# exists in the source text, without inventing categories from free text.
+_MARKER_LABEL_CATEGORY: dict[str, str] = {}
+for _category, _label in (*COMPACT_MARKER_LABELS.items(), *(
+    (category, category)
+    for category in (
+        "IP", "MAC", "DN", "IMEI", "VIN", "БИК", "КПП", "ОГРН", "СНИЛС", "СЗЙ",
+        "СЧЁТ", "ЛОГИН", "ЗАДАЧА", "МЕТРИКА", "СОКРАЩЕНИЯ", "СКРЫТО", "SECRET",
+    )
+)):
+    _MARKER_LABEL_CATEGORY.setdefault(_label, _category)
+    _MARKER_LABEL_CATEGORY.setdefault(_category, _category)
+
+
+def _inventory_host_token(value: str) -> str | None:
+    """Return the complete inventory hostname token contained in ``value``.
+
+    A universal A5/A6 grammar, not a list of concrete hostnames: the token
+    consists of ASCII letters, digits and internal hyphens only, starts
+    with a letter, contains at least one letter and one digit, keeps a
+    bounded length, and may be closed by a single punctuation character.
+    Anything else (IPv4, versions, dates, plain numbers, markers or prose)
+    is rejected so a bounded regex can never mask only a prefix.
+    """
+    match = re.fullmatch(r"(?a:([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*))[.,;:]?", value)
+    if match is None:
+        return None
+    token = match.group(1)
+    if not 2 <= len(token) <= 48:
+        return None
+    if not re.search(r"\d", token):
+        return None
+    return token
+
 
 def normalize_label(label: str) -> str:
     normalized = label.strip().upper()
@@ -1471,6 +1506,62 @@ class Anonymizer:
         add(r"(?<![\w.@:-])(?:adc\d+|ad-dns-\d+)(?![\w-])", "УЗЕЛ", 84,
             canonical=lambda m: m.group().casefold())
 
+        # A7: a subnet prefix that survived a previous pass next to an
+        # already masked network, site or IP label must not stay open (for
+        # example "[IP-7]/19").  Only a marker-adjacent /8../32 with proven
+        # subnet/IP context is handled; the prefix keeps the existing
+        # marker's category so no fictitious IP category is invented from
+        # non-network text, and ordinary fractions, paths, dates, versions
+        # and arbitrary "[CATEGORY-N]/NN" text stay untouched.  A whitelisted
+        # prefix value is exempt exactly like any other whitelisted
+        # detection and is never relabelled into another category.
+        marker_adjacent_prefix = re.compile(
+            rf"(\[{LABEL_PATTERN}-\d{{1,9}}\])([\s\ufdd3]{{0,4}})(/\d{{1,2}})(?!\d)"
+        )
+        subnet_site_label = re.compile(
+            r"(?:подсет[а-яё]+|сет(?:ь|и|ей|ям|ях|е|у|ой|ью)?|сетев[а-яё]*|"
+            r"\bsubnet\b|\bnet\b|\bvlan\b|маск[а-яё]+|"
+            r"префикс[а-яё]*|\bprefix\b|\bcidr\b|сайт[а-яё]*|площадк[а-яё]+|"
+            r"\bsite\b|диапазон[а-яё]*)",
+            re.I,
+        )
+        for marker_prefix_match in marker_adjacent_prefix.finditer(source):
+            prefix_value = int(marker_prefix_match.group(3)[1:])
+            if not 8 <= prefix_value <= 32:
+                continue
+            marker_text = marker_prefix_match.group(1)
+            marker_label = re.fullmatch(
+                rf"\[({LABEL_PATTERN})-\d{{1,9}}\]", marker_text
+            ).group(1)
+            marker_category = _MARKER_LABEL_CATEGORY.get(marker_label)
+            if marker_category is None:
+                continue
+            label_window = source[max(0, marker_prefix_match.start(1) - 48):marker_prefix_match.start(1)]
+            line_break = max(label_window.rfind("\n"), label_window.rfind("\ufdd0"))
+            label_window = label_window[line_break + 1:]
+            subnet_context = (
+                marker_category in {"IP", "ДОМЕН"}
+                or subnet_site_label.search(label_window) is not None
+            )
+            if not subnet_context:
+                continue
+            suffix_start, suffix_end = marker_prefix_match.span(3)
+            suffix_value = marker_prefix_match.group(3)
+            if suffix_value.casefold() in self.whitelist:
+                # Review B3: a whitelisted prefix value is exempt entirely,
+                # like every other whitelisted detection, and is never
+                # recorded as a disabled-category blocker.
+                continue
+            if marker_category in self.disabled_categories:
+                disabled_spans.append((suffix_start, suffix_end))
+                continue
+            found.append(Detection(
+                suffix_start, suffix_end, marker_category, 97, suffix_value, suffix_value,
+                scope_start=suffix_start, scope_end=suffix_end,
+                case_sensitive_canonical=True,
+            ))
+
+
         # Infrastructure inventory fields can be split between adjacent DOCX
         # table cells.  U+FDD0 is the internal, immutable cell/paragraph
         # boundary; only the captured value is replaced.
@@ -1702,42 +1793,117 @@ class Anonymizer:
                             current_start + row_offset + cell_start, raw,
                         )
 
+        def add_inventory_host_value(absolute_start: int, raw: str, allow_prefix: bool = False) -> str | None:
+            """A5/A6 shared host emission for cells and list lines.
+
+            Masks exactly one complete inventory hostname token inside
+            ``raw`` with explicit left/right boundaries, so list bullets,
+            quotes and trailing punctuation are never captured or left
+            half-open.  ``intra_cell_boundary`` (U+FDD3) run splits inside
+            the token are tolerated through a logical view.
+            """
+            chars: list[str] = []
+            positions: list[int] = []
+            for offset, character in enumerate(raw):
+                if character == intra_cell_boundary:
+                    continue
+                chars.append(character)
+                positions.append(absolute_start + offset)
+            logical = "".join(chars)
+            body = logical.strip()
+            if allow_prefix:
+                bullet = re.match(r"(?:[-–—•*]|\d{1,3}[.)])[ \t]+", body)
+                if bullet:
+                    body = body[bullet.end():]
+            token = _inventory_host_token(body.strip("\"'«»"))
+            if token is None:
+                return None
+            located = re.search(rf"(?<![\w.-]){re.escape(token)}(?![\w-])", logical)
+            if located is None:
+                return None
+            left = positions[located.start()]
+            right = positions[located.end() - 1] + 1
+            physical = source[left:right]
+            if physical.replace(intra_cell_boundary, "").casefold() in self.whitelist:
+                return None
+            if "УЗЕЛ" in self.disabled_categories:
+                disabled_spans.append((left, right))
+                return token
+            found.append(Detection(
+                left, right, "УЗЕЛ", 96,
+                physical.replace(intra_cell_boundary, "\n"),
+                physical.replace(intra_cell_boundary, ""),
+                scope_start=left, scope_end=right,
+                case_sensitive_canonical=True,
+            ))
+            return token
+
         if table_boundary in source:
             vm_host = re.compile(r"[a-z][a-z0-9]{1,7}-[a-z]{2,12}v-\d{4}", re.I)
-            general_vm_host = re.compile(r"[a-z][a-z0-9-]{1,30}-\d{3,4}", re.I)
             ipv4_prefix = re.compile(r"(?:\d{1,3}\.){2}\d{1,3}\.-")
+            ip_marker = re.compile(r"\[IP-\d+\]")
+            host_heading = re.compile(
+                r"(?:сервер|hostname|host|вм|узел|имя\s+(?:сервера|узла)|наименование\s+(?:сервера|узла)|название\s+(?:сервера|узла))",
+                re.I,
+            )
+
+            def row_ip_evidence(value: str) -> bool:
+                if ip_marker.fullmatch(value) or ipv4_prefix.fullmatch(value):
+                    return True
+                return re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?", value) is not None and _valid_ip(value)
+
             block_start = 0
             for block in source.split(table_boundary):
                 current_start = block_start
                 block_start += len(block) + len(table_boundary)
+                explicit_host_columns = set()
                 for row_offset, _, row_text in split_spans(block, row_boundary):
                     cells = split_spans(row_text, "\ufdd0")
+                    headings = [
+                        re.sub(r"\s+", " ", cell[2].replace(intra_cell_boundary, " ")).strip()
+                        for cell in cells
+                    ]
+                    header_columns = {
+                        index for index, heading in enumerate(headings)
+                        if host_heading.fullmatch(heading)
+                    }
+                    if header_columns and any(
+                        re.search(r"(?:ip|о\s*с|ос|cpu|ram|disk|операцион)", heading, re.I)
+                        for heading in headings
+                    ):
+                        explicit_host_columns = header_columns
+                        continue
                     host_index = None
                     for index, (_cell_start, _cell_end, raw) in enumerate(cells):
                         logical = raw.replace(intra_cell_boundary, "").strip().strip("\"'«»")
-                        if vm_host.fullmatch(logical) or re.fullmatch(r"\[УЗЕЛ-\d+\]", logical):
+                        if vm_host.fullmatch(logical) or re.fullmatch(r"\[УЗЕЛ-\d+\][.,;:]?", logical):
                             host_index = index
                             break
-                        if general_vm_host.fullmatch(logical):
-                            following = [
-                                cell[2].replace(intra_cell_boundary, "").strip().strip("\"'«»")
-                                for cell in cells[index + 1:]
-                            ]
-                            numeric_count = sum(
-                                re.fullmatch(r"\d+(?:[.,]\d+)?", value) is not None
-                                for value in following
-                            )
-                            if numeric_count >= 3 and any(
-                                value.startswith("/") or ipv4_prefix.fullmatch(value)
-                                for value in following
-                            ):
-                                host_index = index
-                                break
+                        if _inventory_host_token(logical) is None:
+                            continue
+                        other_values = [
+                            cell[2].replace(intra_cell_boundary, "").strip().strip("\"'«»")
+                            for other_index, cell in enumerate(cells)
+                            if other_index != index
+                        ]
+                        if not any(row_ip_evidence(value) for value in other_values):
+                            continue
+                        numeric_count = sum(
+                            re.fullmatch(r"\d+(?:[.,]\d+)?", value) is not None
+                            for value in other_values
+                        )
+                        os_evidence = any(
+                            re.search(r"(?:64-bit|x86_64|windows|linux|astra|server\s+linx)", value, re.I)
+                            for value in other_values
+                        )
+                        if index in explicit_host_columns or numeric_count >= 2 or os_evidence:
+                            host_index = index
+                            break
                     if host_index is None:
                         continue
                     host_start, _host_end, host_raw = cells[host_index]
-                    add_sensitive_table_cell(
-                        "УЗЕЛ", 96, current_start + row_offset + host_start, host_raw,
+                    add_inventory_host_value(
+                        current_start + row_offset + host_start, host_raw,
                     )
                     numeric_capacity = 0
                     for cell_start, _cell_end, raw in cells[host_index + 1:]:
@@ -1757,6 +1923,121 @@ class Anonymizer:
                             octets = logical.rstrip(".-").split(".")
                             if all(0 <= int(octet) <= 255 for octet in octets):
                                 add_sensitive_table_cell("IP", 96, absolute, raw)
+
+        # A6: server lists outside tables under a bounded structural heading.
+        # The parser opens only on an explicit server-list heading and stops
+        # at the first line that is neither a complete hostname (shared A5
+        # grammar, full capture) nor a marker/record line, so prose, adjacent
+        # sections and table/document boundaries all close the block.
+        # Review B1: a generic container (перечень/список/состав) opens only
+        # when the heading itself carries explicit server/host/VM semantics
+        # («Перечень серверов»), so «Перечень оборудования» or «Состав работ»
+        # never opens a block; a bare plural head must remain a noun-phrase
+        # heading («Серверы региона:»), while plural prose («Серверы работают
+        # штатно») is rejected because a finite-verb/predicate word can never
+        # be a heading modifier.
+        server_list_container = re.compile(r"^(?:перечень|список|состав)\b", re.I)
+        server_list_plural_head = re.compile(
+            r"^(?:серверы|сервера|хосты|узлы|виртуальные\s+машины)\b", re.I)
+        server_list_named_head = re.compile(
+            r"^(?:имя\s+(?:узла|сервера|хоста|вм)|имена\s+узлов|"
+            r"наименование\s+сервер(?:а|ов)?|наименование\s+узл(?:а|ов)?|"
+            r"hostname|hostnames|hosts)\b",
+            re.I,
+        )
+        # Explicit server/host/VM semantics required after a generic
+        # container: any inflected сервер/узел/хост/виртуальная машина word,
+        # a standalone ВМ, or an English host keyword.
+        server_list_semantics = re.compile(
+            r"(?:\b(?:сервер|узл|хост|виртуальн)[а-яё-]*|\bвм\b|host)", re.I)
+        # Heading-modifier prose rejection: a structural heading continuation
+        # is a noun phrase, never a finite verb or plural short predicate
+        # («работают», «отключены», «работали»).  Adverbs (-но) and
+        # masculine short participles (-ён/-ен) stay out of the bounded
+        # ending set because they collide with legitimate noun modifiers.
+        server_list_predicate_word = re.compile(
+            r"[а-яё](?:ут|ют|ат|ят|ны|ты|ли)$", re.I)
+        server_list_numbering = re.compile(r"\d{1,3}(?:\.\d{1,3})*[.)]?[ \t]+")
+        list_record_word = re.compile(
+            r"^(?:\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?"
+            r"|\d{1,4}(?:[.,]\d+)?(?:-[A-Za-z][A-Za-z0-9-]*)?%?"
+            r"|\(\d{1,4}-[A-Za-z]+\)"
+            r"|[A-Za-z][A-Za-z0-9./+_-]{0,24}"
+            r")$"
+        )
+
+        def is_server_list_heading(line: str) -> bool:
+            text = line.strip().strip("\"'«»")
+            if not text or len(text) > 64:
+                return False
+            if re.search(r"[,!?…]", text):
+                return False
+            numbering = server_list_numbering.match(text)
+            body = text[numbering.end():] if numbering else text
+            if body.endswith("."):
+                return False
+            if re.fullmatch(r"сервер[ \t]*:?", body, re.I):
+                # Exact approved singular heading «Сервер»/«Сервер:».
+                return True
+            phrase = body[:-1].rstrip() if body.endswith(":") else body
+            words = phrase.split()
+            if not words or len(words) > 5:
+                return False
+            head_match = None
+            for head_pattern in (server_list_plural_head, server_list_named_head):
+                head_match = head_pattern.match(phrase)
+                if head_match is not None:
+                    break
+            if head_match is None:
+                container_match = server_list_container.match(phrase)
+                if container_match is None:
+                    return False
+                rest_words = phrase[container_match.end():].split()
+                # A generic container needs explicit server/host/VM
+                # semantics: «Перечень серверов» opens, «Перечень
+                # оборудования» and «Состав работ» never do.
+                if not rest_words or not server_list_semantics.search(
+                        " ".join(rest_words)):
+                    return False
+            else:
+                rest_words = phrase[head_match.end():].split()
+            # Plural prose is not a heading: a predicate word after the
+            # head («Серверы работают штатно») keeps the gate closed.
+            if any(server_list_predicate_word.search(word) for word in rest_words):
+                return False
+            return True
+
+        outside_blocks: list[tuple[int, str]] = []
+        part_offset = 0
+        for part in source.split(table_boundary):
+            # A table segment always carries row boundaries; the document
+            # wrapper also uses the table delimiter, so structural row
+            # content - not segment parity - marks real table regions.
+            if row_boundary not in part:
+                outside_blocks.append((part_offset, part))
+            part_offset += len(part) + len(table_boundary)
+        for block_start, block in outside_blocks:
+            in_server_list = False
+            for line_match in re.finditer(r"[^\n\x0d\ufdd0]+", block):
+                line_raw = line_match.group()
+                line_absolute = block_start + line_match.start()
+                logical_line = line_raw.replace(intra_cell_boundary, "")
+                if not logical_line.strip():
+                    continue
+                if is_server_list_heading(logical_line):
+                    in_server_list = True
+                    continue
+                if not in_server_list:
+                    continue
+                if add_inventory_host_value(line_absolute, line_raw, allow_prefix=True) is not None:
+                    continue
+                words = logical_line.split()
+                if words and all(
+                    LITERAL_MARKER_RE.fullmatch(word) or list_record_word.fullmatch(word)
+                    for word in words
+                ):
+                    continue
+                in_server_list = False
 
         if table_boundary in source:
             block_start = 0

@@ -1,5 +1,5 @@
 const $ = s => document.querySelector(s);
-const APP_VERSION='0.4.0';
+const APP_VERSION='0.4.1';
 const THEME_KEY='local-anonymizer-theme';
 const UNCERTAIN_MODES=new Set(['off','review','auto']);
 function normalizeUncertainMode(mode,paranoid=false,reviewHints=true){return UNCERTAIN_MODES.has(mode)?mode:(paranoid?'auto':(reviewHints?'review':'off'));}
@@ -349,7 +349,7 @@ function renderOutput(){
     if(p.t==='text')return esc(p.s);
     if(restoredParts.has(i))return `<span class="restored" data-part="${i}">${esc(p.orig)}</span>`;
     if(p.t==='hint'){const key=`${generation}|${p.kind}|${p.s0}|${p.orig}`,kind=hintKindText(p.kind);return `<button type="button" class="mark-hint ${reviewedHints.has(key)?'reviewed':''}" data-part="${i}" data-s0="${p.s0}" data-kind="${esc(p.kind)}" aria-label="Review uncertain item: ${esc(p.orig)}. ${esc(kind)}" title="${esc(kind)}">${esc(p.s)}</button>`;}
-    return `<button type="button" class="${p.secret?'mark-secret':'mark-replacement'}" data-part="${i}" data-s0="${p.s0}" data-ph="${esc(p.s)}" aria-label="${p.secret?'Value permanently removed':`Restore original value for ${esc(p.s)}`}" title="${p.secret?'Permanently removed':'Click to restore this value'}">${esc(p.s)}</button>`;
+    return `<button type="button" class="${p.secret?'mark-secret':'mark-replacement'}" data-part="${i}" data-s0="${p.s0}" data-ph="${esc(p.s)}" aria-label="${p.secret?'Secret is restored through the document + .larecovery pair':`Restore original value for ${esc(p.s)}`}" title="${p.secret?'Restore through the document + .larecovery pair':'Click to restore this value'}">${esc(p.s)}</button>`;
   }).join('');
   $('#output').value=outputText();
   $('#undoChips').innerHTML=[...restoredParts].map(i=>`<button class="undo-chip" data-undo="${i}" title="Undo restoration and show the marker again">Undo restoration of ${esc(last.parts[i]?.s||'')}</button>`).join('');

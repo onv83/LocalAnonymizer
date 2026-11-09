@@ -3430,13 +3430,24 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
 
 
 def test_active_ui_displays_release_version_in_header_footer_and_scripts():
-    assert app_module.APP_VERSION == "0.4.0"
+    assert app_module.APP_VERSION == "0.4.1"
     for language in ("", "-en"):
         html = app_module.asset_path(f"index{language}-v1.8.23.html").read_text(encoding="utf-8")
         javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
-        assert "· 0.4.0</h1>" in html
-        assert "0.4.0.</footer>" in html
-        assert "APP_VERSION='0.4.0'" in javascript
+        assert "· 0.4.1</h1>" in html
+        assert "0.4.1.</footer>" in html
+        assert "APP_VERSION='0.4.1'" in javascript
+
+
+def test_active_ui_secret_markers_describe_file_pair_recovery():
+    cases = (
+        ("", "удалено безвозвратно", "Секрет восстанавливается через пару «документ + .larecovery»"),
+        ("-en", "permanently removed", "Secret is restored through the document + .larecovery pair"),
+    )
+    for language, stale, required in cases:
+        javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
+        assert stale not in javascript.casefold()
+        assert required in javascript
 
 
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():

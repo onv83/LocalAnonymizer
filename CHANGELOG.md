@@ -4,22 +4,84 @@ All notable changes to LocalAnonymizer are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
-## [0.4.0] — 2026-11-08
+## [0.4.1] — 2026-11-09
 
-### Имена и фамилии
+### Сетевой инвентарь и серверные списки (B101)
 
-- Офлайн-словарь расширен до **11 719 имён / 54 436 базовых и падежных форм**: добавлены Kazakh/Ukrainian extended-Cyrillic spellings и русскоязычные naming traditions, включая татарские имена. Приоритет — обычная русская кириллица; `ұлы/қызы` поддерживаются только как дополнительная редкая форма.
-- Добавлены **109 477 generic форм фамилий** (109 329 normalized keys) из pinned public source, включая татарские, славянские, тюркские и другие традиции. Этнические метки и полные персональные записи не включаются.
-- Pair/triple/initials и alias-проходы поддерживают Unicode Cyrillic, украинские падежи, оба порядка ФИО, split DOCX runs/cells и точное восстановление. Одиночная фамилия маскируется по person role label; unknown-given + known-surname требует явного person-context, чтобы юридические, географические и технические фразы не становились ФИО.
-- Добавлен обязательный packaged proof `extended_cyrillic_names_ok`; источники, лицензии, pinned hashes и детерминированная пересборка ресурсов задокументированы.
+- Универсальные inventory hostnames: компактные буквенно-цифровые, multi-segment значения с внутренними дефисами и mixed-case имена узлов маскируются целиком обратимым `[УЗЕЛ-N]`, когда строка инвентаризации содержит row-local IPv4/CIDR либо существующий `[IP-N]` плюс host-колоночное/структурное, OS или числовое доказательство. Категория `УЗЕЛ` приоритетнее `ЗАДАЧА`/`СОКРАЩЕНИЯ`, поэтому structured hostname не фрагментируется; правая граница точная, повторы значения переиспользуют один маркер, разный регистр сохраняет отдельные идентичности, а контекст строки не переносится в соседние разделы.
+- Серверные списки вне таблиц: ограниченный block-parser открывает список только явным заголовком «Сервер»/«Имя узла»/`Hostname` (допускаются нумерация заголовка и префиксы списка), принимает marker-only промежуточные строки, захватывает каждый hostname целиком и останавливается на следующем заголовке раздела, содержательном абзаце или границе таблицы/документа. Обычная фраза «Сервер работает штатно» список не открывает.
+- CIDR-префикс рядом с существующим маркером: открытый суффикс `/8…/32` после `[IP-N]`, `[ДОМЕН-N]` или маркера сайта/подписи больше не остаётся в тексте. Обрабатываются только валидные длины префикса; обычные дроби, пути, даты, версии и произвольные `[КАТЕГОРИЯ-N]/NN` не захватываются.
+- Белый список и отключение категорий: значение префикса из белого списка (например `/19`) остаётся в тексте без замены и без перемаркировки в другие категории; отключение категории сохраняет суффикс и значение без relabel.
+- DOCX, идемпотентность и дифференциальная приёмка: split runs, split cells, таблицы и списки обрабатываются с изоляцией строки; исходник не изменяется, пара восстанавливает документ, физическая проверка OOXML подтверждает отсутствие исходных сетевых значений во всех XML-частях пакета, повторный проход не создаёт новых и вложенных маркеров. Дифференциальная проверка подтвердила отсутствие необоснованных потерь прежних detections: отказ от прежних host-строк «mount-path + ≥3 чисто числовых ячеек» без row-local IP-доказательства — намеренное ужесточение по утверждённому требованию A5, а не регрессия.
+
+### Исправления текста и документации
+
+- RU/EN-подсказки `[SECRET-N]` больше не утверждают «удалено безвозвратно»: они указывают восстановление через пару «документ + `.larecovery`».
+- README описывает актуальные таблицы **«Скрывать дополнительно»** и **«Белый список»**, действия из выделения, отдельное применение настроек к файлу и обратимое восстановление секретов.
+- Release notes и changelog 0.4.0 дополнены изменениями промежуточной локальной 0.3.1: DOCX restore, производительность, логины, инфраструктурные правила и formatted preview.
 
 ### English
 
-- Expanded the offline vocabulary to **11,719 given names / 54,436 base and inflected forms**, including Tatar and other Russian-written naming traditions plus Kazakh and Ukrainian extended Cyrillic. Russian-script forms are the primary path; native patronymic endings are only an additional case.
-- Added **109,477 generic surname forms** (109,329 normalized keys) from a pinned public source, without ethnic labels or full-person records.
-- Unicode Cyrillic pairs, triples, initials and aliases now cover both name orders, Ukrainian cases and split DOCX runs/cells with exact restoration. Unknown-given surname anchors require explicit person context to avoid legal, geographic and technical false positives.
-- Added mandatory `extended_cyrillic_names_ok` packaged verification and reproducible pinned-source/license evidence.
-- Final source verification: **1341 passed, 3 warnings**; independent exact-snapshot review: **GO, no blockers**.
+- Universal inventory hostnames: compact alphanumeric, multi-segment hyphenated and mixed-case host tokens are masked as one reversible `[УЗЕЛ-N]` when the inventory row carries row-local IPv4/CIDR or an existing `[IP-N]` plus host-column/structural, OS or numeric evidence. The `УЗЕЛ` category takes precedence over `ЗАДАЧА`/`СОКРАЩЕНИЯ`, so structured hostnames are not fragmented; captures keep exact right boundaries, repeated values reuse one marker, distinct spellings keep distinct identities, and row context never leaks into adjacent sections.
+- Bounded server lists outside tables: a block parser opens the list only on an explicit `Сервер`/`Hostname` heading (heading numbering and list prefixes allowed), accepts marker-only intermediate lines, captures each hostname whole, and stops at the next section heading, substantive paragraph or table/document boundary. Ordinary prose such as «Сервер работает штатно» does not open a list.
+- Marker-adjacent CIDR: an exposed `/8…/32` suffix after an existing `[IP-N]`, `[ДОМЕН-N]` or site/label marker no longer remains in the text. Only valid prefix lengths are handled; ordinary fractions, paths, dates, versions and arbitrary `[CATEGORY-N]/NN` stay untouched.
+- Whitelist and category controls: a whitelisted prefix value (for example `/19`) stays in the text without masking and without relabelling into another category; a disabled category keeps the suffix and the value without relabel.
+- DOCX, idempotence and differential acceptance: split runs, split cells, tables and lists are handled with row isolation; the source stays unchanged, the pair restores the document, a physical OOXML check proves the source network values are absent from every XML part of the package, and a second pass creates no new or nested markers. Differential verification confirmed no unjustified loss of earlier detections: dropping former «mount-path + ≥3 purely numeric cells» host rows without row-local IP evidence is the approved A5 tightening, not a regression.
+- RU/EN secret-marker tooltips now describe recovery through the document + `.larecovery` pair instead of permanent removal.
+- README now documents the actual rule/allow-list tables and current secret recovery flow; the 0.4.0 notes cover the full changes since public 0.3.0.
+
+### Проверки / Verification
+
+- Полный source suite: **1377 passed, 3 warnings**; независимый exact-snapshot re-review: **GO, без blockers**.
+- Сборка, установка и публикация 0.4.1 на момент этого снимка документации не выполнялись; до релиза они остаются обязательными шагами.
+
+## [0.4.0] — 2026-11-08
+
+Этот выпуск включает изменения промежуточной локальной сборки 0.3.1. Предыдущий публичный выпуск — 0.3.0.
+
+### Имена, фамилии и учётные записи
+
+- Офлайн-словарь расширен до **11 719 имён / 54 436 базовых и падежных форм**: добавлены Kazakh/Ukrainian extended-Cyrillic spellings и русскоязычные naming traditions, включая татарские имена. Приоритет — обычная русская кириллица; `ұлы/қызы` поддерживаются как дополнительная форма.
+- Добавлены **109 477 generic форм фамилий** (109 329 normalized keys) из pinned public source, включая татарские, славянские, тюркские и другие традиции. Этнические метки и полные персональные записи не включаются.
+- Pair/triple/initials и alias-проходы поддерживают Unicode Cyrillic, украинские падежи, оба порядка ФИО, split DOCX runs/cells и точное восстановление. Одиночная фамилия маскируется по person role label; unknown-given + known-surname требует явного person-context.
+- Полное ФИО служит document-level якорем для одиночных и склонённых упоминаний имени. Такие упоминания получают отдельную identity, разные люди с одинаковым именем не объединяются, а sentence-initial common-noun homonyms не переносятся автоматически.
+- Универсальные contextual-правила `ЛОГИН` распознают неизвестные идентификаторы после русских и английских user/account labels, в списках, скобках, соседних табличных ячейках и split Word runs. Email остаётся `ПОЧТА`, а `enabled`/`disabled` не становятся логинами.
+- Добавлены guard-правила против ложных ФИО в юридических, географических, организационных и технических фразах. Источники словарей, лицензии, pinned hashes и детерминированная пересборка ресурсов задокументированы.
+
+### Инфраструктурные отчёты и повторная обработка
+
+- Добавлены контекстные правила для GPO и privileged-групп, подтверждённых инвентарных таблиц, Windows/Linux OS, AD schema/functional levels, structured host IDs, текущих продуктовых систем, полных версий и метаданных документа.
+- Новая обратимая категория `МЕТРИКА` скрывает параметры паролей, блокировок, Kerberos, журналов, retention и ёмкости инфраструктуры только в подтверждённом контексте. Для неё добавлены RU/EN checkbox и manual-picker category.
+- VM-, software-, network- и quantity-таблицы получили структурные classifiers. Полные версии и upgrade chains не разбиваются на частичные маркеры; поддержаны подтверждённые product/site aliases, роли, даты и ячейки с существующими маркерами.
+- Structured IDs требуют naming/example context либо связанного IP. Naming context ограничен текущим предложением и DOCX cell; обычные принтеры, рабочие станции и произвольные смешанные токены не становятся `УЗЕЛ`.
+- Повторная VM-инвентаризация учитывает `[МЕТРИКА-N]` как занятые capacity-слоты. Денежные `тыс.` остаются `СУММА`, количество страниц/документов не маскируется, а многословные продукты с версией обрабатываются целиком.
+- SECRET-правила не создают вложенные маркеры и не захватывают соседний текст через Word-run boundary. Внешняя подпись секрета сохраняет приоритет, а служебные наречия не принимаются за пароль.
+
+### DOCX, предпросмотр и производительность
+
+- Восстановление пересобирает DOCX на проверенном снимке исходника: возвращаются стили, нумерация, настройки, TOC, закладки, гиперссылки, таблицы и форматирование runs, а поддерживаемые пользовательские правки сохраняются.
+- Исправлены multi-group и empty marker groups, formatting-only bold/italic изменения, Word-merged runs и numbering IDs. Добавлена Word-saved regression pair с изображениями; удалённые изображения не воскресают, сложные graphics не создают dangling relationships.
+- Formatted DOCX preview сохраняется после добавления правила из выделения и не переключается на текстовый режим; поздние asynchronous results не переопределяют более новый выбор пользователя.
+- Устранены повторный полный анализ XML и лишние XPath/preview snapshots. Warmed synthetic benchmarks: DOCX со 100 email **10,21 → 2,12 с (~4,8×)**, rewrite на 16 000 абзацев **5,57 → 0,53 с (~10,5×)**; это измерения конкретных тестов, а не гарантия для любого документа.
+
+### English
+
+- Includes the intermediate local 0.3.1 changes since the previous public 0.3.0 release.
+- Expanded the offline vocabulary to **11,719 given names / 54,436 forms** and **109,477 generic surname forms**, including Tatar and other Russian-written naming traditions plus Kazakh and Ukrainian extended Cyrillic.
+- Added Unicode-Cyrillic pairs, triples, initials, aliases, both name orders, Ukrainian cases and split DOCX run/cell handling with exact restoration. Full-name anchors cover standalone inflected given names without merging different identities.
+- Generalized contextual account detection across Russian/English labels, lists, parentheses, adjacent table cells and split Word runs. Added legal, geographic, organizational and technical false-positive guards.
+- Added context-constrained GPO, privileged-group, inventory, OS, AD-level, structured-ID, current-product, full-version and document-metadata detection.
+- Added the reversible `МЕТРИКА` category with RU/EN controls, structural VM/software/network/quantity classifiers, sentence-bounded naming context and fixed-point VM reprocessing.
+- Reprocessing no longer creates nested SECRET markers or crosses Word-run boundaries. Money, page/document counts and ordinary prose receive explicit negative coverage.
+- DOCX restoration now rebuilds from the verified original snapshot, preserving styles, numbering, settings, TOC fields, bookmarks, hyperlinks, tables and supported Word edits. Fixed multi-group, empty-marker, formatting-only and merged-run cases.
+- Formatted preview remains selected after dictionary edits and ignores stale asynchronous results. Warmed synthetic DOCX benchmarks measured about **4.8×** and **10.5×** for the documented cases.
+
+### Проверки / Verification
+
+- Полный source suite: **1341 passed, 3 warnings**; independent exact-snapshot review: **GO, no blockers**.
+- Packaged verification обязательно требует `person_name_alias_ok`, `report_residuals_ok` и `extended_cyrillic_names_ok`.
+- Windows: clean-commit build, normal/optimized package checks, install/launch, Defender scan и fresh-extraction ZIP verification.
+- macOS ARM64: native CI package checks прошли; статус остаётся **preliminary**, физическая приёмка на Mac не выполнялась.
 
 ## [0.3.1] — 2026-11-08
 
