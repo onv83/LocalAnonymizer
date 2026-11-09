@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from collections import OrderedDict
 from collections.abc import Callable
 from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
@@ -37,6 +38,25 @@ SUPPORTED = {".docx", ".doc", ".odt", ".xlsx", ".txt", ".csv", ".md", ".log"}
 _TEXT_STAMP_PREFIX = "<!-- LocalAnonymizer-Artifact:"
 _CORE_PROPERTIES_PART = "docProps/core.xml"
 _DC_IDENTIFIER = "{http://purl.org/dc/elements/1.1/}identifier"
+
+
+def engine_signature(engine) -> tuple | None:
+    """Hashable identity of an engine's effective configuration.
+
+    Two engines built from the same UI settings produce equal signatures, so
+    results computed for one can be safely reused for the other. ``None``
+    marks the default engine constructed inside the processors. Duck-typed
+    engines (tests inject them) fall back to their default-attribute view.
+    """
+    if engine is None:
+        return None
+    return (
+        tuple(sorted((getattr(engine, "user_dictionary", None) or {}).items())),
+        tuple(sorted(getattr(engine, "whitelist", None) or ())),
+        bool(getattr(engine, "paranoid", False)),
+        tuple(sorted(getattr(engine, "disabled_categories", None) or ())),
+        bool(getattr(engine, "compact_markers", False)),
+    )
 
 
 def _read_core_properties(path: Path) -> tuple[bytes, str | None]:
@@ -226,6 +246,8 @@ def _destination_locks(*paths: Path):
 
 
 class AnonymizerService:
+    _ANONYMIZED_RUN_LIMIT = 8
+
     def __init__(self, root: str | Path | None = None, *, storage: Storage | None = None,
                  legacy_document_converter: Callable[[Path, Path], Path] | None = None):
         if root is not None and storage is not None:
@@ -234,6 +256,12 @@ class AnonymizerService:
         self._legacy_document_converter = legacy_document_converter
         self._document_locks_guard = threading.Lock()
         self._document_locks: dict[str, list] = {}
+        # Last completed anonymize() per document: report, output path and the
+        # engine's own result. Preview and bridge calls reuse that exact
+        # outcome instead of re-running the engine; a fresh anonymize() or a
+        # missing output file invalidates the record.
+        self._runs_guard = threading.Lock()
+        self._anonymized_runs: OrderedDict[str, dict] = OrderedDict()
 
     @contextmanager
     def _document_lock(self, document_id: str):
@@ -319,6 +347,26 @@ class AnonymizerService:
         suffix = source.suffix.lower()
         if suffix not in {".docx", ".odt"}:
             return {"format": source.suffix.lower().removeprefix("."), "rich_html": ""}
+        # The exported artifact from the matching anonymize() run is exactly
+        # what this preview re-computed from the source; render it instead of
+        # running the engine a second time. The artifact stamp lives in parts
+        # the preview renderer never reads, so the HTML is identical.
+        with self._runs_guard:
+            cached = self._anonymized_runs.get(document_id)
+        if (cached is not None
+                and cached["key"] == (engine_signature(engine), redact_graphics)
+                and Path(cached["output"]).is_file()):
+            if suffix == ".docx":
+                rich_html = render_docx_preview(Document(cached["output"]))
+            else:
+                rich_html = render_odt_preview(cached["output"])
+            return {
+                "format": suffix.removeprefix("."),
+                "rich_html": rich_html,
+                "replacement_count": cached["report"]["replacement_count"],
+                "candidate_count": cached["report"]["candidate_count"],
+                "warnings": cached["report"]["warnings"],
+            }
         with tempfile.TemporaryDirectory(prefix="local-anonymizer-preview-") as folder:
             output = Path(folder) / f"anonymized-preview{suffix}"
             if suffix == ".docx":
@@ -393,11 +441,61 @@ class AnonymizerService:
                 self.storage._owned(previous_output).unlink(missing_ok=True)
             except (OSError, ValueError):
                 pass
-        return {"document_id": document_id, "operation_id": operation_id, "output_path": str(output),
-                "replacement_count": result.total, "legend_total": len(result.mapping),
-                "candidate_count": result.hint_count,
-                "candidates": result.candidates, "warnings": result.warnings,
-                "ready": status == "Готов", "status": status}
+        report = {"document_id": document_id, "operation_id": operation_id, "output_path": str(output),
+                  "replacement_count": result.total, "legend_total": len(result.mapping),
+                  "candidate_count": result.hint_count,
+                  "candidates": result.candidates, "warnings": result.warnings,
+                  "ready": status == "Готов", "status": status}
+        # Expose the single computed outcome (report, output, and the engine's
+        # own text/mapping/parts/legend) so preview and bridge calls reuse it
+        # verbatim instead of re-running the engine.
+        bridge_digest = None
+        if suffix not in {".docx", ".odt", ".xlsx"}:
+            # Plain-text formats run the engine over exactly the file text that
+            # the UI preview loads, so the bridge result is reusable verbatim.
+            bridge_digest = hashlib.sha256(
+                _read_text(source).encode("utf-8")
+            ).hexdigest()
+        with self._runs_guard:
+            self._anonymized_runs[document_id] = {
+                "key": (engine_signature(engine), redact_graphics),
+                "report": report,
+                "output": str(output),
+                "bridge_text_sha256": bridge_digest,
+                "engine_result": getattr(result, "engine_result", None),
+            }
+            self._anonymized_runs.move_to_end(document_id)
+            while len(self._anonymized_runs) > self._ANONYMIZED_RUN_LIMIT:
+                self._anonymized_runs.popitem(last=False)
+        return report
+
+    def last_anonymized_run(self, document_id: str) -> dict | None:
+        """The report/output/engine outcome computed by the last anonymize()."""
+        with self._runs_guard:
+            return self._anonymized_runs.get(document_id)
+
+    def bridge_result_for(self, text: str, engine=None) -> dict | None:
+        """Bridge (anonymize_text) payload reused from a matching run.
+
+        Plain-text documents run the engine over exactly the file text the UI
+        preview loads; when the requested text and engine configuration match
+        such a run, its engine result is the bridge response verbatim.
+        """
+        signature = engine_signature(engine)
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        with self._runs_guard:
+            records = list(self._anonymized_runs.values())
+        for record in records:
+            if (record["key"][0] == signature
+                    and record["bridge_text_sha256"] == digest
+                    and record["engine_result"] is not None):
+                result = record["engine_result"]
+                return {"text": result.text, "mapping": result.mapping,
+                        "candidates": result.candidates, "parts": result.parts,
+                        "legend": result.legend, "counts": result.counts,
+                        "total": result.total, "legend_total": result.legend_total,
+                        "hintCount": result.hint_count, "warnings": result.warnings}
+        return None
 
     def restore(self, document_id: str, edited: str | Path,
                 destination: str | Path | None = None) -> dict:

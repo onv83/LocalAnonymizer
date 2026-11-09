@@ -3430,13 +3430,13 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
 
 
 def test_active_ui_displays_release_version_in_header_footer_and_scripts():
-    assert app_module.APP_VERSION == "0.4.1"
+    assert app_module.APP_VERSION == "0.4.2"
     for language in ("", "-en"):
         html = app_module.asset_path(f"index{language}-v1.8.23.html").read_text(encoding="utf-8")
         javascript = app_module.asset_path(f"app{language}-v1.8.23.js").read_text(encoding="utf-8")
-        assert "· 0.4.1</h1>" in html
-        assert "0.4.1.</footer>" in html
-        assert "APP_VERSION='0.4.1'" in javascript
+        assert "· 0.4.2</h1>" in html
+        assert "0.4.2.</footer>" in html
+        assert "APP_VERSION='0.4.2'" in javascript
 
 
 def test_active_ui_secret_markers_describe_file_pair_recovery():

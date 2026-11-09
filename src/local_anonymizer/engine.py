@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import unicodedata
-from bisect import bisect_left
+from bisect import bisect_left, insort
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
@@ -563,6 +563,93 @@ class Hint:
     end: int
     value: str
     kind: str
+
+
+class _SpanIndex:
+    """Sorted index of occupied source spans for overlap resolution.
+
+    Overlap resolution used to rescan a growing ``occupied`` list for every
+    candidate, which is quadratic on detection-heavy documents.  The index keeps
+    the exact strict-overlap semantics of those scans
+    (``start < other_end and end > other_start``) over sorted non-overlapping
+    intervals, mirroring the bisect-based span machinery already used for the
+    abbreviation fallback.  Zero-length spans are tracked separately because
+    they block only spans that strictly contain them; invalid spans such as
+    non-participating group spans never block and are dropped.
+    """
+
+    __slots__ = ("_spans", "_points")
+
+    def __init__(self, spans: Iterable[tuple[int, int]] = ()) -> None:
+        self._spans: list[tuple[int, int]] = []
+        self._points: list[int] = []
+        merged: list[tuple[int, int]] = []
+        for start, end in sorted(spans):
+            if end < start or start < 0:
+                continue
+            if end == start:
+                self._points.append(start)
+                continue
+            # Merge only strict overlaps: touching spans stay separate so a
+            # position at the seam is never reported as strictly contained
+            # when no single source span contained it.
+            if merged and start < merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        self._spans = merged
+
+    def add(self, start: int, end: int) -> None:
+        """Occupy ``[start, end)``; invalid and empty spans never block."""
+        if end < start or start < 0:
+            return
+        if end == start:
+            insort(self._points, start)
+            return
+        spans = self._spans
+        index = bisect_left(spans, (start, -1))
+        if index > 0 and spans[index - 1][1] > start:
+            index -= 1
+            start = min(start, spans[index][0])
+            end = max(end, spans[index][1])
+        stop = index
+        while stop < len(spans) and spans[stop][0] < end:
+            end = max(end, spans[stop][1])
+            stop += 1
+        spans[index:stop] = [(start, end)]
+
+    def overlaps(self, start: int, end: int) -> bool:
+        spans = self._spans
+        index = bisect_left(spans, (start, -1))
+        if index < len(spans) and spans[index][0] < end:
+            return True
+        if index > 0 and spans[index - 1][1] > start:
+            return True
+        points = self._points
+        if points:
+            position = bisect_left(points, end)
+            if position > 0 and points[position - 1] > start:
+                return True
+        return False
+
+    def intersections(self, start: int, end: int) -> list[tuple[int, int]]:
+        """Sorted clips of occupied spans strictly overlapping ``[start, end)``."""
+        clipped: list[tuple[int, int]] = []
+        spans = self._spans
+        index = bisect_left(spans, (start, -1))
+        if index > 0 and spans[index - 1][1] > start:
+            clipped.append((start, min(end, spans[index - 1][1])))
+        for position in range(index, len(spans)):
+            span_start, span_end = spans[position]
+            if span_start >= end:
+                break
+            clipped.append((max(start, span_start), min(end, span_end)))
+        points = self._points
+        if points:
+            for point in points[bisect_left(points, start + 1):bisect_left(points, end)]:
+                clipped.append((point, point))
+        clipped.sort()
+        return clipped
 
 
 @dataclass
@@ -3800,17 +3887,16 @@ class Anonymizer:
 
         # First overlap resolution, then stable derived aliases from surviving anchors.
         accepted: list[Detection] = []
-        occupied = [*protected, *disabled_spans]
+        occupied = _SpanIndex([*protected, *disabled_spans])
+        # Secrets must override allowlist and literal-marker spans, so they
+        # resolve only against detectors accepted so far.
+        accepted_spans = _SpanIndex()
         for item in sorted(found, key=lambda x: (-x.priority, -(x.end-x.start), x.start, x.category)):
             # A secret follows the same reversible mapping path as every other
             # sensitive value.  It must nevertheless override an allowlist or
             # a literal marker supplied in the source: neither may publish it.
-            blockers = [(x.start, x.end) for x in accepted] if item.category == "SECRET" else occupied
-            overlaps = sorted(
-                (max(item.start, start), min(item.end, end))
-                for start, end in blockers
-                if item.start < end and item.end > start
-            )
+            blockers = accepted_spans if item.category == "SECRET" else occupied
+            overlaps = blockers.intersections(item.start, item.end)
             if overlaps:
                 # A structured software cell may contain a higher-priority
                 # irreversible secret or another validated entity. Preserve that
@@ -3843,10 +3929,12 @@ class Anonymizer:
                             case_sensitive_canonical=True,
                         )
                         accepted.append(fragment)
-                        occupied.append((start, end))
+                        occupied.add(start, end)
+                        accepted_spans.add(start, end)
                 continue
             accepted.append(item)
-            occupied.append((item.start, item.end))
+            occupied.add(item.start, item.end)
+            accepted_spans.add(item.start, item.end)
         surviving_keys = {(x.category, x.canonical) for x in accepted}
         for raw, key, category in aliases:
             if (category, key) not in surviving_keys:
@@ -3860,8 +3948,9 @@ class Anonymizer:
                 base = re.sub(r"[аяоеиыуюь]$", "", clean)
                 pattern = re.escape(base) + r"[а-яё]{0,3}"
             for m in re.finditer(rf"(?<![\w-]){pattern}(?![\w-])", source, re.I):
-                if not any(m.start() < e and m.end() > s for s, e in occupied):
-                    accepted.append(Detection(*m.span(), category, 50, m.group(), key)); occupied.append(m.span())
+                match_start, match_end = m.span()
+                if not occupied.overlaps(match_start, match_end):
+                    accepted.append(Detection(match_start, match_end, category, 50, m.group(), key)); occupied.add(match_start, match_end)
         surviving_given_names: set[str] = set()
         for item in accepted:
             if item.category != "ФИО" or not item.canonical or not item.canonical.startswith("фио-полное:"):
@@ -3879,6 +3968,7 @@ class Anonymizer:
 
         if surviving_given_names and "ФИО" not in self.disabled_categories:
             for match in re.finditer(rf"(?<![\w-]){CYRILLIC_TOKEN}(?![\w-])", source):
+                match_start, match_end = match.span()
                 if not _capitalized_cyrillic(match.group()):
                     continue
                 normalized = normalize_given_name(match.group())
@@ -3893,14 +3983,14 @@ class Anonymizer:
                     continue
                 if given_key not in surviving_given_names:
                     continue
-                if given_key in sentence_initial_name_homonyms and is_sentence_start(match.start()):
+                if given_key in sentence_initial_name_homonyms and is_sentence_start(match_start):
                     continue
-                if any(match.start() < end and match.end() > start for start, end in occupied):
+                if occupied.overlaps(match_start, match_end):
                     continue
                 accepted.append(Detection(
-                    *match.span(), "ФИО", 48, match.group(), "фио-имя:" + given_key,
+                    match_start, match_end, "ФИО", 48, match.group(), "фио-имя:" + given_key,
                 ))
-                occupied.append(match.span())
+                occupied.add(match_start, match_end)
 
         surname_keys: dict[str, set[str]] = {}
         for raw, key in surnames:
@@ -3912,13 +4002,14 @@ class Anonymizer:
         for m in re.finditer(rf"(?<![\w-])[{CYRILLIC_RANGE}][{CYRILLIC_RANGE}-]{{2,}}(?![\w-])", source):
             if _stem_surname(m.group()) not in surviving_surname_stems:
                 continue
-            if not any(m.start() < e and m.end() > s for s, e in occupied):
+            match_start, match_end = m.span()
+            if not occupied.overlaps(match_start, match_end):
                 # A matching surname stem is enough to detect the value, but
                 # not enough to prove that it names the same person as the
                 # full-name anchor. Keep a separate reversible identity key.
                 surname_key = "фио-фамилия:" + self._canon(m.group())
-                accepted.append(Detection(*m.span(), "ФИО", 49, m.group(), surname_key))
-                occupied.append(m.span())
+                accepted.append(Detection(match_start, match_end, "ФИО", 49, m.group(), surname_key))
+                occupied.add(match_start, match_end)
         seen_exact_aliases: set[tuple[str, str, str, bool]] = set()
         for raw, key, category, case_sensitive in exact_aliases:
             alias = (raw, key, category, case_sensitive)
@@ -3927,6 +4018,7 @@ class Anonymizer:
             seen_exact_aliases.add(alias)
             flags = 0 if case_sensitive else re.I
             for match in re.finditer(rf"(?<![\w-]){re.escape(raw)}(?![\w-])", source, flags):
+                match_start, match_end = match.span()
                 if category == "ФИО":
                     normalized_alias = normalize_given_name(match.group())
                     given_alias = canonical_given_name(match.group()) or normalized_alias
@@ -3936,15 +4028,15 @@ class Anonymizer:
                         or given_alias.casefold() in self.whitelist
                     ):
                         continue
-                    if given_alias in sentence_initial_name_homonyms and is_sentence_start(match.start()):
+                    if given_alias in sentence_initial_name_homonyms and is_sentence_start(match_start):
                         continue
-                if any(match.start() < end and match.end() > start for start, end in occupied):
+                if occupied.overlaps(match_start, match_end):
                     continue
                 accepted.append(Detection(
-                    *match.span(), category, 48, match.group(), key,
+                    match_start, match_end, category, 48, match.group(), key,
                     case_sensitive_canonical=case_sensitive,
                 ))
-                occupied.append(match.span())
+                occupied.add(match_start, match_end)
 
         # Hints fill only unoccupied spans.
         hints: list[Hint] = []
@@ -3961,26 +4053,26 @@ class Anonymizer:
             for m in re.finditer(pattern, source, flags):
                 if validate and not validate(m):
                     continue
-                span = m.span(group)
+                span_start, span_end = m.span(group)
                 if any(
-                    span[0] < protected_end and span[1] > protected_start
+                    span_start < protected_end and span_end > protected_start
                     for protected_start, protected_end in logical_whitelist_spans
                 ):
                     continue
                 if (
                     kind in {"возможное имя собственное", "возможная фамилия"}
                     and any(
-                        span[0] < end and span[1] > start
+                        span_start < end and span_end > start
                         for start, end in disabled_abbreviation_spans
                     )
                 ):
                     continue
-                if any(span[0] < e and span[1] > s for s, e in occupied):
+                if occupied.overlaps(span_start, span_end):
                     continue
                 value = m.group(group)
                 if value.casefold() in self.whitelist:
                     continue
-                hints.append(Hint(*span, value, kind)); occupied.append(span)
+                hints.append(Hint(span_start, span_end, value, kind)); occupied.add(span_start, span_end)
             if not logical_intra_boundary:
                 return
             region_start = 0
@@ -4002,9 +4094,7 @@ class Anonymizer:
                     physical_value = source[start:end]
                     if "\ufdd3" not in physical_value:
                         continue
-                    span = (start, end)
-                    if any(start < occupied_end and end > occupied_start
-                           for occupied_start, occupied_end in occupied):
+                    if occupied.overlaps(start, end):
                         continue
                     logical_value = match.group(group)
                     if logical_value.casefold() in self.whitelist:
@@ -4021,15 +4111,15 @@ class Anonymizer:
                         physical_value.replace("\ufdd3", "\n"),
                         kind,
                     ))
-                    occupied.append(span)
+                    occupied.add(start, end)
                 region_start += len(region) + 1
         hint(r"\b(?:начальник[а-яё]*|заместител[а-яё]+|руководител[а-яё]+|директор[а-яё]*|куратор[а-яё]*|главн[а-яё]+\s+(?:инженер|бухгалтер|специалист)|ведущ[а-яё]+\s+(?:инженер|специалист)|администратор[а-яё]*|архитектор[а-яё]*)\s+(?:(?:отдел[а-яё]*|управлени[а-яё]+|департамент[а-яё]*|служб[а-яё]+|направлени[а-яё]+|групп[а-яё]+|центр[а-яё]*)(?:\s+(?!(?:[а-яё]+(?:ет|ют|ит|ят|ут|л|ла|ли))\b)[а-яё]+){0,2}|по\s+[а-яё]+(?:\s+[а-яё]+){0,2})\b", "должность")
         if not {"HINTS", "ГОРОД"}.intersection(self.disabled_categories):
             for location in locations:
-                if any(location.start < end and location.end > start for start, end in occupied):
+                if occupied.overlaps(location.start, location.end):
                     continue
                 hints.append(Hint(location.start, location.end, location.surface, "город"))
-                occupied.append((location.start, location.end))
+                occupied.add(location.start, location.end)
         hint(
             r"\b(?:диагноз[а-яё]*|инвалидн[а-яё]+|судимост[а-яё]+|вероисповедан[а-яё]+|национальност[а-яё]+|беременн[а-яё]+|болезн[а-яё]+)\b",
             "спецкатегория ПДн",
@@ -4104,7 +4194,7 @@ class Anonymizer:
                     if hint_item not in overlapping_hints
                 ]
             accepted.append(item)
-            occupied.append((item.start, item.end))
+            occupied.add(item.start, item.end)
             add_hard(item.start, item.end)
 
         if self.paranoid:

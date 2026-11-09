@@ -22,7 +22,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 from lxml import etree
 
-from .engine import Anonymizer, MARKER_PATTERN, warnings_require_review
+from .engine import Anonymizer, AnonymizationResult, MARKER_PATTERN, warnings_require_review
 
 
 class RestorationError(RuntimeError):
@@ -38,6 +38,10 @@ class DocumentResult:
     total: int = 0
     hint_count: int = 0
     package_archive: dict | None = None
+    # Full engine outcome (text/mapping/parts/legend) of the single pass that
+    # produced this document; lets callers reuse it instead of re-running the
+    # engine for previews. Not serialized anywhere.
+    engine_result: AnonymizationResult | None = None
 
 
 def _walk_tables(tables):
@@ -464,7 +468,8 @@ class DocxProcessor:
         warnings = list(result.warnings) + warnings
         return DocumentResult(result.mapping, result.candidates, warnings,
                               not warnings_require_review(warnings),
-                              result.total, result.hint_count, package_archive)
+                              result.total, result.hint_count, package_archive,
+                              engine_result=result)
 
     def restore(self, source: str | Path, output: str | Path, mapping: dict[str, str],
                 *, package_archive: dict | None = None) -> list[str]:
@@ -1511,6 +1516,30 @@ _PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+# Hot-path validators are precompiled because the sanitizer applies them once
+# per attribute of every element in every retained OOXML part.
+_WML_P_TAG = f"{{{_WML_NS}}}p"
+_VISIBLE_TEXT_PART_RE = re.compile(r"word/(?:header|footer)\d+\.xml")
+_RID_VALUE_RE = re.compile(r"rId\d+")
+_RID_STRICT_RE = re.compile(r"rId[1-9]\d*")
+_OVERRIDE_PATH_RE = re.compile(r"/[A-Za-z0-9_.\-/]+")
+_UNSIGNED_10_RE = re.compile(r"\d{1,10}")
+_SIGNED_10_RE = re.compile(r"-?\d{1,10}")
+_SAFE_TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{1,128}")
+_SAFE_LABEL_RE = re.compile(r"[\w .,+()&/-]+", re.UNICODE)
+_LOCAL_STYLE_ID_RE = re.compile(r"LocalStyle\d{3}")
+_LOCAL_STYLE_NAME_RE = re.compile(r"Local Style \d{3}")
+_LOCAL_FONT_ID_RE = re.compile(r"LocalFont\d{3}")
+_LANG_TAG_RE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+_HEX_2_RE = re.compile(r"[0-9A-Fa-f]{2}")
+_HEX_6_RE = re.compile(r"[0-9A-Fa-f]{6}")
+_HEX_8_RE = re.compile(r"[0-9A-Fa-f]{8}")
+_HEX_20_RE = re.compile(r"[0-9A-Fa-f]{20}")
+_FONT_KEY_RE = re.compile(r"\{[0-9A-Fa-f-]{36}\}")
+_THEME_WORD_RE = re.compile(r"[A-Za-z0-9-]{1,16}")
+_COLOR_VALUE_RE = re.compile(r"(?:auto|[0-9A-Fa-f]{2,20})")
+_COLOR_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,63}")
+_SHORT_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}")
 _ALLOWED_CONTENT_TYPES = frozenset({
     "application/vnd.ms-word.stylesWithEffects+xml",
     "application/vnd.openxmlformats-officedocument.custom-properties+xml",
@@ -1646,6 +1675,7 @@ _SAFE_FONT_NAMES = frozenset({
 })
 
 
+@functools.lru_cache(maxsize=1024)
 def _schema_part(name: str) -> str | None:
     if re.fullmatch(r"word/header\d+\.xml", name):
         return "word/header.xml"
@@ -1819,14 +1849,14 @@ def _safe_known_attribute_value(
     if element_local == "br" and attr_local == "type":
         return value in {"column", "page", "textWrapping"}
 
-    unsigned = re.fullmatch(r"\d{1,10}", value) is not None
-    signed = re.fullmatch(r"-?\d{1,10}", value) is not None
+    unsigned = _UNSIGNED_10_RE.fullmatch(value) is not None
+    signed = _SIGNED_10_RE.fullmatch(value) is not None
     on_off = value in {"0", "1", "false", "true", "off", "on"}
-    safe_token = re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", value) is not None
+    safe_token = _SAFE_TOKEN_RE.fullmatch(value) is not None
     safe_label = (
         0 < len(value) <= 128
         and not any(ord(char) < 32 for char in value)
-        and re.fullmatch(r"[\w .,+()&/-]+", value, re.UNICODE) is not None
+        and _SAFE_LABEL_RE.fullmatch(value) is not None
     )
 
     # Document-varying values are accepted only in explicit OOXML contexts and
@@ -1844,7 +1874,7 @@ def _safe_known_attribute_value(
         if element_local in {"ilvl", "outlineLvl"}:
             return unsigned and int(value) <= 9
         if element_local in {"pStyle", "rStyle"}:
-            return re.fullmatch(r"LocalStyle\d{3}", value) is not None
+            return _LOCAL_STYLE_ID_RE.fullmatch(value) is not None
         if element_local == "docPartGallery":
             return value in {"Table of Contents", "Cover Pages", "Headers", "Footers", "Page Numbers"}
         if element_local == "jc":
@@ -1879,9 +1909,9 @@ def _safe_known_attribute_value(
 
     if part_key == "word/styles.xml" and attr_local == "val":
         if element_local in {"basedOn", "next", "link"}:
-            return re.fullmatch(r"LocalStyle\d{3}", value) is not None
+            return _LOCAL_STYLE_ID_RE.fullmatch(value) is not None
         if element_local == "name":
-            return re.fullmatch(r"Local Style \d{3}", value) is not None
+            return _LOCAL_STYLE_NAME_RE.fullmatch(value) is not None
         if element_local in {"qFormat", "locked", "semiHidden", "unhideWhenUsed"}:
             return on_off
         if element_local in {"tblStyleColBandSize", "tblStyleRowBandSize"}:
@@ -1900,13 +1930,13 @@ def _safe_known_attribute_value(
 
     if part_key == "word/settings.xml" and element_local == "themeFontLang":
         if attr_local in {"val", "eastAsia", "bidi"}:
-            return re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", value) is not None
+            return _LANG_TAG_RE.fullmatch(value) is not None
 
     if part_key == "word/fontTable.xml":
         if (element_local, attr_local) == ("altName", "val"):
-            return value in _SAFE_FONT_NAMES or re.fullmatch(r"LocalFont\d{3}", value) is not None
+            return value in _SAFE_FONT_NAMES or _LOCAL_FONT_ID_RE.fullmatch(value) is not None
         if (element_local, attr_local) == ("charset", "val"):
-            return re.fullmatch(r"[0-9A-Fa-f]{2}", value) is not None
+            return _HEX_2_RE.fullmatch(value) is not None
         if (element_local, attr_local) == ("family", "val"):
             return value in {"auto", "decorative", "modern", "roman", "script", "swiss"}
         if (element_local, attr_local) == ("pitch", "val"):
@@ -1914,11 +1944,11 @@ def _safe_known_attribute_value(
         if (element_local, attr_local) == ("notTrueType", "val"):
             return on_off
         if (element_local, attr_local) == ("panose1", "val"):
-            return re.fullmatch(r"[0-9A-Fa-f]{20}", value) is not None
+            return _HEX_20_RE.fullmatch(value) is not None
         if element_local == "sig" and attr_local in {"csb0", "csb1", "usb0", "usb1", "usb2", "usb3"}:
-            return re.fullmatch(r"[0-9A-Fa-f]{8}", value) is not None
+            return _HEX_8_RE.fullmatch(value) is not None
         if element_local == "embedRegular" and attr_local == "fontKey":
-            return re.fullmatch(r"\{[0-9A-Fa-f-]{36}\}", value) is not None
+            return _FONT_KEY_RE.fullmatch(value) is not None
 
     if part_key == "word/webSettings.xml":
         if (element_local, attr_local) == ("div", "id"):
@@ -1932,11 +1962,11 @@ def _safe_known_attribute_value(
         if (element_local, attr_local) == ("theme", "name"):
             return value == "Office Theme"
         if attr_local == "typeface":
-            return value == "" or value in _SAFE_FONT_NAMES or re.fullmatch(r"LocalFont\d{3}", value) is not None
+            return value == "" or value in _SAFE_FONT_NAMES or _LOCAL_FONT_ID_RE.fullmatch(value) is not None
         if attr_local in {"lang", "script"}:
-            return re.fullmatch(r"[A-Za-z0-9-]{1,16}", value) is not None
+            return _THEME_WORD_RE.fullmatch(value) is not None
         if element_local in {"srgbClr", "sysClr"} and attr_local in {"val", "lastClr"}:
-            return re.fullmatch(r"[0-9A-Fa-f]{6}", value) is not None or value in {"window", "windowText"}
+            return _HEX_6_RE.fullmatch(value) is not None or value in {"window", "windowText"}
         if attr_local in {"w", "h", "rot", "rad", "pos", "ang", "blurRad", "dist"}:
             return signed and abs(int(value)) <= 100_000_000
 
@@ -1957,20 +1987,20 @@ def _safe_known_attribute_value(
     if attr_local in bounded_numeric and signed:
         return -31_680 <= int(value) <= 10_000_000
     if attr_local in {"val", "fill", "color", "themeColor", "themeFill", "themeShade", "themeTint"}:
-        if re.fullmatch(r"(?:auto|[0-9A-Fa-f]{2,20})", value):
+        if _COLOR_VALUE_RE.fullmatch(value):
             return True
-        if re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,63}", value):
+        if _COLOR_NAME_RE.fullmatch(value):
             return True
         if element_local == "lvlText" and len(value) <= 64 and not any(ord(char) < 32 for char in value):
             return True
     if attr_local == "styleId":
-        return re.fullmatch(r"LocalStyle\d{3}", value) is not None
+        return _LOCAL_STYLE_ID_RE.fullmatch(value) is not None
     if attr_local in {"ascii", "cs", "eastAsia", "hAnsi", "name", "typeface"}:
-        return value in _SAFE_FONT_NAMES or re.fullmatch(r"LocalFont\d{3}", value) is not None
+        return value in _SAFE_FONT_NAMES or _LOCAL_FONT_ID_RE.fullmatch(value) is not None
     if attr_local in {"asciiTheme", "cstheme", "eastAsiaTheme", "hAnsiTheme"}:
         return value in {"majorAscii", "majorBidi", "majorEastAsia", "majorHAnsi", "minorAscii", "minorBidi", "minorEastAsia", "minorHAnsi"}
     if attr_local in {"type", "lineRule", "hRule", "orient", "leader", "hint"}:
-        return re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,31}", value) is not None
+        return _SHORT_NAME_RE.fullmatch(value) is not None
     return False
 
 
@@ -2067,20 +2097,9 @@ def _trusted_wml_schema() -> tuple[
     }
 
 
-def _visible_wml_text_node(name: str, element: etree._Element) -> bool:
-    if not (
-        name == "word/document.xml"
-        or re.fullmatch(r"word/(?:header|footer)\d+\.xml", name)
-    ):
-        return False
-    qname = etree.QName(element)
-    if qname.namespace != _WML_NS or qname.localname not in _SUPPORTED_WML_TEXT_ELEMENTS:
-        return False
-    return any(
-        etree.QName(ancestor).namespace == _WML_NS
-        and etree.QName(ancestor).localname == "p"
-        for ancestor in element.iterancestors()
-    )
+def _visible_wml_text_part(name: str) -> bool:
+    """Parts whose visible ``w:t``-style text nodes carry document text."""
+    return name == "word/document.xml" or _VISIBLE_TEXT_PART_RE.fullmatch(name) is not None
 
 
 def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Element, bool]:
@@ -2179,7 +2198,7 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 valid = (
                     valid
                     and attributes == {"PartName", "ContentType"}
-                    and re.fullmatch(r"/[A-Za-z0-9_.\-/]+", part_name) is not None
+                    and _OVERRIDE_PATH_RE.fullmatch(part_name) is not None
                     and child.get("ContentType") in _ALLOWED_CONTENT_TYPES
                 )
             if not valid:
@@ -2222,7 +2241,7 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 root.remove(child)
                 continue
             if (
-                not re.fullmatch(r"rId[1-9]\d*", child.get("Id", ""))
+                not _RID_STRICT_RE.fullmatch(child.get("Id", ""))
                 or child.get("Type") not in _ALLOWED_RELATIONSHIP_TYPES
                 or not child.get("Target")
                 or child.get("TargetMode") not in {None, "External"}
@@ -2311,6 +2330,22 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
         "paraId", "textId", "durableId", "anchorId", "editId", "conflictMode",
         "restartNumberingAfterBreak",
     }
+    # Schema lookups inside the element loop are pure functions of the part
+    # name; hoisting them keeps the per-element pass free of repeated regex
+    # and cache work without changing any acceptance decision.
+    is_settings_part = name == "word/settings.xml"
+    is_theme_part = name.startswith("word/theme/")
+    part_key = _schema_part(name)
+    allowed_pairs, trusted_attribute_contexts = _trusted_wml_schema()
+    visible_text_part = _visible_wml_text_part(name)
+    settings_discard_elements = frozenset({
+        ("http://schemas.microsoft.com/office/word/2012/wordml", "docId"),
+        ("http://schemas.microsoft.com/office/word/2010/wordml", "docId"),
+        ("http://schemas.microsoft.com/office/word/2010/wordml", "defaultImageDpi"),
+        ("urn:schemas-microsoft-com:office:office", "shapedefaults"),
+        ("urn:schemas-microsoft-com:office:office", "shapelayout"),
+        ("urn:schemas-microsoft-com:office:office", "idmap"),
+    })
     for element in list(root.iter()):
         if not isinstance(element.tag, str):
             parent = element.getparent()
@@ -2319,17 +2354,10 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 found = True
             continue
         element_qname = etree.QName(element)
-        if name == "word/settings.xml" and (
+        if is_settings_part and (
             element_qname.namespace,
             element_qname.localname,
-        ) in {
-            ("http://schemas.microsoft.com/office/word/2012/wordml", "docId"),
-            ("http://schemas.microsoft.com/office/word/2010/wordml", "docId"),
-            ("http://schemas.microsoft.com/office/word/2010/wordml", "defaultImageDpi"),
-            ("urn:schemas-microsoft-com:office:office", "shapedefaults"),
-            ("urn:schemas-microsoft-com:office:office", "shapelayout"),
-            ("urn:schemas-microsoft-com:office:office", "idmap"),
-        }:
+        ) in settings_discard_elements:
             parent = element.getparent()
             if parent is not None:
                 parent.remove(element)
@@ -2379,8 +2407,6 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
             if parent is not None:
                 parent_qname = etree.QName(parent)
                 if parent_qname.namespace == _WML_NS:
-                    allowed_pairs, _ = _trusted_wml_schema()
-                    part_key = _schema_part(name)
                     if (
                         part_key is None
                         or (part_key, parent_qname.localname, element_qname.localname) not in allowed_pairs
@@ -2389,7 +2415,12 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                         found = True
                         continue
 
-        text_allowed = _visible_wml_text_node(name, element)
+        text_allowed = (
+            visible_text_part
+            and element_qname.namespace == _WML_NS
+            and element_qname.localname in _SUPPORTED_WML_TEXT_ELEMENTS
+            and any(ancestor.tag == _WML_P_TAG for ancestor in element.iterancestors())
+        )
         if (element.text or "").strip() and not text_allowed:
             element.text = None
             found = True
@@ -2406,28 +2437,26 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 allowed_attribute = attr_qname.localname in _SUPPORTED_WML_ATTRIBUTES
                 allowed_contexts = _WML_CONTEXTUAL_ATTRIBUTES.get(attr_qname.localname)
                 if allowed_contexts is None:
-                    _, trusted_attribute_contexts = _trusted_wml_schema()
-                    part_key = _schema_part(name)
                     allowed_contexts = trusted_attribute_contexts.get((part_key, attr_qname.localname))
                 allowed_attribute = allowed_attribute and (
                     allowed_contexts is not None and element_qname.localname in allowed_contexts
                 )
             elif attr_qname.namespace == _DRAWING_NS:
                 allowed_attribute = (
-                    name.startswith("word/theme/")
+                    is_theme_part
                     and attr_qname.localname in _SUPPORTED_THEME_ATTRIBUTES
                 )
             elif attr_qname.namespace == _OFFICE_REL_NS:
                 allowed_attribute = (
                     attr_qname.localname in {"id", "embed", "link"}
-                    and re.fullmatch(r"rId\d+", element.attrib[attr]) is not None
+                    and _RID_VALUE_RE.fullmatch(element.attrib[attr]) is not None
                 )
             elif attr_qname.namespace == _XML_NS:
                 if attr_qname.localname == "space":
                     allowed_attribute = element.attrib[attr] in {"default", "preserve"}
                 elif attr_qname.localname == "lang":
-                    allowed_attribute = re.fullmatch(
-                        r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", element.attrib[attr]
+                    allowed_attribute = _LANG_TAG_RE.fullmatch(
+                        element.attrib[attr]
                     ) is not None
                 else:
                     allowed_attribute = False
@@ -2440,7 +2469,7 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 )
             elif attr_qname.namespace is None:
                 allowed_attribute = (
-                    name.startswith("word/theme/")
+                    is_theme_part
                     and attr_qname.localname in _SUPPORTED_THEME_ATTRIBUTES
                 )
             else:
