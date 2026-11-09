@@ -25,6 +25,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 
 - Полный source suite: **1387 passed, 3 warnings**; независимый review производительности — **GO**.
 - Windows-пакет собран и установлен из релизного коммита `e6c65b6`: packaged verification (smoke/pair/platform) зелёная в обычном режиме и в режиме `python -O`, EXE SHA-256 `edadd7d2489a6b5e0a73bfd3ccedaf062a815a856160d91095adc73266e0df38`. Native macOS main CI run `42587363324` — успех; пакет macOS остаётся предварительным до ручной приёмки на реальном Mac.
+- Скриншоты в README пересняты с установленной сборки 0.4.2 (русская и английская версии, тёмная тема, синтетический документ без пользовательских данных); устаревшие снимки v0.3.0 удалены.
 
 ## [0.4.1] — 2026-11-09
 

@@ -86,17 +86,17 @@
 
 ## Скриншоты / Screenshots
 
-### Русский интерфейс — полный рабочий экран v0.3.0
+### Русский интерфейс — полный рабочий экран v0.4.2
 
-<a href="docs/images/local-anonymizer-ru-v0.3.0-full.png">
-  <img src="docs/images/local-anonymizer-ru-v0.3.0-full.png" width="100%" alt="Полный экран LocalAnonymizer v0.3.0: исходный и обезличенный текст, словарные правила, ручная проверка и восстановление">
+<a href="docs/images/local-anonymizer-ru-v0.4.2-full.png">
+  <img src="docs/images/local-anonymizer-ru-v0.4.2-full.png" width="100%" alt="Полный экран LocalAnonymizer v0.4.2: исходный и обезличенный текст, словарные правила, ручная проверка и восстановление">
 </a>
 
-*Нажмите на снимок, чтобы открыть исходное изображение в полном разрешении (1587 × 1387).*
+*Нажмите на снимок, чтобы открыть исходное изображение в полном разрешении (1587 × 1387). Снимок сделан с установленной сборки 0.4.2.*
 
 ### English interface
 
-![English interface](docs/images/local-anonymizer-en.png)
+![English interface](docs/images/local-anonymizer-en-v0.4.2.png)
 
 Снимки с синтетическим документом; пользовательских данных нет. / Screenshots use synthetic data, not user documents.
 
