@@ -24,7 +24,7 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 ### Проверки / Verification
 
 - Полный source suite: **1387 passed, 3 warnings**; независимый review производительности — **GO**.
-- Сборка, установка и публикация 0.4.2 на момент этого снимка документации не выполнялись; до релиза они остаются обязательными шагами.
+- Windows-пакет собран и установлен из релизного коммита `e6c65b6`: packaged verification (smoke/pair/platform) зелёная в обычном режиме и в режиме `python -O`, EXE SHA-256 `edadd7d2489a6b5e0a73bfd3ccedaf062a815a856160d91095adc73266e0df38`. Native macOS main CI run `42587363324` — успех; пакет macOS остаётся предварительным до ручной приёмки на реальном Mac.
 
 ## [0.4.1] — 2026-11-09
 
