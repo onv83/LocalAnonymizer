@@ -41,7 +41,8 @@ def process_text_file(source: str | Path, output: str | Path, engine: Anonymizer
     _atomic_bytes(output, result.text.encode("utf-8"))
     return DocumentResult(result.mapping, result.candidates, result.warnings,
                           not warnings_require_review(result.warnings),
-                          result.total, result.hint_count)
+                          result.total, result.hint_count,
+                          engine_result=result)
 
 
 def restore_text_file(source: str | Path, output: str | Path, mapping: dict[str, str]) -> list[str]:
@@ -207,7 +208,8 @@ class XlsxProcessor:
         warnings = list(result.warnings) + warnings
         return DocumentResult(result.mapping, result.candidates, warnings,
                               not warnings_require_review(warnings),
-                              result.total, result.hint_count)
+                              result.total, result.hint_count,
+                              engine_result=result)
 
     def restore(self, source: str | Path, output: str | Path, mapping: dict[str, str]) -> list[str]:
         source, output = Path(source), Path(output)

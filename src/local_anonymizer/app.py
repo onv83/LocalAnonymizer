@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -957,6 +959,7 @@ def _word_settings_restore_self_test() -> bool:
 class AppApi:
     _PREVIEW_TTL_SECONDS = 120
     _PREVIEW_CACHE_LIMIT = 8
+    _TEXT_RESULT_LIMIT = 8
 
     def __init__(
         self,
@@ -973,6 +976,10 @@ class AppApi:
         self._restore_pair: tuple[Path, Path] | None = None
         self._ui_previews: dict[str, dict] = {}
         self._preview_lock = threading.RLock()
+        # Bridge responses for (settings, text) pairs the UI re-asks for
+        # right after an anonymize_document action; the engine is not re-run.
+        self._text_results: OrderedDict = OrderedDict()
+        self._text_results_guard = threading.Lock()
         if not self.service.storage.connection.execute("select 1 from profiles where name='Общий'").fetchone():
             self.service.storage.save_profile("Общий", {}, [], paranoid=False)
 
@@ -1389,12 +1396,30 @@ class AppApi:
 
     def anonymize_text(self, text: str, paranoid: bool = False, rules: str = "", whitelist: str = "", disabled=None,
                        compact_markers: bool = False) -> dict:
+        settings = (bool(paranoid), rules, whitelist,
+                    tuple(sorted(disabled or [])), bool(compact_markers))
+        key = (settings, hashlib.sha256(text.encode("utf-8")).hexdigest())
+        with self._text_results_guard:
+            cached = self._text_results.get(key)
+            if cached is not None:
+                self._text_results.move_to_end(key)
+                return cached
         engine = self._engine(paranoid, rules, whitelist, disabled, compact_markers)
-        result = engine.anonymize(text)
-        return {"text": result.text, "mapping": result.mapping, "candidates": result.candidates,
-                "parts": result.parts, "legend": result.legend, "counts": result.counts,
-                "total": result.total, "legend_total": result.legend_total,
-                "hintCount": result.hint_count, "warnings": result.warnings}
+        # The document action already ran the engine over this exact text with
+        # these settings for plain-text documents; reuse that outcome.
+        report = self.service.bridge_result_for(text, engine)
+        if report is None:
+            result = engine.anonymize(text)
+            report = {"text": result.text, "mapping": result.mapping, "candidates": result.candidates,
+                      "parts": result.parts, "legend": result.legend, "counts": result.counts,
+                      "total": result.total, "legend_total": result.legend_total,
+                      "hintCount": result.hint_count, "warnings": result.warnings}
+        with self._text_results_guard:
+            self._text_results[key] = report
+            self._text_results.move_to_end(key)
+            while len(self._text_results) > self._TEXT_RESULT_LIMIT:
+                self._text_results.popitem(last=False)
+        return report
 
 
     def engine_self_test(self) -> dict:

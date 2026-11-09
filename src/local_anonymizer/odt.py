@@ -604,6 +604,7 @@ class OdtProcessor:
             result.total,
             result.hint_count,
             archive,
+            engine_result=result,
         )
 
     def restore(

@@ -22,7 +22,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 from lxml import etree
 
-from .engine import Anonymizer, MARKER_PATTERN, warnings_require_review
+from .engine import Anonymizer, AnonymizationResult, MARKER_PATTERN, warnings_require_review
 
 
 class RestorationError(RuntimeError):
@@ -38,6 +38,10 @@ class DocumentResult:
     total: int = 0
     hint_count: int = 0
     package_archive: dict | None = None
+    # Full engine outcome (text/mapping/parts/legend) of the single pass that
+    # produced this document; lets callers reuse it instead of re-running the
+    # engine for previews. Not serialized anywhere.
+    engine_result: AnonymizationResult | None = None
 
 
 def _walk_tables(tables):
@@ -464,7 +468,8 @@ class DocxProcessor:
         warnings = list(result.warnings) + warnings
         return DocumentResult(result.mapping, result.candidates, warnings,
                               not warnings_require_review(warnings),
-                              result.total, result.hint_count, package_archive)
+                              result.total, result.hint_count, package_archive,
+                              engine_result=result)
 
     def restore(self, source: str | Path, output: str | Path, mapping: dict[str, str],
                 *, package_archive: dict | None = None) -> list[str]:
