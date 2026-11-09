@@ -6,8 +6,8 @@
 
 | Платформа | Скачать готовое приложение | Статус |
 | --- | --- | --- |
-| Windows x64 | [LocalAnonymizer-0.4.2-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-windows-x64.zip) | Исходный код: 1387 tests зелёные; packaged smoke/pair/platform — до публикации |
-| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.2-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip) | **Предварительная версия**; требуются native CI и ручная приёмка на Mac |
+| Windows x64 | [LocalAnonymizer-0.4.2-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-windows-x64.zip) | Исходный код: 1387 tests зелёные; packaged smoke/pair/platform выполнены |
+| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.2-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip) | **Предварительная версия**; native CI пройден, требуется ручная приёмка на Mac |
 
 [Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.2) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
@@ -43,11 +43,11 @@
 
 Проверяйте на копиях документов; не загружайте документы или `.larecovery` с чувствительными данными в публичные Issues. Для сообщения о проблеме достаточно версии macOS, модели/чипа, шагов и обезличенного текста ошибки.
 
-### Проверки перед публикацией
+### Проверки выпуска
 
 - Исходный код: полный набор v0.4.2 завершён с **1387 passed** и 3 предупреждениями; независимый review производительности — GO. Известных незакрытых падений в этом прогоне нет.
-- Windows-архив: сборка и установка v0.4.2 ещё не выполнялись; до публикации обязательны PyInstaller build, EXE smoke/pair/platform checks и GUI-запуск установленной сборки.
-- До публикации macOS ARM64-архива native CI должен подтвердить WebKit bridge, системный буфер, текстовое восстановление и packaged core/pair/platform проверки. Это не заменяет ручную приёмку на Mac.
+- Windows-архив: пакет собран и установлен из релизного коммита `e6c65b6`; packaged verification (EXE smoke/pair/platform) зелёная в обычном режиме и в режиме `python -O`, GUI установленной сборки запущен.
+- macOS ARM64: native main CI run `42587363324` подтвердил WebKit bridge, системный буфер, текстовое восстановление и packaged core/pair/platform проверки. Это не заменяет ручную приёмку на Mac.
 
 ## Что изменилось в 0.4.2
 
@@ -55,7 +55,7 @@
 - **Очистка DOCX:** schema-работа санитайзера (классификация части пакета, прекомпилированные валидаторы, lookups разрешённых пар и доверенных контекстов) вынесена из цикла элементов; результат очистки побайтово идентичен.
 - **Один проход движка на действие:** результат движка переиспользуется предпросмотром и текстовым мостом; форматированный предпросмотр рендерит соответствующий экспортированный артефакт вместо повторного запуска движка, идентичные запросы обслуживаются из LRU.
 - **Замеры (синтетика):** корпус движка 48u — 6,05 → 3,12 с (~1,9×); очистка `word/document.xml` — 0,298 → 0,189 с (~1,6×), `styles.xml` — 0,412 → 0,212 с (~1,9×); медиана UI-действия «применить настройки к файлу» — 5,561 → 2,545 с при неизменных настройках (один проход движка вместо 2–3) и 5,286 → 2,831 с при изменённых настройках.
-- **Проверки:** полный source suite — **1387 passed**, независимый review производительности — GO. Сборка, установка и публикация v0.4.2 ещё не выполнялись.
+- **Проверки:** полный source suite — **1387 passed**, независимый review производительности — GO. Windows-пакет собран и установлен из релизного коммита `e6c65b6` (packaged smoke/pair/platform зелёные); native macOS CI `42587363324` — успех.
 - **Совместимость:** формат профиля и механизм восстановления не изменялись; логика детектирования и тесты не менялись. `.larecovery` по-прежнему незашифрован и требует защиты как исходный документ.
 
 ## Что изменилось в 0.4.1
@@ -102,21 +102,21 @@
 
 ## English installation and status
 
-**v0.4.2 is the current version.** The source suite is green (1387 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package build, install and publication for 0.4.2 are still pending. The macOS ARM64 archive remains preliminary and requires native CI plus real-Mac manual acceptance. No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
+**v0.4.2 is the current version.** The source suite is green (1387 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package was built and installed from release commit `e6c65b6` with packaged smoke/pair/platform checks green in normal and `python -O` modes. The macOS ARM64 archive remains preliminary pending real-Mac manual acceptance; native main CI run `42587363324` succeeded. No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
 
 - [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
 - [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
 - If the first launch is blocked, and only if you trust this exact downloaded file, open System Settings → Privacy & Security → Open Anyway after the failed launch, then confirm. If unavailable, or macOS reports malware/damage, stop and report the error rather than bypassing protection. Do not disable Gatekeeper globally or remove quarantine with `sudo xattr`. Developer ID/notarization were not established by this documentation audit.
-- Release evidence and `SHA256SUMS.txt` will be available at the [v0.4.2 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.2) only after the archives and their readback verification are complete.
+- Release evidence and `SHA256SUMS.txt` are published at the [v0.4.2 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.2) alongside the verified archives.
 - **Still to check on a real Mac:** first launch/Gatekeeper; Cmd+Enter copy including button focus; RU→EN→RU and persistence after restart; real DOCX open/process/export/restore with tables, formatting and Word edits; clipboard, file dialogs and error UI. Native first-key concurrency (B65) remains open separately.
 - The v0.4.2 performance improvements (sorted-interval overlap resolution, DOCX sanitizer schema hoisting, one engine pass per document action) and the earlier v0.4.1 network-inventory hardening are described in the bilingual [changelog](CHANGELOG.md#042--2026-11-09). Detection is not exhaustive; manually review every anonymized result.
 - Local mappings use OS-protected storage and fail closed without it. Exported `.larecovery` files are intentionally **unencrypted** and contain every original value, including secrets: protect them like the original document. Secrets restore through the ordinary file-pair mechanism. Legacy `.doc` requires Word COM on Windows; macOS is not claimed equivalent.
 
 ## Документация внутри архивов / Bundled documentation
 
-Архивы v0.4.2 будут содержать актуальные README и CHANGELOG для Windows, а также русскую `README-macOS.md` в корне macOS ZIP и рядом с `.app`. `SHA256SUMS.txt` будет опубликован вместе с архивами после проверки и readback.
+Архивы v0.4.2 содержат актуальные README и CHANGELOG для Windows, а также русскую `README-macOS.md` в корне macOS ZIP и рядом с `.app`. `SHA256SUMS.txt` опубликован вместе с проверенными архивами.
 
-The v0.4.2 ZIPs will contain the current Windows README/changelog and a Russian macOS install guide both at ZIP root and next to the app. `SHA256SUMS.txt` will be published with the verified archives after readback.
+The v0.4.2 ZIPs contain the current Windows README/changelog and a Russian macOS install guide both at ZIP root and next to the app. `SHA256SUMS.txt` is published with the verified archives.
 
 ## Для разработчиков / Development
 
