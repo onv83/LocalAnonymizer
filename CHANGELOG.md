@@ -2,7 +2,7 @@
 
 All notable changes to LocalAnonymizer are documented here.
 
-The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; v0.2.12 also includes a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
+The project follows [Semantic Versioning](https://semver.org/). GitHub Releases contain Windows packages and matching checksums; releases since v0.2.12 also include a **preliminary macOS Apple Silicon (ARM64) build**. See the [current download/install guide](README.md) for platform-specific verification and remaining manual checks.
 
 ## [0.4.1] — 2026-11-09
 
@@ -29,11 +29,13 @@ The project follows [Semantic Versioning](https://semver.org/). GitHub Releases 
 - DOCX, idempotence and differential acceptance: split runs, split cells, tables and lists are handled with row isolation; the source stays unchanged, the pair restores the document, a physical OOXML check proves the source network values are absent from every XML part of the package, and a second pass creates no new or nested markers. Differential verification confirmed no unjustified loss of earlier detections: dropping former «mount-path + ≥3 purely numeric cells» host rows without row-local IP evidence is the approved A5 tightening, not a regression.
 - RU/EN secret-marker tooltips now describe recovery through the document + `.larecovery` pair instead of permanent removal.
 - README now documents the actual rule/allow-list tables and current secret recovery flow; the 0.4.0 notes cover the full changes since public 0.3.0.
+- Release status: the Windows package was built and installed from release commit `931db54` (EXE SHA-256 `c4de213f7ec6257abf1c3ed7aaecb0009c84292f6216807084fc507077f2c206`; packaged smoke/pair/platform checks green in normal and `python -O` modes, fresh archive extraction verified), native macOS main CI run `42562138392` succeeded, and the v0.4.1 release is published on GitHub and Bitbucket. The macOS ARM64 package remains preliminary pending real-Mac manual acceptance.
 
 ### Проверки / Verification
 
 - Полный source suite: **1377 passed, 3 warnings**; независимый exact-snapshot re-review: **GO, без blockers**.
-- Сборка, установка и публикация 0.4.1 на момент этого снимка документации не выполнялись; до релиза они остаются обязательными шагами.
+- Windows: сборка и установка 0.4.1 из релизного коммита `931db54` выполнены; packaged verification (smoke/pair/platform) зелёная в обычном режиме и в режиме `python -O`, EXE SHA-256 `c4de213f7ec6257abf1c3ed7aaecb0009c84292f6216807084fc507077f2c206`; свежее извлечение архива проверено.
+- macOS ARM64: native main CI run `42562138392` — **success**; выпуск v0.4.1 опубликован на GitHub и Bitbucket с обратным прочтением. Пакет macOS остаётся **предварительным**: ручная приёмка на реальном Mac не выполнялась.
 
 ## [0.4.0] — 2026-11-08
 
