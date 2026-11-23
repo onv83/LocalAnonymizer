@@ -40,9 +40,9 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "0.4.4"
-INDEX_ASSET = "index-v1.8.27.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.27.html"
+APP_VERSION = "0.4.5"
+INDEX_ASSET = "index-v1.8.29.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.29.html"
 
 
 def _read_clipboard_text() -> str:
