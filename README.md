@@ -2,14 +2,14 @@
 
 Приложение обрабатывает документы на вашем компьютере, без облака, телеметрии, HTTP-сервера и передачи содержимого наружу. Интерфейс — русский и английский. Поддерживаются DOCX, ODT, XLSX, TXT, CSV, MD, LOG; старый DOC — только на Windows с Microsoft Word.
 
-## Скачать v0.4.3 — Python не нужен
+## Скачать v0.4.4 — Python не нужен
 
 | Платформа | Скачать готовое приложение | Статус |
 | --- | --- | --- |
-| Windows x64 | [LocalAnonymizer-0.4.3-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/LocalAnonymizer-0.4.3-windows-x64.zip) | Исходный код: 1426 tests зелёные; packaged smoke/pair/platform выполнены |
+| Windows x64 | [LocalAnonymizer-0.4.4-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.4/LocalAnonymizer-0.4.4-windows-x64.zip) | Исходный код: 1426 tests зелёные; packaged smoke/pair/platform выполнены |
 | macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.2-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip) | **Предварительная версия 0.4.2**; выпуск 0.4.3 содержит только Windows-пакет |
 
-[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.3) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
+[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.4) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.4/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
 **Для готовых ZIP не нужны Python, uv, pip или сборка из исходников.** Intel Mac не проверен; ARM64-архив не следует считать сборкой для Intel. Готовый Linux-пакет в этом выпуске не опубликован.
 
@@ -48,6 +48,11 @@
 - Исходный код: полный набор v0.4.3 завершён с **1438 passed** и 3 ожидаемыми предупреждениями о тестовых ZIP; профильный набор восстановления DOCX — **49 passed**.
 - Windows-архив: пакет собран из релизного коммита этой версии; packaged verification (EXE smoke/pair/platform) зелёная, установленная сборка запущена и проверена.
 - macOS ARM64: native main CI run `42587363324` подтвердил WebKit bridge, системный буфер, текстовое восстановление и packaged core/pair/platform проверки. Это не заменяет ручную приёмку на Mac.
+
+## Что изменилось в 0.4.4
+
+- **Окно «Добавить правило» стало больше:** поле «Что скрывать» выше и крупнее, список замен занимает основную высоту и прокручивается, кнопки закреплены снизу. С длинным списком категорий работать удобнее.
+- Исправления восстановления DOCX из 0.4.3 сохранены: документ после правок в Word восстанавливается, удалённые таблицы не возвращаются, списки и стили не дублируются.
 
 ## Что изменилось в 0.4.3
 
@@ -110,12 +115,12 @@
 
 ## English installation and status
 
-**v0.4.3 is the current version.** The source suite is green (1426 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package was built and installed from the release commit with packaged smoke/pair/platform checks green. The macOS ARM64 archive remains preliminary pending real-Mac manual acceptance;  No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
+**v0.4.4 is the current version.** The source suite is green (1426 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package was built and installed from the release commit with packaged smoke/pair/platform checks green. The macOS ARM64 archive remains preliminary pending real-Mac manual acceptance;  No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
 
-- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/LocalAnonymizer-0.4.3-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
+- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.4/LocalAnonymizer-0.4.4-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
 - [Download macOS Apple Silicon / ARM64 — preliminary v0.4.2](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
 - If the first launch is blocked, and only if you trust this exact downloaded file, open System Settings → Privacy & Security → Open Anyway after the failed launch, then confirm. If unavailable, or macOS reports malware/damage, stop and report the error rather than bypassing protection. Do not disable Gatekeeper globally or remove quarantine with `sudo xattr`. Developer ID/notarization were not established by this documentation audit.
-- Release evidence and `SHA256SUMS.txt` are published at the [v0.4.3 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.3) alongside the verified archives.
+- Release evidence and `SHA256SUMS.txt` are published at the [v0.4.3 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.4) alongside the verified archives.
 - **Still to check on a real Mac:** first launch/Gatekeeper; Cmd+Enter copy including button focus; RU→EN→RU and persistence after restart; real DOCX open/process/export/restore with tables, formatting and Word edits; clipboard, file dialogs and error UI. Native first-key concurrency (B65) remains open separately.
 - The v0.4.3 DOCX-recovery fixes and the earlier v0.4.2 performance work and v0.4.1 network-inventory hardening are described in the bilingual [changelog](CHANGELOG.md). Detection is not exhaustive; manually review every anonymized result.
 - Local mappings use OS-protected storage and fail closed without it. Exported `.larecovery` files are intentionally **unencrypted** and contain every original value, including secrets: protect them like the original document. Secrets restore through the ordinary file-pair mechanism. Legacy `.doc` requires Word COM on Windows; macOS is not claimed equivalent.
