@@ -38,7 +38,7 @@ def test_thousands_metric_keeps_confirmed_account_capacity():
 
 
 def test_metric_category_is_exposed_in_both_active_category_panels():
-    for name in ("index-v1.8.25.html", "index-en-v1.8.25.html"):
+    for name in ("index-v1.8.27.html", "index-en-v1.8.27.html"):
         html = asset_path(name).read_text(encoding="utf-8")
         assert html.count('data-categories="МЕТРИКА"') == 1
         assert "[МЕТРИКА-N]" in html

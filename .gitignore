@@ -32,3 +32,7 @@ reference/*.html
 
 # Generated immediately before PyInstaller; embedded in the executable.
 src/local_anonymizer/_build_provenance.py
+release-0.4.3/
+release-0.4.4/
+build/pyinstaller-output/
+build/pyinstaller-current/
