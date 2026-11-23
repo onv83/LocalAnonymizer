@@ -1885,8 +1885,10 @@ def test_docx_restore_rejects_dtd_in_protected_graphics_fragment(tmp_path):
         b'<a:hlinkClick xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         b'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
         b'r:id="rId1" tooltip="https://example.invalid/payload"/>',
+        b'<blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        b'r:embed="rId1"/>',
     ],
-    ids=["active-object", "embedded-ole", "external-url"],
+    ids=["active-object", "embedded-ole", "external-url", "unqualified-lookalike"],
 )
 def test_docx_restore_rejects_active_or_external_xml_in_graphics_archive(
     tmp_path, payload
@@ -1916,6 +1918,41 @@ def test_docx_restore_rejects_active_or_external_xml_in_graphics_archive(
         )
 
     assert not restored.exists()
+
+
+def test_docx_restore_rejects_wrong_parent_and_unqualified_graphics_attributes(tmp_path):
+    source = tmp_path / "source.docx"
+    image = tmp_path / "synthetic.png"
+    anonymized = tmp_path / "anonymized.docx"
+    restored = tmp_path / "restored.docx"
+    image.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    ))
+    document = Document()
+    document.add_picture(str(image), width=Inches(1))
+    document.save(source)
+    result = DocxProcessor().anonymize(source, anonymized)
+
+    for mutation in ("wrong-parent", "unqualified-attribute", "foreign-attribute", "unknown-child"):
+        archive = copy.deepcopy(result.package_archive)
+        fragment = etree.fromstring(base64.b64decode(archive["fragments"][0]["xml"]))
+        drawing_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+        word_drawing_ns = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        if mutation == "wrong-parent":
+            graphic = fragment.find(f".//{{{drawing_ns}}}graphic")
+            graphic.append(etree.Element(f"{{{drawing_ns}}}graphicFrameLocks"))
+        elif mutation == "unqualified-attribute":
+            fragment.find(f".//{{{word_drawing_ns}}}docPr").set("payload", "1")
+        elif mutation == "foreign-attribute":
+            fragment.find(f".//{{{drawing_ns}}}blip").set("{urn:unsafe}payload", "1")
+        else:
+            fragment.find(f".//{{{drawing_ns}}}graphicData").append(
+                etree.Element(f"{{{drawing_ns}}}unknown")
+            )
+        archive["fragments"][0]["xml"] = base64.b64encode(etree.tostring(fragment)).decode("ascii")
+        with pytest.raises(RestorationError, match="XML"):
+            DocxProcessor().restore(anonymized, restored, result.mapping, package_archive=archive)
+        assert not restored.exists()
 
 
 def test_docx_deleted_graphics_placeholder_does_not_restore_dangling_relationship(tmp_path):
@@ -2587,7 +2624,7 @@ def test_docx_preserves_required_dynamic_attributes_across_word_parts(tmp_path):
     assert document.xpath("//w:pgSz[1]/@w:orient", namespaces=ns) == ["landscape"]
     assert numbering.xpath("//w:abstractNum[1]/@w:abstractNumId", namespaces=ns) == ["36"]
     assert numbering.xpath("(//w:abstractNumId)[1]/@w:val", namespaces=ns) == ["36"]
-    assert theme.xpath("//a:theme/@name", namespaces=ns) == ["Office Theme"]
+    assert theme.xpath("//a:theme/@name", namespaces=ns) == ["LocalAnonymizer Theme"]
     assert theme.xpath("(//a:latin)[1]/@typeface", namespaces=ns) == ["Arial"]
     assert theme.xpath("(//a:ln)[1]/@w", namespaces=ns) == ["6350"]
     assert theme.xpath("(//a:srgbClr)[1]/@val", namespaces=ns) == ["FFFFFF"]

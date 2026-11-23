@@ -2,14 +2,14 @@
 
 Приложение обрабатывает документы на вашем компьютере, без облака, телеметрии, HTTP-сервера и передачи содержимого наружу. Интерфейс — русский и английский. Поддерживаются DOCX, ODT, XLSX, TXT, CSV, MD, LOG; старый DOC — только на Windows с Microsoft Word.
 
-## Скачать v0.4.2 — Python не нужен
+## Скачать v0.4.3 — Python не нужен
 
 | Платформа | Скачать готовое приложение | Статус |
 | --- | --- | --- |
-| Windows x64 | [LocalAnonymizer-0.4.2-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-windows-x64.zip) | Исходный код: 1387 tests зелёные; packaged smoke/pair/platform выполнены |
-| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.2-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip) | **Предварительная версия**; native CI пройден, требуется ручная приёмка на Mac |
+| Windows x64 | [LocalAnonymizer-0.4.3-windows-x64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/LocalAnonymizer-0.4.3-windows-x64.zip) | Исходный код: 1426 tests зелёные; packaged smoke/pair/platform выполнены |
+| macOS Apple Silicon (ARM64, M-серия) | [LocalAnonymizer-0.4.2-macos-arm64.zip](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip) | **Предварительная версия 0.4.2**; выпуск 0.4.3 содержит только Windows-пакет |
 
-[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.2) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
+[Страница выпуска и результаты проверок](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.3) · [SHA256SUMS.txt](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/SHA256SUMS.txt) · [История изменений RU/EN](CHANGELOG.md) · [English instructions](#english-installation-and-status)
 
 **Для готовых ZIP не нужны Python, uv, pip или сборка из исходников.** Intel Mac не проверен; ARM64-архив не следует считать сборкой для Intel. Готовый Linux-пакет в этом выпуске не опубликован.
 
@@ -45,11 +45,19 @@
 
 ### Проверки выпуска
 
-- Исходный код: полный набор v0.4.2 завершён с **1387 passed** и 3 предупреждениями; независимый review производительности — GO. Известных незакрытых падений в этом прогоне нет.
-- Windows-архив: пакет собран и установлен из релизного коммита `e6c65b6`; packaged verification (EXE smoke/pair/platform) зелёная в обычном режиме и в режиме `python -O`, GUI установленной сборки запущен.
+- Исходный код: полный набор v0.4.3 завершён с **1438 passed** и 3 ожидаемыми предупреждениями о тестовых ZIP; профильный набор восстановления DOCX — **49 passed**.
+- Windows-архив: пакет собран из релизного коммита этой версии; packaged verification (EXE smoke/pair/platform) зелёная, установленная сборка запущена и проверена.
 - macOS ARM64: native main CI run `42587363324` подтвердил WebKit bridge, системный буфер, текстовое восстановление и packaged core/pair/platform проверки. Это не заменяет ручную приёмку на Mac.
 
-## Что изменилось в 0.4.2
+## Что изменилось в 0.4.3
+
+- **Восстановление DOCX после правок в Word.** Устранены ложные блокировки стандартных структур Word: поля и закладки в колонтитулах, границы и отступы ячеек (`tcMar`, `tcBorders`), повторяющиеся строки заголовков (`tblHeader`), теги элементов управления, номера страниц (`pgNumType`), уровни структуры (`outlineLvl`), `szCs`, отступы и `keepLines` в стилях, блокировки рисунков (`picLocks`).
+- **Удалённые таблицы больше не возвращаются.** При изменении структуры документа выбирается семантическое восстановление, а не старый layout-путь, который мог вернуть удалённую таблицу при совпадении числа абзацев.
+- **Списки и стили не дублируются.** Для старых пар без сохранённой базовой версии формата существующие определения переиспользуются; для новых пар сохраняется необязательная hash-проверяемая база `styles.xml`/`numbering.xml` без текста документа.
+- **Безопасность.** Сохраняются только безопасные внешние ссылки `https`; `file:`, `javascript:`, UNC и прочие внешние отношения, а также небезопасные или повреждённые снимки исходника отклоняются с ошибкой и без выходного файла.
+- **Совместимость.** Формат `.larecovery` не менялся; пары прежних версий восстанавливаются. `.larecovery` по-прежнему не зашифрован и требует защиты как исходный документ.
+
+### 0.4.2
 
 - **Производительность движка:** пересечения диапазонов решаются отсортированным интервальным индексом (bisect) вместо повторных линейных пересмотров занятых диапазонов; точная семантика строгого пересечения, порядок детекций и идентичности маркеров сохранены (digests совпадают побайтово), рандомизированная дифференциальная регрессия закрепляет прежнюю семантику.
 - **Очистка DOCX:** schema-работа санитайзера (классификация части пакета, прекомпилированные валидаторы, lookups разрешённых пар и доверенных контекстов) вынесена из цикла элементов; результат очистки побайтово идентичен.
@@ -102,21 +110,21 @@
 
 ## English installation and status
 
-**v0.4.2 is the current version.** The source suite is green (1387 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package was built and installed from release commit `e6c65b6` with packaged smoke/pair/platform checks green in normal and `python -O` modes. The macOS ARM64 archive remains preliminary pending real-Mac manual acceptance; native main CI run `42587363324` succeeded. No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
+**v0.4.3 is the current version.** The source suite is green (1426 tests, 3 warnings) with an independent review of the performance work (GO); the Windows package was built and installed from the release commit with packaged smoke/pair/platform checks green. The macOS ARM64 archive remains preliminary pending real-Mac manual acceptance;  No Python, uv, pip or source build is needed for the published ZIPs. Intel Mac compatibility is not verified; no Linux package is planned for this release.
 
-- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
-- [Download macOS Apple Silicon / ARM64 — preliminary](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
+- [Download Windows x64](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.3/LocalAnonymizer-0.4.3-windows-x64.zip): extract the entire ZIP and run `LocalAnonymizer/LocalAnonymizer.exe`. Keep `_internal` next to the EXE. Microsoft Edge WebView2 Runtime is required.
+- [Download macOS Apple Silicon / ARM64 — preliminary v0.4.2](https://github.com/onv83/LocalAnonymizer/releases/download/v0.4.2/LocalAnonymizer-0.4.2-macos-arm64.zip): unzip in Finder, open `native-macos-package`, drag `LocalAnonymizer.app` into Applications, then launch from Applications. Do not download GitHub's source-code archive instead.
 - If the first launch is blocked, and only if you trust this exact downloaded file, open System Settings → Privacy & Security → Open Anyway after the failed launch, then confirm. If unavailable, or macOS reports malware/damage, stop and report the error rather than bypassing protection. Do not disable Gatekeeper globally or remove quarantine with `sudo xattr`. Developer ID/notarization were not established by this documentation audit.
-- Release evidence and `SHA256SUMS.txt` are published at the [v0.4.2 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.2) alongside the verified archives.
+- Release evidence and `SHA256SUMS.txt` are published at the [v0.4.3 release page](https://github.com/onv83/LocalAnonymizer/releases/tag/v0.4.3) alongside the verified archives.
 - **Still to check on a real Mac:** first launch/Gatekeeper; Cmd+Enter copy including button focus; RU→EN→RU and persistence after restart; real DOCX open/process/export/restore with tables, formatting and Word edits; clipboard, file dialogs and error UI. Native first-key concurrency (B65) remains open separately.
-- The v0.4.2 performance improvements (sorted-interval overlap resolution, DOCX sanitizer schema hoisting, one engine pass per document action) and the earlier v0.4.1 network-inventory hardening are described in the bilingual [changelog](CHANGELOG.md#042--2026-11-09). Detection is not exhaustive; manually review every anonymized result.
+- The v0.4.3 DOCX-recovery fixes and the earlier v0.4.2 performance work and v0.4.1 network-inventory hardening are described in the bilingual [changelog](CHANGELOG.md). Detection is not exhaustive; manually review every anonymized result.
 - Local mappings use OS-protected storage and fail closed without it. Exported `.larecovery` files are intentionally **unencrypted** and contain every original value, including secrets: protect them like the original document. Secrets restore through the ordinary file-pair mechanism. Legacy `.doc` requires Word COM on Windows; macOS is not claimed equivalent.
 
 ## Документация внутри архивов / Bundled documentation
 
-Архивы v0.4.2 содержат актуальные README и CHANGELOG для Windows, а также русскую `README-macOS.md` в корне macOS ZIP и рядом с `.app`. `SHA256SUMS.txt` опубликован вместе с проверенными архивами.
+Архивы v0.4.3 содержат актуальные README и CHANGELOG для Windows, а также русскую `README-macOS.md` в корне macOS ZIP и рядом с `.app`. `SHA256SUMS.txt` опубликован вместе с проверенными архивами.
 
-The v0.4.2 ZIPs contain the current Windows README/changelog and a Russian macOS install guide both at ZIP root and next to the app. `SHA256SUMS.txt` is published with the verified archives.
+The v0.4.3 ZIPs contain the current Windows README/changelog and a Russian macOS install guide both at ZIP root and next to the app. `SHA256SUMS.txt` is published with the verified archives.
 
 ## Для разработчиков / Development
 

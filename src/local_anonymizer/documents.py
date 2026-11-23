@@ -11,9 +11,10 @@ import posixpath
 import re
 import struct
 import tempfile
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 import docx
 from docx import Document
@@ -27,6 +28,27 @@ from .engine import Anonymizer, AnonymizationResult, MARKER_PATTERN, warnings_re
 
 class RestorationError(RuntimeError):
     pass
+
+
+_MAX_RESTORE_MAPPING_ENTRIES = 100_000
+_MAX_RESTORE_MAPPING_VALUE_LENGTH = 1_048_576
+_MAX_ANONYMIZED_FORMAT_CORE_PART = 4 * 1024 * 1024
+_ANONYMIZED_FORMAT_CORE_PARTS = ("word/styles.xml", "word/numbering.xml")
+
+
+def _validate_restore_mapping(mapping: object) -> dict[str, str]:
+    """Accept only the bounded marker map produced by the anonymization engine."""
+    if not isinstance(mapping, dict) or len(mapping) > _MAX_RESTORE_MAPPING_ENTRIES:
+        raise RestorationError("Повреждённая карта восстановления")
+    for marker, value in mapping.items():
+        if (
+            not isinstance(marker, str)
+            or re.fullmatch(MARKER_PATTERN, marker) is None
+            or not isinstance(value, str)
+            or len(value) > _MAX_RESTORE_MAPPING_VALUE_LENGTH
+        ):
+            raise RestorationError("Повреждённая карта восстановления")
+    return mapping
 
 
 @dataclass
@@ -460,6 +482,7 @@ class DocxProcessor:
                 package_archive["style_id_map"] = style_id_map
                 package_archive["font_id_map"] = font_id_map
             anonymized_bytes = output.read_bytes()
+            package_archive["anonymized_format_core"] = _archive_anonymized_format_core(output)
             if exact_source_safe and _source_archive_is_reversible(original_hash, self.engine):
                 package_archive["exact_source_b64"] = base64.b64encode(original_hash).decode("ascii")
                 package_archive["exact_source_sha256"] = hashlib.sha256(original_hash).hexdigest()
@@ -472,9 +495,25 @@ class DocxProcessor:
                               engine_result=result)
 
     def restore(self, source: str | Path, output: str | Path, mapping: dict[str, str],
-                *, package_archive: dict | None = None) -> list[str]:
+                *, package_archive: dict | None = None, soft_compat: bool = False) -> list[str]:
+        """Public DOCX restore boundary for malformed package input."""
+        mapping = _validate_restore_mapping(mapping)
+        try:
+            return self._restore(source, output, mapping, package_archive=package_archive,
+                                 soft_compat=soft_compat)
+        except (BadZipFile, etree.XMLSyntaxError) as exc:
+            raise RestorationError("Повреждённый DOCX нельзя восстановить") from exc
+
+    def _restore(self, source: str | Path, output: str | Path, mapping: dict[str, str],
+                 *, package_archive: dict | None = None, soft_compat: bool = False) -> list[str]:
         source, output = Path(source), Path(output)
-        _preflight_docx_package(source)
+        try:
+            _preflight_docx_package(source)
+        except ValueError as exc:
+            raise RestorationError("Повреждённый DOCX нельзя восстановить") from exc
+        # Validate even when exact replay wins: this is pair metadata, not an
+        # optional fallback-only hint.
+        _validated_anonymized_format_core(package_archive)
         if _restore_exact_docx_package(source, output, mapping, package_archive):
             return []
         layout_unknown = _restore_original_layout(source, output, mapping, package_archive)
@@ -490,22 +529,67 @@ class DocxProcessor:
         temp = _temp_path(output)
         try:
             _rewrite_docx_text_package(source, temp, transform_all)
-            warnings = _sanitize_package(temp)
+            warnings = _sanitize_package(temp, soft_compat=soft_compat)
             if warnings:
                 raise RestorationError("Восстановление запрещено: неподдерживаемые элементы DOCX")
             restored_graphic_markers = _restore_reversible_docx_graphics(
                 temp, package_archive, mapping
             )
             unknown = [marker for marker in unknown if marker not in restored_graphic_markers]
-            _preflight_docx_package(temp)
+            _graft_snapshot_format_core(temp, package_archive)
+            try:
+                _preflight_docx_package(temp)
+            except ValueError as exc:
+                raise RestorationError("Восстановленный DOCX не прошёл проверку") from exc
             _atomic_publish(temp, output)
         finally:
             temp.unlink(missing_ok=True)
         return sorted(set(unknown))
 
 
-def _validated_exact_original(archive: dict | None) -> bytes | None:
-    """Decode and integrity-check the archived exact source snapshot, if present."""
+def _archive_anonymized_format_core(path: Path) -> dict[str, dict[str, str]]:
+    """Store the small non-text formatting baseline emitted with this pair."""
+    with ZipFile(path) as package:
+        result = {}
+        for name in _ANONYMIZED_FORMAT_CORE_PARTS:
+            payload = package.read(name)
+            if len(payload) > _MAX_ANONYMIZED_FORMAT_CORE_PART:
+                raise RestorationError("Anonymized format core is too large")
+            result[name] = {
+                "data_b64": base64.b64encode(payload).decode("ascii"),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+    return result
+
+
+def _validated_anonymized_format_core(archive: dict | None) -> dict[str, bytes] | None:
+    """Return the optional new-pair formatting baseline after strict validation."""
+    if not isinstance(archive, dict) or "anonymized_format_core" not in archive:
+        return None
+    encoded = archive["anonymized_format_core"]
+    if not isinstance(encoded, dict) or set(encoded) != set(_ANONYMIZED_FORMAT_CORE_PARTS):
+        raise RestorationError("Invalid anonymized format core")
+    result: dict[str, bytes] = {}
+    for name in _ANONYMIZED_FORMAT_CORE_PARTS:
+        item = encoded[name]
+        if (not isinstance(item, dict) or set(item) != {"data_b64", "sha256"}
+                or not isinstance(item["data_b64"], str)
+                or not isinstance(item["sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])):
+            raise RestorationError("Invalid anonymized format core")
+        try:
+            payload = base64.b64decode(item["data_b64"], validate=True)
+        except (TypeError, ValueError) as exc:
+            raise RestorationError("Invalid anonymized format core") from exc
+        if (len(payload) > _MAX_ANONYMIZED_FORMAT_CORE_PART
+                or hashlib.sha256(payload).hexdigest() != item["sha256"]):
+            raise RestorationError("Invalid anonymized format core")
+        result[name] = payload
+    return result
+
+
+def _exact_anonymized_digest(archive: dict | None) -> str | None:
+    """Return the exact-replay digest after validating its small metadata envelope."""
     if not isinstance(archive, dict):
         return None
     exact_keys = {
@@ -518,14 +602,21 @@ def _validated_exact_original(archive: dict | None) -> bytes | None:
         return None
     if present != exact_keys:
         raise RestorationError("Повреждён точный снимок исходного DOCX")
+    anonymized_digest = archive["exact_anonymized_sha256"]
+    if not isinstance(anonymized_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", anonymized_digest):
+        raise RestorationError("Повреждён точный снимок исходного DOCX")
+    return anonymized_digest
+
+
+def _decoded_exact_original(archive: dict | None) -> bytes | None:
+    """Decode the digest-checked exact source without choosing a replay scope."""
+    if _exact_anonymized_digest(archive) is None:
+        return None
+    assert archive is not None
     encoded = archive["exact_source_b64"]
     source_digest = archive["exact_source_sha256"]
-    anonymized_digest = archive["exact_anonymized_sha256"]
-    if not all(isinstance(value, str) for value in (encoded, source_digest, anonymized_digest)):
-        raise RestorationError("Повреждён точный снимок исходного DOCX")
-    if not re.fullmatch(r"[0-9a-f]{64}", source_digest) or not re.fullmatch(
-        r"[0-9a-f]{64}", anonymized_digest
-    ):
+    if (not isinstance(encoded, str) or not isinstance(source_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", source_digest)):
         raise RestorationError("Повреждён точный снимок исходного DOCX")
     try:
         original = base64.b64decode(encoded, validate=True)
@@ -536,6 +627,255 @@ def _validated_exact_original(archive: dict | None) -> bytes | None:
     return original
 
 
+def _validated_exact_original(archive: dict | None) -> bytes | None:
+    """Decode and strictly validate an archived snapshot for full-package replay."""
+    original = _decoded_exact_original(archive)
+    if original is None:
+        return None
+    try:
+        _validate_snapshot_docx(original)
+        assert archive is not None
+        _validate_snapshot_identifier_maps(archive)
+    except (BadZipFile, OSError, ValueError, etree.XMLSyntaxError) as exc:
+        raise RestorationError("Invalid exact DOCX snapshot") from exc
+    return original
+
+
+def _validated_exact_format_core_original(archive: dict | None) -> bytes | None:
+    """Validate only the source formatting parts consumed by semantic recovery."""
+    original = _decoded_exact_original(archive)
+    if original is None:
+        return None
+    try:
+        _validate_snapshot_docx(original, format_core_only=True)
+        assert archive is not None
+        _validate_snapshot_identifier_maps(archive)
+    except (BadZipFile, OSError, ValueError, etree.XMLSyntaxError) as exc:
+        raise RestorationError("Invalid exact DOCX snapshot") from exc
+    return original
+
+
+def _validate_snapshot_identifier_maps(archive: dict) -> None:
+    for name in ("style_id_map", "font_id_map"):
+        value = archive.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, dict) or any(
+            not isinstance(key, str) or not isinstance(mapped, str)
+            or not key or not mapped or len(key) > 128 or len(mapped) > 128
+            or any(ord(char) < 32 for char in key + mapped)
+            for key, mapped in value.items()
+        ):
+            raise ValueError(f"invalid {name}")
+
+
+def _validate_snapshot_docx(payload: bytes, *, format_core_only: bool = False) -> None:
+    """Validate a donor before any route can replay bytes from it.
+
+    Exact recovery replays this package verbatim.  Therefore it is deliberately
+    narrower than the input sanitizer: only the inert DOCX parts this program
+    emits and can validate are permitted, and every relationship is internal.
+    """
+    with ZipFile(BytesIO(payload)) as package:
+        infos = package.infolist()
+        if not infos or len(infos) > 2048:
+            raise ValueError("invalid donor member count")
+        names: set[str] = set()
+        total = 0
+        for info in infos:
+            if not _safe_zip_member_name(info.filename) or info.filename.casefold() in names:
+                raise ValueError("unsafe or duplicate donor member")
+            names.add(info.filename.casefold())
+            if info.flag_bits & 1 or info.compress_type not in {ZIP_STORED, ZIP_DEFLATED}:
+                raise ValueError("unsafe donor compression")
+            if info.file_size > 64 * 1024 * 1024 or (info.file_size and not info.compress_size):
+                raise ValueError("invalid donor member size")
+            total += info.file_size
+            if total > 256 * 1024 * 1024 or (info.compress_size and info.file_size / info.compress_size > 1000):
+                raise ValueError("unsafe donor size")
+
+        if format_core_only:
+            # Semantic recovery never replays source media.  It may therefore
+            # ignore a snapshot-only media payload (including SVG), but it
+            # still rejects unknown non-media members.
+            if any(
+                not _safe_snapshot_docx_member(info.filename)
+                and not re.fullmatch(r"word/media/[^/]+", info.filename)
+                for info in infos
+            ):
+                raise ValueError("unsupported donor member")
+        elif any(not _safe_snapshot_docx_member(info.filename) for info in infos):
+            raise ValueError("unsupported donor member")
+
+        expected = {
+            "[Content_Types].xml": (_CONTENT_TYPES_NS, "Types"),
+            "word/document.xml": (_WML_NS, "document"),
+            "word/styles.xml": (_WML_NS, "styles"),
+            "word/numbering.xml": (_WML_NS, "numbering"),
+            "word/settings.xml": (_WML_NS, "settings"),
+            "word/fontTable.xml": (_WML_NS, "fonts"),
+            "word/webSettings.xml": (_WML_NS, "webSettings"),
+            "word/theme/theme1.xml": (_DRAWING_NS, "theme"),
+        }
+        required_names = (
+            {"[content_types].xml", "_rels/.rels", "word/document.xml",
+             "word/_rels/document.xml.rels", "word/styles.xml", "word/numbering.xml"}
+            if format_core_only else
+            {"[content_types].xml", "_rels/.rels", "word/document.xml"}
+        )
+        if not required_names.issubset(names):
+            raise ValueError("donor is not a DOCX package")
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+        xml_parts: dict[str, etree._ElementTree] = {}
+        for info in infos:
+            name = info.filename
+            if format_core_only and not (
+                name in _FORMAT_CORE_PARTS
+                or name == "word/document.xml"
+                or name.endswith(".rels")
+            ):
+                continue
+            if not (name.endswith(".xml") or name.endswith(".rels")):
+                continue
+            tree = etree.parse(BytesIO(package.read(name)), parser)
+            xml_parts[name] = tree
+            if tree.docinfo.doctype or tree.docinfo.internalDTD is not None:
+                raise ValueError("donor DTD")
+            root = etree.QName(tree.getroot())
+            expected_root = expected.get(name)
+            if expected_root and (root.namespace, root.localname) != expected_root:
+                raise ValueError("unexpected donor root")
+            if not name.endswith(".rels"):
+                _validate_snapshot_xml_part(name, tree.getroot())
+                continue
+            if (root.namespace, root.localname) != (_PACKAGE_REL_NS, "Relationships"):
+                raise ValueError("invalid donor relationships")
+            relation_ids: set[str] = set()
+            for relation in tree.getroot():
+                qname = etree.QName(relation)
+                if (qname.namespace, qname.localname) != (_PACKAGE_REL_NS, "Relationship"):
+                    raise ValueError("invalid donor relationship")
+                if set(relation.attrib) - {"Id", "Type", "Target", "TargetMode"}:
+                    raise ValueError("invalid donor relationship attributes")
+                identifier = relation.get("Id")
+                if not identifier or identifier in relation_ids or not relation.get("Type") or not relation.get("Target"):
+                    raise ValueError("invalid donor relationship")
+                target_mode = relation.get("TargetMode")
+                if target_mode == "External":
+                    if not _safe_snapshot_external_hyperlink(relation):
+                        raise ValueError("unsafe donor external relationship")
+                    relation_ids.add(identifier)
+                    continue
+                if target_mode not in {None, "Internal"}:
+                    raise ValueError("invalid donor relationship mode")
+                if relation.get("Type") not in _SNAPSHOT_RELATIONSHIP_TYPES:
+                    raise ValueError("unsupported donor relationship")
+                source = "" if name == "_rels/.rels" else name.replace("/_rels/", "/")[:-5]
+                target = _resolve_package_target(source, relation.get("Target", ""))
+                if target is None or target not in {info.filename for info in infos}:
+                    raise ValueError("invalid donor relationship target")
+                relation_ids.add(identifier)
+
+
+_HYPERLINK_RELATIONSHIP_TYPE = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+)
+
+
+def _safe_snapshot_external_hyperlink(relation) -> bool:
+    """Allow the small inert external relationship subset Word uses for links."""
+    if (relation.get("Type") != _HYPERLINK_RELATIONSHIP_TYPE
+            or relation.get("TargetMode") != "External"):
+        return False
+    target = relation.get("Target", "")
+    if (not target or len(target) > 2048
+            or any(ord(char) < 0x20 or char.isspace() for char in target)
+            or re.search(r"%(?![0-9A-Fa-f]{2})", target)):
+        return False
+    try:
+        parsed = urlsplit(target)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and not parsed.username
+        and not parsed.password
+    )
+
+
+_SNAPSHOT_RELATIONSHIP_TYPES = frozenset({
+    "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail",
+})
+
+
+def _safe_snapshot_docx_member(name: str) -> bool:
+    return (
+        name in {"[Content_Types].xml", "_rels/.rels", "docProps/core.xml", "docProps/app.xml", "docProps/custom.xml", "docProps/thumbnail.jpeg",
+                 "word/document.xml", "word/styles.xml", "word/stylesWithEffects.xml", "word/numbering.xml",
+                 "word/settings.xml", "word/fontTable.xml", "word/webSettings.xml"}
+        or re.fullmatch(r"word/theme/theme\d+\.xml", name) is not None
+        or re.fullmatch(r"word/(?:header|footer)\d+\.xml", name) is not None
+        or name in {"word/comments.xml", "word/footnotes.xml", "word/endnotes.xml"}
+        or re.fullmatch(r"customXml/(?:item\d+|itemProps\d+)\.xml", name) is not None
+        or re.fullmatch(r"(?:word|customXml|docProps)/_rels/[A-Za-z0-9_.-]+\.xml\.rels", name) is not None
+        or _REVERSIBLE_GRAPHIC_PART.fullmatch(name) is not None
+    )
+
+
+def _validate_snapshot_xml_part(name: str, root: etree._Element) -> None:
+    qname = etree.QName(root)
+    roots = {
+        "docProps/core.xml": ("http://schemas.openxmlformats.org/package/2006/metadata/core-properties", "coreProperties"),
+        "docProps/app.xml": ("http://schemas.openxmlformats.org/officeDocument/2006/extended-properties", "Properties"),
+        "docProps/custom.xml": ("http://schemas.openxmlformats.org/officeDocument/2006/custom-properties", "Properties"),
+        "word/comments.xml": (_WML_NS, "comments"), "word/footnotes.xml": (_WML_NS, "footnotes"),
+        "word/endnotes.xml": (_WML_NS, "endnotes"),
+    }
+    expected = roots.get(name)
+    if expected is None:
+        if name == "[Content_Types].xml":
+            expected = (_CONTENT_TYPES_NS, "Types")
+        elif re.fullmatch(r"word/(?:header|footer)\d+\.xml", name):
+            expected = (_WML_NS, "hdr" if "/header" in name else "ftr")
+        elif re.fullmatch(r"word/theme/theme\d+\.xml", name):
+            expected = (_DRAWING_NS, "theme")
+        elif name.startswith("customXml/"):
+            # Custom XML is inert data, but may not smuggle OOXML controls or rels.
+            if any(etree.QName(node).namespace in {_WML_NS, _PACKAGE_REL_NS, _OFFICE_REL_NS} for node in root.iter()):
+                raise ValueError("unsafe custom XML")
+            return
+        else:
+            expected = {
+                "word/document.xml": (_WML_NS, "document"), "word/styles.xml": (_WML_NS, "styles"),
+                "word/stylesWithEffects.xml": (_WML_NS, "styles"), "word/numbering.xml": (_WML_NS, "numbering"),
+                "word/settings.xml": (_WML_NS, "settings"), "word/fontTable.xml": (_WML_NS, "fonts"),
+                "word/webSettings.xml": (_WML_NS, "webSettings"),
+            }.get(name)
+    if expected is None or (qname.namespace, qname.localname) != expected:
+        raise ValueError("unexpected donor XML root")
+
+
 def _restore_exact_docx_package(
     source: Path,
     output: Path,
@@ -543,10 +883,11 @@ def _restore_exact_docx_package(
     archive: dict | None,
 ) -> bool:
     """Restore the byte-exact source when the anonymized package was not edited."""
+    digest = _exact_anonymized_digest(archive)
+    if digest is None or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+        return False
     original = _validated_exact_original(archive)
     if original is None:
-        return False
-    if hashlib.sha256(source.read_bytes()).hexdigest() != archive["exact_anonymized_sha256"]:
         return False
     temp = _temp_path(output)
     try:
@@ -565,12 +906,668 @@ def _restore_exact_docx_package(
     return True
 
 
+_FORMAT_CORE_PARTS = (
+    "word/styles.xml",
+    "word/numbering.xml",
+    "word/settings.xml",
+    "word/fontTable.xml",
+    "word/theme/theme1.xml",
+    "word/webSettings.xml",
+)
+
+
+def _remap_font_attributes(element, font_map: dict[str, str]) -> None:
+    for attr_local in ("ascii", "hAnsi", "eastAsia", "cs"):
+        attr = qn(f"w:{attr_local}")
+        value = element.get(attr)
+        if value in font_map:
+            element.set(attr, font_map[value])
+
+
+def _remap_identifier_elements(element, style_map: dict[str, str], font_map: dict[str, str],
+                               numbering_map: dict[str, str] | None = None) -> None:
+    """Resolve sanitized style/font identifiers onto the snapshot's originals."""
+    for node in element.iter():
+        if not isinstance(node.tag, str):
+            continue
+        local = etree.QName(node).localname
+        if local in _STYLE_REFERENCE_ELEMENTS:
+            value = node.get(qn("w:val"))
+            if value in style_map:
+                node.set(qn("w:val"), style_map[value])
+        if local == "rFonts":
+            _remap_font_attributes(node, font_map)
+        if local == "numId" and numbering_map:
+            value = node.get(qn("w:val"))
+            if value in numbering_map:
+                node.set(qn("w:val"), numbering_map[value])
+
+
+def _remap_snapshot_part(payload: bytes, style_map: dict[str, str],
+                          font_map: dict[str, str], parser,
+                          numbering_map: dict[str, str] | None = None) -> bytes:
+    if not style_map and not font_map and not numbering_map:
+        return payload
+    root = etree.fromstring(payload, parser)
+    _remap_identifier_elements(root, style_map, font_map, numbering_map)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _style_semantic_fingerprint(style, style_map: dict[str, str],
+                                font_map: dict[str, str],
+                                numbering_map: dict[str, str] | None) -> tuple:
+    """Compare a style's supported formatting meaning, not serializer bytes."""
+    clone = _clone_element(style)
+    _remap_identifier_elements(clone, style_map, font_map, numbering_map)
+
+    def visit(node) -> tuple:
+        if not isinstance(node.tag, str):
+            return ()
+        attributes = tuple(sorted(
+            (key, value) for key, value in node.attrib.items()
+            if etree.QName(key).localname != "styleId"
+            and not etree.QName(key).localname.startswith("rsid")
+        ))
+        children = tuple(filter(None, (visit(child) for child in node)))
+        return node.tag, attributes, node.text, children
+
+    return visit(clone)
+
+
+def _merged_snapshot_styles(
+    snapshot_styles: bytes,
+    edited_styles: bytes,
+    style_map: dict[str, str],
+    font_map: dict[str, str],
+    numbering_ids: set[str],
+    parser,
+    numbering_map: dict[str, str] | None = None,
+    baseline_styles: bytes | None = None,
+) -> bytes:
+    """Snapshot styles plus edited-only definitions, references re-resolved.
+
+    Word appends newly created styles (for example generated TOC styles) to
+    the styles part while the document is edited.  Those definitions live only
+    in the edited file, so the sanitized definitions are appended to the
+    snapshot core; their basedOn/next/link and font references are resolved
+    onto the snapshot's identifiers.  A numbering reference the snapshot does
+    not define would make Word reject the whole styles part, so an unresolvable
+    numPr is removed instead of being emitted dangling.
+    """
+    snapshot_root = etree.fromstring(snapshot_styles, parser)
+    edited_root = etree.fromstring(edited_styles, parser)
+    baseline_by_id: dict[str, etree._Element] = {}
+    if baseline_styles is not None:
+        baseline_root = etree.fromstring(baseline_styles, parser)
+        baseline_by_id = {
+            style.get(qn("w:styleId")): style
+            for style in baseline_root.iter(qn("w:style"))
+            if style.get(qn("w:styleId"))
+        }
+    snapshot_ids = {
+        style.get(qn("w:styleId")) for style in snapshot_root.iter(qn("w:style"))
+    }
+    changed = False
+    for style in edited_root.iter(qn("w:style")):
+        style_id = style.get(qn("w:styleId"))
+        mapped_id = style_map.get(style_id)
+        target_id = mapped_id if mapped_id in snapshot_ids else style_id if style_id in snapshot_ids else None
+        if target_id is not None:
+            # A legacy archive has no anonymized baseline to distinguish a
+            # user edit from sanitizer canonicalization.  Its exact snapshot
+            # is authoritative.  New archives may carry an existing style
+            # only when semantic comparison to that baseline proves an edit.
+            baseline_style = baseline_by_id.get(style_id)
+            if (
+                baseline_style is None
+                or _style_semantic_fingerprint(
+                    baseline_style, style_map, font_map, numbering_map
+                ) == _style_semantic_fingerprint(
+                    style, style_map, font_map, numbering_map
+                )
+            ):
+                continue
+            clone = _clone_element(style)
+            _remap_identifier_elements(clone, style_map, font_map, numbering_map)
+            clone.set(qn("w:styleId"), target_id)
+            existing = next(
+                item for item in snapshot_root.iter(qn("w:style"))
+                if item.get(qn("w:styleId")) == target_id
+            )
+            if _style_semantic_fingerprint(
+                existing, {}, {}, None
+            ) != _style_semantic_fingerprint(clone, {}, {}, None):
+                existing.getparent().replace(existing, clone)
+                changed = True
+            continue
+        if (
+            not style_id
+            # The snapshot already defines this style under its original id.
+            or style_id in snapshot_ids
+            # The archived identifier map resolves this canonical id back to
+            # a snapshot style, so appending it would duplicate the original
+            # (and break w:link pairing between the two copies).
+            or style_id in style_map
+        ):
+            continue
+        clone = _clone_element(style)
+        _remap_identifier_elements(clone, style_map, font_map, numbering_map)
+        for num_pr in list(clone.iter(qn("w:numPr"))):
+            num_id = num_pr.find(qn("w:numId"))
+            value = num_id.get(qn("w:val")) if num_id is not None else None
+            if value != "0" and value not in numbering_ids:
+                parent = num_pr.getparent()
+                if parent is not None:
+                    parent.remove(num_pr)
+        snapshot_root.append(clone)
+        snapshot_ids.add(style_id)
+        changed = True
+    if not changed:
+        return snapshot_styles
+    return etree.tostring(
+        snapshot_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+
+
+_OOXML_DECIMAL_ID = re.compile(r"(?:0|[1-9][0-9]*)$")
+
+
+def _next_ooxml_id(ids: set[str]) -> str:
+    return str(max((int(value) for value in ids), default=-1) + 1)
+
+
+_NUMBERING_VOLATILE_ATTRIBUTES = frozenset({"abstractNumId", "numId", "nsid", "tmpl"})
+
+
+def _numbering_pair_fingerprint(number, abstract, style_map: dict[str, str],
+                                font_map: dict[str, str]) -> tuple:
+    """Stable list meaning, excluding Word's identity/session bookkeeping."""
+    number = _clone_element(number)
+    abstract = _clone_element(abstract)
+    _remap_identifier_elements(number, style_map, font_map)
+    _remap_identifier_elements(abstract, style_map, font_map)
+
+    def visit(node) -> tuple:
+        if not isinstance(node.tag, str):
+            return ()
+        attributes = tuple(sorted(
+            (key, value) for key, value in node.attrib.items()
+            if (etree.QName(key).localname not in _NUMBERING_VOLATILE_ATTRIBUTES
+                and etree.QName(key).localname != "durableId"
+                and not etree.QName(key).localname.startswith("rsid"))
+        ))
+        return (node.tag, attributes, node.text, tuple(
+            visit(child) for child in node if visit(child)
+        ))
+
+    return visit(number), visit(abstract)
+
+
+def _merge_snapshot_numbering(
+    snapshot_numbering: bytes,
+    edited_numbering: bytes,
+    reference_payloads: list[bytes],
+    parser,
+    style_id_map: dict[str, str] | None = None,
+    font_id_map: dict[str, str] | None = None,
+    baseline_numbering: bytes | None = None,
+) -> tuple[bytes, dict[str, str], set[str]]:
+    """Safely carry edited list definitions into the trusted numbering core."""
+    style_id_map = style_id_map or {}
+    font_id_map = font_id_map or {}
+    snapshot_root = etree.fromstring(snapshot_numbering, parser)
+    edited_root = etree.fromstring(edited_numbering, parser)
+    direct_references: set[str] = set()
+    style_references: set[str] = set()
+    for payload in reference_payloads:
+        root = etree.fromstring(payload, parser)
+        root_qname = etree.QName(root)
+        if (root_qname.namespace, root_qname.localname) == (_WML_NS, "styles"):
+            styles_by_id: dict[str, etree._Element] = {}
+            based_on: dict[str, str] = {}
+            for style in root.findall(qn("w:style")):
+                style_id = style.get(qn("w:styleId"))
+                previous = styles_by_id.get(style_id)
+                if not style_id:
+                    raise RestorationError("Недопустимый граф стилей отредактированного DOCX")
+                if previous is not None:
+                    continue
+                styles_by_id[style_id] = style
+                parent = style.find(qn("w:basedOn"))
+                if parent is not None and parent.get(qn("w:val")):
+                    based_on[style_id] = parent.get(qn("w:val"))
+            for style_id in styles_by_id:
+                seen: set[str] = set()
+                current = style_id
+                while current in based_on:
+                    if current in seen:
+                        raise RestorationError("Недопустимый граф стилей отредактированного DOCX")
+                    seen.add(current)
+                    current = based_on[current]
+        references = (
+            style_references
+            if (root_qname.namespace, root_qname.localname) == (_WML_NS, "styles")
+            else direct_references
+        )
+        for number_id in root.iter(qn("w:numId")):
+            value = number_id.get(qn("w:val"))
+            if value != "0":
+                if not value or not _OOXML_DECIMAL_ID.fullmatch(value):
+                    raise RestorationError("Недопустимая нумерация отредактированного DOCX")
+                references.add(value)
+
+    snapshot_nums = {
+        element.get(qn("w:numId")): element
+        for element in snapshot_root.findall(qn("w:num"))
+        if element.get(qn("w:numId"))
+    }
+    snapshot_abstracts = {
+        element.get(qn("w:abstractNumId")): element
+        for element in snapshot_root.findall(qn("w:abstractNum"))
+        if element.get(qn("w:abstractNumId"))
+    }
+    baseline_nums: dict[str, etree._Element] = {}
+    baseline_abstracts: dict[str, etree._Element] = {}
+    if baseline_numbering is not None:
+        baseline_root = etree.fromstring(baseline_numbering, parser)
+        baseline_nums = {
+            element.get(qn("w:numId")): element
+            for element in baseline_root.findall(qn("w:num")) if element.get(qn("w:numId"))
+        }
+        baseline_abstracts = {
+            element.get(qn("w:abstractNumId")): element
+            for element in baseline_root.findall(qn("w:abstractNum"))
+            if element.get(qn("w:abstractNumId"))
+        }
+    used_num_ids = set(snapshot_nums)
+    used_abstract_ids = set(snapshot_abstracts)
+    remapped: dict[str, str] = {}
+
+    for number_id in sorted(direct_references | style_references, key=int):
+        edited_nums = [
+            element for element in edited_root.findall(qn("w:num"))
+            if element.get(qn("w:numId")) == number_id
+        ]
+        if len(edited_nums) != 1:
+            if number_id in style_references and number_id not in direct_references:
+                continue
+            raise RestorationError("Недопустимая нумерация отредактированного DOCX")
+        edited_num = edited_nums[0]
+        abstract_refs = edited_num.findall(qn("w:abstractNumId"))
+        if len(abstract_refs) != 1:
+            raise RestorationError("Недопустимая нумерация отредактированного DOCX")
+        abstract_id = abstract_refs[0].get(qn("w:val"))
+        if not abstract_id or not _OOXML_DECIMAL_ID.fullmatch(abstract_id):
+            raise RestorationError("Недопустимая нумерация отредактированного DOCX")
+        edited_abstracts = [
+            element for element in edited_root.findall(qn("w:abstractNum"))
+            if element.get(qn("w:abstractNumId")) == abstract_id
+        ]
+        if len(edited_abstracts) != 1:
+            raise RestorationError("Недопустимая нумерация отредактированного DOCX")
+
+        baseline_num = baseline_nums.get(number_id)
+        baseline_abstract = baseline_abstracts.get(abstract_id)
+        if baseline_numbering is None and number_id in snapshot_nums:
+            # Legacy bundles predate the sanitized-core baseline. Their old
+            # sanitizer may have changed list defaults, so an existing list
+            # instance is trusted from the snapshot instead of recloned.
+            continue
+        if (baseline_num is not None and baseline_abstract is not None
+                and _numbering_pair_fingerprint(
+                    baseline_num, baseline_abstract, style_id_map, font_id_map
+                ) == _numbering_pair_fingerprint(
+                    edited_num, edited_abstracts[0], style_id_map, font_id_map
+                )):
+            continue
+        target_num_id = number_id
+        if target_num_id in used_num_ids:
+            target_num_id = _next_ooxml_id(used_num_ids)
+            remapped[number_id] = target_num_id
+        target_abstract_id = abstract_id
+        if target_abstract_id in used_abstract_ids:
+            target_abstract_id = _next_ooxml_id(used_abstract_ids)
+
+        abstract_clone = _clone_element(edited_abstracts[0])
+        _remap_identifier_elements(abstract_clone, style_id_map, font_id_map)
+        abstract_clone.set(qn("w:abstractNumId"), target_abstract_id)
+        number_clone = _clone_element(edited_num)
+        _remap_identifier_elements(number_clone, style_id_map, font_id_map)
+        number_clone.set(qn("w:numId"), target_num_id)
+        number_clone.find(qn("w:abstractNumId")).set(qn("w:val"), target_abstract_id)
+        first_num = snapshot_root.find(qn("w:num"))
+        if first_num is None:
+            cleanup = snapshot_root.find(qn("w:numIdMacAtCleanup"))
+            if cleanup is None:
+                snapshot_root.append(abstract_clone)
+            else:
+                snapshot_root.insert(snapshot_root.index(cleanup), abstract_clone)
+        else:
+            snapshot_root.insert(snapshot_root.index(first_num), abstract_clone)
+        cleanup = snapshot_root.find(qn("w:numIdMacAtCleanup"))
+        if cleanup is None:
+            snapshot_root.append(number_clone)
+        else:
+            snapshot_root.insert(snapshot_root.index(cleanup), number_clone)
+        used_abstract_ids.add(target_abstract_id)
+        used_num_ids.add(target_num_id)
+
+    if not remapped and not (direct_references | style_references).difference(snapshot_nums):
+        return snapshot_numbering, remapped, used_num_ids
+    return (
+        etree.tostring(snapshot_root, xml_declaration=True, encoding="UTF-8", standalone=True),
+        remapped,
+        used_num_ids,
+    )
+
+
+def _graft_snapshot_format_core(temp: Path, archive: dict | None) -> None:
+    """Rebuild the Word formatting core from the exact source snapshot.
+
+    The legacy edited-package restore inherits formatting parts that the
+    sanitizer of an older application version rewrote in ways Microsoft Word
+    rejects.  The archived snapshot of the user's own source document is the
+    only formatting core known to open in Word, so the fallback restore
+    reuses it verbatim — the same trust model as the original-layout path —
+    while keeping the edited document's text parts.  Style and font
+    references in those text parts are resolved back onto the snapshot's
+    identifiers through the archived identifier maps, and styles that exist
+    only in the edited file are appended from the sanitized output.
+    """
+    original = _validated_exact_format_core_original(archive)
+    if original is None:
+        return
+    style_map = (
+        dict(archive["style_id_map"])
+        if isinstance(archive.get("style_id_map"), dict) else {}
+    )
+    font_map = (
+        dict(archive["font_id_map"])
+        if isinstance(archive.get("font_id_map"), dict) else {}
+    )
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+    try:
+        baseline = _validated_anonymized_format_core(archive)
+        with ZipFile(temp) as edited_package:
+            edited_infos = [
+                (info, edited_package.read(info.filename))
+                for info in edited_package.infolist()
+            ]
+        edited_names = {info.filename for info, _ in edited_infos}
+        with ZipFile(BytesIO(original)) as source_package:
+            source_names = set(source_package.namelist())
+            core = {
+                name: source_package.read(name)
+                for name in _FORMAT_CORE_PARTS
+                if name in source_names and name in edited_names
+            }
+            edited_parts = {info.filename: payload for info, payload in edited_infos}
+            numbering_map: dict[str, str] = {}
+            numbering_ids: set[str] = set()
+            if "word/numbering.xml" in core:
+                reference_payloads = [
+                    payload for name, payload in edited_parts.items()
+                    if _LAYOUT_TEXT_PART.fullmatch(name) or name == "word/styles.xml"
+                ]
+                core["word/numbering.xml"], numbering_map, numbering_ids = (
+                    _merge_snapshot_numbering(
+                        core["word/numbering.xml"],
+                        edited_parts["word/numbering.xml"],
+                        reference_payloads, parser, style_map, font_map,
+                        baseline_numbering=(baseline or {}).get("word/numbering.xml"),
+                    )
+                )
+            if "word/styles.xml" in core:
+                core["word/styles.xml"] = _merged_snapshot_styles(
+                    core["word/styles.xml"], edited_parts["word/styles.xml"],
+                    style_map, font_map, numbering_ids, parser, numbering_map,
+                    baseline_styles=(baseline or {}).get("word/styles.xml"),
+                )
+    except etree.XMLSyntaxError as exc:
+        raise RestorationError("Точный снимок исходного DOCX не прошёл проверку") from exc
+    with ZipFile(temp, "w", ZIP_DEFLATED) as output:
+        for info, payload in edited_infos:
+            name = info.filename
+            if name in core:
+                payload = core[name]
+            elif _LAYOUT_TEXT_PART.fullmatch(name):
+                payload = _remap_snapshot_part(
+                    payload, style_map, font_map, parser, numbering_map
+                )
+            output.writestr(info, payload)
+
+
 _LAYOUT_TEXT_PART = re.compile(r"word/(?:document|header\d+|footer\d+)\.xml")
 _LAYOUT_FORBIDDEN_GRAFT_ELEMENTS = frozenset({"fldChar", "fldSimple", "instrText"})
+_LAYOUT_VOLATILE_ELEMENTS = frozenset({"zoom", "rsid"})
+_LAYOUT_VOLATILE_ATTRIBUTES = frozenset({
+    "rsidR", "rsidRPr", "rsidDel", "rsidP", "paraId", "textId", "Ignorable",
+})
 
 
 class _LayoutRestoreUnavailable(Exception):
     """The original-layout restore path cannot safely handle this edited file."""
+
+
+def _layout_style_id_map(snapshot_styles: bytes, edited_styles: bytes, parser) -> dict[str, str]:
+    """Map a Word-resaved style ID back to its stable donor style ID by name/type."""
+    snapshot = etree.fromstring(snapshot_styles, parser)
+    edited = etree.fromstring(edited_styles, parser)
+
+    def index(root):
+        indexed: dict[tuple[str, str], list[str]] = {}
+        for style in root.findall(qn("w:style")):
+            style_id = style.get(qn("w:styleId"))
+            name = style.find(qn("w:name"))
+            key = (style.get(qn("w:type")), name.get(qn("w:val")) if name is not None else "")
+            if style_id and key[0] and key[1]:
+                indexed.setdefault(key, []).append(style_id)
+        return indexed
+
+    original, changed = index(snapshot), index(edited)
+    result: dict[str, str] = {}
+    for key, original_ids in original.items():
+        changed_ids = changed.get(key, [])
+        if len(original_ids) == len(changed_ids) == 1:
+            result[changed_ids[0]] = original_ids[0]
+    return result
+
+
+def _layout_semantic_fingerprint(payload: bytes, parser, *, style_ids: dict[str, str] | None = None,
+                                 font_ids: dict[str, str] | None = None, ignore_text: bool = False) -> tuple:
+    """Compare OOXML meaning, not ZIP/XML serialization or Word session churn."""
+    root = etree.fromstring(payload, parser)
+
+    def visit(node, parent_local: str | None = None) -> tuple:
+        if not isinstance(node.tag, str):
+            return ()
+        name = etree.QName(node).localname
+        if name in _LAYOUT_VOLATILE_ELEMENTS or (
+            parent_local == "style" and name in {"name", "aliases"}
+        ):
+            return ()
+        attrs = []
+        for key, value in node.attrib.items():
+            local = etree.QName(key).localname
+            if local in _LAYOUT_VOLATILE_ATTRIBUTES or local.startswith("rsid"):
+                continue
+            if style_ids and name in {"style", "pStyle", "rStyle", "basedOn", "next", "link"} and local in {"styleId", "val"}:
+                value = style_ids.get(value, value)
+            if font_ids and name == "rFonts" and local in {"ascii", "hAnsi", "eastAsia", "cs"}:
+                value = font_ids.get(value, value)
+            attrs.append((key, value))
+        text = None if ignore_text and name in {"t", "delText", "instrText"} else node.text
+        children = []
+        for child in node:
+            value = visit(child, name)
+            if value:
+                children.append(value)
+        return (node.tag, tuple(sorted(attrs)), text, tuple(children))
+
+    return visit(root)
+
+
+def _layout_numbering_fingerprint(payload: bytes, parser, *,
+                                  style_ids: dict[str, str] | None = None,
+                                  font_ids: dict[str, str] | None = None) -> tuple:
+    """Canonicalize list identifiers so Word's harmless ID rewrite stays on layout route."""
+    root = etree.fromstring(payload, parser)
+    abstracts = {item.get(qn("w:abstractNumId")): item for item in root.findall(qn("w:abstractNum"))}
+
+    def semantic(element, *, ignore_ids: bool = False) -> tuple:
+        clone = _clone_element(element)
+        _remap_identifier_elements(clone, style_ids or {}, font_ids or {})
+
+        def visit(node) -> tuple:
+            if not isinstance(node.tag, str):
+                return ()
+            if etree.QName(node).localname in {"nsid", "tmpl", "rsid"}:
+                return ()
+            attrs = tuple(sorted(
+                (key, value) for key, value in node.attrib.items()
+                if not (
+                    etree.QName(key).localname == "Ignorable"
+                    or etree.QName(key).localname.startswith("rsid")
+                    or etree.QName(key).localname == "durableId"
+                    or (ignore_ids and etree.QName(key).localname in {
+                        "abstractNumId", "numId", "nsid", "tmpl",
+                    })
+                )
+            ))
+            if ignore_ids and etree.QName(node).localname == "abstractNumId":
+                return ()
+            return (node.tag, attrs, tuple(visit(child) for child in node))
+        return visit(clone)
+
+    abstract_fingerprints = {identifier: semantic(item, ignore_ids=True) for identifier, item in abstracts.items()}
+    numbers = []
+    for number in root.findall(qn("w:num")):
+        reference = number.find(qn("w:abstractNumId"))
+        identifier = reference.get(qn("w:val")) if reference is not None else None
+        numbers.append((semantic(number, ignore_ids=True), abstract_fingerprints.get(identifier)))
+    return (tuple(sorted(abstract_fingerprints.values(), key=repr)), tuple(sorted(numbers, key=repr)))
+
+
+def _layout_structure_fingerprint(payload: bytes, parser) -> tuple:
+    """Text-part topology, excluding metadata deliberately removed on export."""
+    root = etree.fromstring(payload, parser)
+    ignored = {
+        "fldChar", "fldSimple", "instrText", "bookmarkStart", "bookmarkEnd",
+        "hyperlink", "drawing", "pict",
+    }
+
+    def visit(node) -> tuple:
+        if not isinstance(node.tag, str):
+            return ()
+        local = etree.QName(node).localname
+        if local in {"drawing", "pict"}:
+            return ()
+        if local in ignored:
+            return tuple(visit(child) for child in node if visit(child))
+        # Formatting and visible text are user-editable on the layout route.
+        if local in {"pPr", "rPr", "t", "delText"}:
+            return ()
+        children = []
+        for child in node:
+            value = visit(child)
+            if isinstance(value, tuple) and value and isinstance(value[0], tuple):
+                children.extend(value)
+            elif value:
+                children.append(value)
+        return (node.tag, tuple(children))
+
+    return visit(root)
+
+
+def _layout_relationship_topology(payload: bytes, parser) -> tuple:
+    root = etree.fromstring(payload, parser)
+    rows = []
+    for relation in root:
+        if etree.QName(relation).localname != "Relationship":
+            return ()
+        relation_type = relation.get("Type")
+        target = relation.get("Target")
+        mode = relation.get("TargetMode", "")
+        if not relation_type or not target:
+            return ()
+        rows.append((relation_type, target, mode))
+    return tuple(sorted(rows))
+
+
+def _layout_graph_matches_snapshot(
+    original_package: ZipFile, edited_package: ZipFile, original_text_parts: list[str],
+    edited_text_parts: list[str], parser, archive: dict | None = None,
+) -> bool:
+    """Prove that replaying donor layout cannot overwrite a user structure."""
+    if set(original_text_parts) != set(edited_text_parts):
+        return False
+
+    try:
+        baseline = _validated_anonymized_format_core(archive)
+        comparison_package = baseline or {
+            name: original_package.read(name) for name in _FORMAT_CORE_PARTS
+            if name in original_package.namelist()
+        }
+        style_ids = _layout_style_id_map(
+            comparison_package["word/styles.xml"], edited_package.read("word/styles.xml"), parser
+        ) if "word/styles.xml" in comparison_package and "word/styles.xml" in edited_package.namelist() else {}
+        font_ids: dict[str, str] = {}
+        for name in _FORMAT_CORE_PARTS:
+            if name not in edited_package.namelist():
+                return False
+            if name not in _ANONYMIZED_FORMAT_CORE_PARTS:
+                continue
+            if name not in comparison_package:
+                return False
+            if baseline is None:
+                # A legacy companion contains no record of the anonymized
+                # core. Comparing its source core to sanitizer output is not
+                # evidence of an edit and would discard the safe donor route.
+                continue
+            if name == "word/styles.xml":
+                same = _layout_semantic_fingerprint(comparison_package[name], parser) == _layout_semantic_fingerprint(edited_package.read(name), parser, style_ids=style_ids, font_ids=font_ids)
+            elif name == "word/numbering.xml":
+                same = _layout_numbering_fingerprint(
+                    comparison_package[name], parser
+                ) == _layout_numbering_fingerprint(
+                    edited_package.read(name), parser,
+                    style_ids=style_ids, font_ids=font_ids,
+                )
+            else:
+                # Word and the sanitizer rewrite these metadata tables on save;
+                # neither carries the style/list graph replayed by this route.
+                same = True
+            if not same:
+                return False
+        for name in original_text_parts:
+            if _layout_structure_fingerprint(original_package.read(name), parser) != _layout_structure_fingerprint(edited_package.read(name), parser):
+                return False
+        original_rels = sorted(
+            name for name in original_package.namelist()
+            if name.endswith(".rels") and (name == "_rels/.rels" or name.startswith("word/_rels/"))
+        )
+        edited_rels = sorted(
+            name for name in edited_package.namelist()
+            if name.endswith(".rels") and (name == "_rels/.rels" or name.startswith("word/_rels/"))
+        )
+        if original_rels != edited_rels:
+            return False
+        for name in original_rels:
+            original_topology = set(_layout_relationship_topology(original_package.read(name), parser))
+            edited_topology = set(_layout_relationship_topology(edited_package.read(name), parser))
+            # The export intentionally removes source metadata channels; their
+            # donor counterparts are restored only after this proof succeeds.
+            removed = {
+                item for item in original_topology - edited_topology
+                if item[0] == _HYPERLINK_RELATIONSHIP_TYPE and item[2] == "External"
+                or item[0] == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"
+                or item[0] == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+            }
+            if original_topology - removed != edited_topology:
+                return False
+        return True
+    except (KeyError, etree.XMLSyntaxError):
+        return False
 
 
 def _clone_element(element):
@@ -936,7 +1933,12 @@ def _restore_original_layout(
     Returns the unknown-marker list on success, or None when this path is not
     applicable and the legacy edited-package restore must be used instead.
     """
-    original = _validated_exact_original(archive)
+    try:
+        original = _validated_exact_original(archive)
+    except RestorationError:
+        # Full-layout replay requires the stricter donor subset.  An edited
+        # file can still use the separately validated semantic/core route.
+        return None
     if original is None:
         return None
     try:
@@ -972,6 +1974,13 @@ def _restore_original_layout_package(
     if any(name not in original_names for name in edited_text_parts):
         raise _LayoutRestoreUnavailable()
     if any(name not in edited_names for name in original_text_parts):
+        raise _LayoutRestoreUnavailable()
+    if not _layout_graph_matches_snapshot(
+        original_package, edited_package, original_text_parts, edited_text_parts, parser, archive
+    ):
+        # Text-group cardinality is not structural proof: deleting a table and
+        # inserting an ordinary paragraph can be count-balanced, but replaying
+        # the donor would resurrect the deleted table.
         raise _LayoutRestoreUnavailable()
 
     # Edited sequence in package order, with contexts for separator computation.
@@ -1590,7 +2599,7 @@ _ALLOWED_RELATIONSHIP_TYPES = frozenset({
 })
 _SUPPORTED_WML_ELEMENTS = frozenset("""
 abstractNum abstractNumId allowPNG altName annotationRef autoHyphenation autoRedefine autoSpaceDE
-b bCs basedOn bidi body bodyDiv bookmarkEnd bookmarkStart bottom br cr caps characterSpacingControl
+b bCs basedOn bidi body bodyDiv bookmarkEnd bookmarkStart bottom br cantSplit cr caps characterSpacingControl
 charset clrSchemeMapping color cols comment commentRangeEnd commentRangeStart commentReference comments
 compat compatSetting contextualSpacing continuationSeparator decimalSymbol defaultTabStop del delText
 displayBackgroundShape div divBdr divs divsChild doNotAutoCompressPictures doNotBreakWrappedTables
@@ -1616,14 +2625,14 @@ accent1 accent2 accent3 accent4 accent5 accent6 alpha bevelT bgFillStyleLst body
 dk2 ea effectLst effectRef effectStyle effectStyleLst extraClrSchemeLst fillRef fillStyleLst fillToRect
 fmtScheme folHlink font fontRef fontScheme gradFill gs gsLst hlink latin lightRig lin ln lnDef lnRef
 lnStyleLst lstStyle lt1 lt2 majorFont minorFont objectDefaults outerShdw path prstDash rot satMod scene3d
-schemeClr shade solidFill sp3d spDef spPr srgbClr style sysClr theme themeElements tint
+schemeClr shade solidFill sp3d spDef spPr srgbClr style sysClr theme themeElements tileRect tint
 """.split())
 _SUPPORTED_WML_ATTRIBUTES = frozenset("""
 after abstractNumId accent1 accent2 accent3 accent4 accent5 accent6 ascii asciiTheme author before bg1 bg2 bidi bidiTheme bottom
 char charFormat clear color colFirst colLast count cs csb0 csb1 cstheme customStyle date default defLockedState
 defQFormat defSemiHidden defUIPriority defUnhideWhenUsed dirty eastAsia eastAsiaTheme end firstLine firstLineChars
 fill firstColumn firstRow fldCharType followedHyperlink footer format grammar gutter h hAnsi hAnsiTheme hanging hangingChars
-header hint hRule hyperlink id ilvl initial insideH insideV instr lastColumn lastRow left leftChars line linePitch
+header hint hRule hyperlink id ilvl initial insideH insideV instr lastColumn lastRow leader left leftChars line linePitch
 lineRule link listSeparator name noHBand noVBand num numFmtId numId orient percent pos qFormat relativeTo right rightChars
 rsid rsidDel rsidP rsidR rsidRDefault rsidRPr rsidSect rsidTr semiHidden
 space spelling start styleId sz t1 t2 themeColor themeFill themeFillShade themeFillTint themeShade themeTint top type
@@ -1641,6 +2650,7 @@ _WML_REQUIRED_PARENTS = {
     "lang": frozenset({"rPr"}),
     "color": frozenset({"rPr"}),
 }
+_CELL_MARGIN_EDGES = frozenset({"top", "left", "bottom", "right", "start", "end"})
 _WML_CONTEXTUAL_ATTRIBUTES = {
     "author": frozenset({"del", "ins", "pPrChange", "rPrChange", "tblGridChange", "tblPrChange", "tblPrExChange", "tcPrChange", "trPrChange"}),
     "date": frozenset({"del", "ins", "pPrChange", "rPrChange", "tblGridChange", "tblPrChange", "tblPrExChange", "tcPrChange", "trPrChange"}),
@@ -1819,6 +2829,28 @@ def _is_discardable_word_metadata_element(parent, child) -> bool:
     return False
 
 
+def _is_valid_cell_margin_edge(element: etree._Element) -> bool:
+    """Recognize the exact, bounded leaf shape allowed below ``w:tcMar``."""
+    parent = element.getparent()
+    parent_qname = etree.QName(parent) if parent is not None else None
+    element_qname = etree.QName(element)
+    width = element.get(qn("w:w"), "")
+    return (
+        parent_qname is not None
+        and parent_qname.namespace == _WML_NS
+        and parent_qname.localname == "tcMar"
+        and element_qname.namespace == _WML_NS
+        and element_qname.localname in _CELL_MARGIN_EDGES
+        and dict(element.attrib) == {qn("w:type"): element.get(qn("w:type"), ""), qn("w:w"): width}
+        and element.get(qn("w:type")) in {"dxa", "nil"}
+        and _UNSIGNED_10_RE.fullmatch(width) is not None
+        and 0 <= int(width) <= 31_680
+        and len(element) == 0
+        and not (element.text or "").strip()
+        and not (element.tail or "").strip()
+    )
+
+
 def _is_discardable_word_metadata_attribute(element, attr_qname, value: str) -> bool:
     """Return whether a known non-content Word metadata attribute may be dropped."""
     element_qname = etree.QName(element)
@@ -1832,10 +2864,21 @@ def _is_discardable_word_metadata_attribute(element, attr_qname, value: str) -> 
 
 
 def _safe_known_attribute_value(
-    name: str, element_local: str, attr_local: str, value: str
+    name: str, element_local: str, attr_local: str, value: str,
+    *, parent_local: str | None = None,
 ) -> bool:
-    style_ids, quadruples = _trusted_docx_strings()
     part_key = _schema_part(name)
+    if part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"} and element_local in _CELL_MARGIN_EDGES:
+        if parent_local == "tcMar":
+            if attr_local == "type":
+                return value in {"dxa", "nil"}
+            if attr_local == "w":
+                return _UNSIGNED_10_RE.fullmatch(value) is not None and 0 <= int(value) <= 31_680
+            return False
+        if attr_local in {"type", "w"}:
+            return False
+
+    style_ids, quadruples = _trusted_docx_strings()
     if part_key is not None and (part_key, element_local, attr_local, value) in quadruples:
         return True
     if element_local in _STYLE_REFERENCE_ELEMENTS and attr_local == "val" and value in style_ids:
@@ -1859,10 +2902,74 @@ def _safe_known_attribute_value(
         and _SAFE_LABEL_RE.fullmatch(value) is not None
     )
 
+    # New formatting allowances retain only their finite OOXML value spaces;
+    # a generic short-token acceptance here would be a sanitizer bypass.
+    if attr_local == "lineRule":
+        return element_local == "spacing" and value in {"auto", "exact", "atLeast"}
+    if attr_local == "leader":
+        return element_local == "tab" and value in {
+            "none", "dot", "hyphen", "underscore", "heavy", "middleDot"
+        }
+    if attr_local == "val" and element_local in {
+        "top", "left", "bottom", "right", "insideH", "insideV", "tl2br", "tr2bl"
+    }:
+        return value in {
+            "nil", "none", "single", "thick", "double", "dotted", "dashed", "dotDash",
+            "dotDotDash", "triple", "thinThickSmallGap", "thickThinSmallGap",
+            "thinThickThinSmallGap", "thinThickMediumGap", "thickThinMediumGap",
+            "thinThickThinMediumGap", "thinThickLargeGap", "thickThinLargeGap",
+            "thinThickThinLargeGap", "wave", "doubleWave", "dashSmallGap", "dashDotStroked",
+            "threeDEmboss", "threeDEngrave", "outset", "inset",
+        }
+    if attr_local in {"color", "fill"}:
+        return value == "auto" or _HEX_6_RE.fullmatch(value) is not None
+    if attr_local in {"themeTint", "themeShade", "themeFillTint", "themeFillShade"}:
+        return _HEX_2_RE.fullmatch(value) is not None
+    if attr_local in {"themeColor", "themeFill"}:
+        return value in {
+            "dark1", "light1", "dark2", "light2", "accent1", "accent2", "accent3",
+            "accent4", "accent5", "accent6", "hyperlink", "followedHyperlink", "background1",
+            "text1", "background2", "text2",
+        }
+    if attr_local == "sz" and element_local in {
+        "top", "left", "bottom", "right", "insideH", "insideV"
+    }:
+        return unsigned and 0 <= int(value) <= 96
+
+
+    if part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"}:
+        if attr_local == "val" and element_local in {
+            "keepLines", "keepNext", "widowControl", "pageBreakBefore", "cantSplit", "tblHeader",
+        }:
+            return on_off
+        if attr_local == "val" and element_local == "jc":
+            return value in {"left", "right", "center", "both", "distribute", "start", "end"}
+        if attr_local == "val" and element_local == "tab":
+            return value in {"left", "right", "center", "decimal", "bar", "clear", "num"}
+        if attr_local == "val" and element_local in {"sz", "szCs"}:
+            # ECMA-376 ST_HpsMeasure: half-points, including Word's 1-point
+            # minimum.  The part/context gate above prevents this from
+            # accepting a numeric value on an unrelated element.
+            return unsigned and 2 <= int(value) <= 1_638
+    if part_key == "word/document.xml" and (element_local, attr_local) == ("type", "val"):
+        return value in {"nextPage", "continuous", "evenPage", "oddPage"}
+    if part_key == "word/document.xml" and (element_local, attr_local) == ("pgNumType", "start"):
+        return unsigned and 1 <= int(value) <= 2_147_483_647
+    if part_key == "word/styles.xml" and attr_local == "val" and element_local in {
+        "b", "bCs", "keepLines", "keepNext", "pageBreakBefore",
+    }:
+        return on_off
+    if part_key == "word/styles.xml" and attr_local == "val" and element_local == "szCs":
+        return unsigned and 2 <= int(value) <= 1_638
+    if part_key == "word/styles.xml" and element_local == "ind" and attr_local in {
+        "firstLine", "left", "right", "hanging", "firstLineChars", "leftChars", "rightChars", "hangingChars",
+    }:
+        return signed and -31_680 <= int(value) <= 31_680
+
     # Document-varying values are accepted only in explicit OOXML contexts and
     # with bounded semantic grammars.  This avoids treating an arbitrary source
     # document as a schema while preserving values required by Word.
-    if part_key == "word/document.xml" and attr_local == "val":
+    if part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"} and attr_local == "val":
         if element_local in {"b", "bCs", "i", "iCs", "formProt", "overflowPunct", "widowControl"}:
             return on_off
         if element_local == "kern":
@@ -1903,7 +3010,7 @@ def _safe_known_attribute_value(
         if (element_local, attr_local) == ("multiLevelType", "val"):
             return value in {"singleLevel", "multilevel", "hybridMultilevel"}
         if (element_local, attr_local) == ("numFmt", "val"):
-            return value in {"decimal", "decimalZero", "bullet", "none", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText"}
+            return value in {"decimal", "decimalZero", "bullet", "none", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "russianLower", "russianUpper"}
         if (element_local, attr_local) == ("suff", "val"):
             return value in {"tab", "space", "nothing"}
 
@@ -1960,7 +3067,11 @@ def _safe_known_attribute_value(
 
     if part_key == "word/theme/theme.xml":
         if (element_local, attr_local) == ("theme", "name"):
-            return value == "Office Theme"
+            return value == "LocalAnonymizer Theme"
+        if element_local in {"clrScheme", "fontScheme"} and attr_local == "name":
+            return value == "LocalAnonymizer"
+        if (element_local, attr_local) == ("shade", "val"):
+            return unsigned and 0 <= int(value) <= 100_000
         if attr_local == "typeface":
             return value == "" or value in _SAFE_FONT_NAMES or _LOCAL_FONT_ID_RE.fullmatch(value) is not None
         if attr_local in {"lang", "script"}:
@@ -2078,12 +3189,79 @@ def _trusted_wml_schema() -> tuple[
         ("tc", "tbl"),
         ("settings", "docVars"), ("docVars", "docVar"),
     }
+    # Standard Word formatting that python-docx does not emit in the compact
+    # generated reference document.  These are exact parent/child contexts;
+    # values remain checked below and are not inferred from an imported file.
+    standard_content_pairs = {
+        ("pPr", "keepLines"), ("pPr", "keepNext"),
+        ("pPr", "widowControl"), ("pPr", "pageBreakBefore"),
+        ("pPr", "spacing"), ("pPr", "ind"), ("pPr", "tabs"),
+        ("tabs", "tab"), ("trPr", "cantSplit"),
+        ("tblPr", "jc"), ("tblPr", "tblBorders"),
+        ("tcPr", "tcMar"),
+        ("tcMar", "top"), ("tcMar", "left"), ("tcMar", "bottom"),
+        ("tcMar", "right"), ("tcMar", "start"), ("tcMar", "end"),
+        ("tcPr", "tcBorders"),
+        ("tcBorders", "top"), ("tcBorders", "left"),
+        ("tcBorders", "bottom"), ("tcBorders", "right"),
+        ("tcBorders", "insideH"), ("tcBorders", "insideV"),
+        ("tblBorders", "top"), ("tblBorders", "left"),
+        ("tblBorders", "bottom"), ("tblBorders", "right"),
+        ("tblBorders", "insideH"), ("tblBorders", "insideV"),
+        ("rPr", "rFonts"), ("rPr", "color"), ("rPr", "sz"),
+    }
     for part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"}:
         pairs.update(
             (part_key, parent, child)
             for parent, child in runtime_pairs
             if parent not in {"settings", "docVars"}
         )
+        pairs.update((part_key, parent, child) for parent, child in standard_content_pairs)
+    pairs.add(("word/document.xml", "sectPr", "type"))
+    pairs.add(("word/document.xml", "sectPr", "pgNumType"))
+    pairs.add(("word/numbering.xml", "lvl", "suff"))
+    pairs.update(("word/styles.xml", parent, child) for parent, child in {
+        ("pPr", "ind"), ("pPr", "keepLines"), ("rPr", "b"),
+        ("rPr", "bCs"), ("rPr", "szCs"),
+    })
+    for part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"}:
+        pairs.update((part_key, parent, child) for parent, child in {
+            ("trPr", "tblHeader"), ("rPr", "b"), ("rPr", "bCs"),
+            ("rPr", "szCs"),
+        })
+    for part_key in {"word/header.xml", "word/footer.xml"}:
+        pairs.add((part_key, "pPr", "outlineLvl"))
+
+    # The same contexts get only finite or bounded standard WML values in
+    # _safe_known_attribute_value.  Do not turn them into global element-name
+    # allowances: headers/footers and the main document are distinct parts.
+    content_attribute_contexts = {
+        "val": {"keepLines", "keepNext", "widowControl", "pageBreakBefore", "cantSplit", "tblHeader", "b", "bCs", "jc", "top", "left", "bottom", "right", "insideH", "insideV", "color", "sz", "szCs", "outlineLvl", "tab"},
+        "type": {"top", "left", "bottom", "right", "start", "end"},
+        "w": {"top", "left", "bottom", "right", "start", "end"},
+        "before": {"spacing"}, "after": {"spacing"}, "line": {"spacing"},
+        "lineRule": {"spacing"}, "left": {"ind"}, "right": {"ind"},
+        "firstLine": {"ind"}, "hanging": {"ind"}, "leftChars": {"ind"},
+        "rightChars": {"ind"}, "firstLineChars": {"ind"}, "hangingChars": {"ind"},
+        "pos": {"tab"}, "leader": {"tab"}, "space": {"top", "left", "bottom", "right", "insideH", "insideV"},
+        "sz": {"top", "left", "bottom", "right", "insideH", "insideV"},
+        "color": {"top", "left", "bottom", "right", "insideH", "insideV"},
+        "themeColor": {"color", "top", "left", "bottom", "right", "insideH", "insideV"},
+        "themeTint": {"color"}, "themeShade": {"color"},
+        "ascii": {"rFonts"}, "hAnsi": {"rFonts"}, "eastAsia": {"rFonts"}, "cs": {"rFonts"},
+        "asciiTheme": {"rFonts"}, "hAnsiTheme": {"rFonts"}, "eastAsiaTheme": {"rFonts"}, "cstheme": {"rFonts"},
+    }
+    for part_key in {"word/document.xml", "word/header.xml", "word/footer.xml"}:
+        for attr_local, element_locals in content_attribute_contexts.items():
+            attribute_contexts.setdefault((part_key, attr_local), set()).update(element_locals)
+    attribute_contexts.setdefault(("word/document.xml", "val"), set()).add("type")
+    attribute_contexts.setdefault(("word/document.xml", "start"), set()).add("pgNumType")
+    attribute_contexts.setdefault(("word/numbering.xml", "val"), set()).add("suff")
+    for element_local in {"b", "bCs", "keepLines", "keepNext", "pageBreakBefore", "szCs"}:
+        attribute_contexts.setdefault(("word/styles.xml", "val"), set()).add(element_local)
+    for attr_local in {"firstLine", "left", "right", "hanging", "firstLineChars", "leftChars", "rightChars", "hangingChars"}:
+        attribute_contexts.setdefault(("word/styles.xml", attr_local), set()).add("ind")
+
     pairs.update(
         ("word/settings.xml", parent, child)
         for parent, child in runtime_pairs
@@ -2102,8 +3280,132 @@ def _visible_wml_text_part(name: str) -> bool:
     return name == "word/document.xml" or _VISIBLE_TEXT_PART_RE.fullmatch(name) is not None
 
 
-def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Element, bool]:
-    """Remove XML outside the small set of structures this processor supports."""
+def _strip_inert_word_metadata(name: str, root: etree._Element) -> bool:
+    """Make standard fields and link metadata inert, reporting malformed lookalikes."""
+    namespaces = {"w": _WML_NS}
+    found = False
+    field_part = _visible_wml_text_part(name)
+
+    def is_parent(node, local: str) -> bool:
+        parent = node.getparent()
+        return parent is not None and etree.QName(parent).namespace == _WML_NS and etree.QName(parent).localname == local
+
+    def is_leaf(node, attributes: dict[str, str]) -> bool:
+        return (
+            dict(node.attrib) == attributes
+            and len(node) == 0
+            and not (node.text or "").strip()
+            and not (node.tail or "").strip()
+        )
+
+    # These structures are intentionally not retained: their visible cached
+    # runs remain, but they cannot retain active field/link behavior.  Validate
+    # exact Word contexts before removal so a hostile near-miss still blocks.
+    for field in list(root.xpath(".//w:fldSimple", namespaces=namespaces)):
+        valid = field_part and is_parent(field, "p") and set(field.attrib) == {qn("w:instr")}
+        if not valid:
+            found = True
+        parent = field.getparent()
+        if parent is not None:
+            index = parent.index(field)
+            for child in list(field):
+                field.remove(child)
+                parent.insert(index, child)
+                index += 1
+            parent.remove(field)
+    for node in list(root.xpath(".//w:fldChar", namespaces=namespaces)):
+        value = node.get(qn("w:fldCharType"), "")
+        if not (
+            field_part
+            and is_parent(node, "r")
+            and is_leaf(node, {qn("w:fldCharType"): value})
+            and value in {"begin", "separate", "end"}
+        ):
+            found = True
+        parent = node.getparent()
+        if parent is not None:
+            parent.remove(node)
+    for node in list(root.xpath(".//w:instrText", namespaces=namespaces)):
+        attribute_items = tuple(node.attrib.items())
+        if not (
+            field_part
+            and is_parent(node, "r")
+            and attribute_items in {
+                (),
+                ((f"{{{_XML_NS}}}space", "preserve"),),
+                ((f"{{{_XML_NS}}}space", "default"),),
+            }
+            and len(node) == 0
+            and not (node.tail or "").strip()
+        ):
+            found = True
+        parent = node.getparent()
+        if parent is not None:
+            parent.remove(node)
+    for node in list(root.xpath(".//w:bookmarkStart", namespaces=namespaces)):
+        identifier, bookmark_name = node.get(qn("w:id"), ""), node.get(qn("w:name"), "")
+        if not (
+            (is_parent(node, "p") or is_parent(node, "body"))
+            and is_leaf(node, {qn("w:id"): identifier, qn("w:name"): bookmark_name})
+            and _UNSIGNED_10_RE.fullmatch(identifier) is not None
+            and int(identifier) <= 2_147_483_647
+            and _SAFE_TOKEN_RE.fullmatch(bookmark_name) is not None
+        ):
+            found = True
+        parent = node.getparent()
+        if parent is not None:
+            parent.remove(node)
+    for node in list(root.xpath(".//w:bookmarkEnd", namespaces=namespaces)):
+        identifier = node.get(qn("w:id"), "")
+        if not (
+            (is_parent(node, "p") or is_parent(node, "body"))
+            and is_leaf(node, {qn("w:id"): identifier})
+            and _UNSIGNED_10_RE.fullmatch(identifier) is not None
+            and int(identifier) <= 2_147_483_647
+        ):
+            found = True
+        parent = node.getparent()
+        if parent is not None:
+            parent.remove(node)
+    for link in list(root.xpath(".//w:hyperlink", namespaces=namespaces)):
+        anchor = link.get(qn("w:anchor"), "")
+        relationship_id = link.get(f"{{{_OFFICE_REL_NS}}}id", "")
+        attributes = dict(link.attrib)
+        valid_internal = attributes == {} or (
+            attributes == {qn("w:anchor"): anchor}
+            and _SAFE_TOKEN_RE.fullmatch(anchor) is not None
+        )
+        valid_external = (
+            attributes == {f"{{{_OFFICE_REL_NS}}}id": relationship_id}
+            and re.fullmatch(r"rId[1-9]\d*", relationship_id) is not None
+        )
+        valid = (
+            is_parent(link, "p")
+            and (valid_internal or valid_external)
+            and all(etree.QName(child).namespace == _WML_NS and etree.QName(child).localname == "r" for child in link)
+            and not (link.text or "").strip()
+            and not (link.tail or "").strip()
+        )
+        if not valid:
+            found = True
+        parent = link.getparent()
+        if parent is not None:
+            index = parent.index(link)
+            for child in list(link):
+                link.remove(child)
+                parent.insert(index, child)
+                index += 1
+            parent.remove(link)
+    return found
+
+
+def _scrub_unknown_docx_xml(name: str, root: etree._Element, soft_compat: bool = False) -> tuple[etree._Element, bool]:
+    """Remove XML outside the small set of structures this processor supports.
+
+    In soft-compatibility mode unsupported structures are still removed, but
+    their removal is not reported as a blocking warning; package-level checks
+    for active content and unknown parts remain in force.
+    """
     found = False
     if name in {"docProps/app.xml", "docProps/core.xml", "docProps/custom.xml"}:
         expected_roots = {
@@ -2313,6 +3615,59 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
             root.remove(zoom)
             if not valid_zoom:
                 found = True
+        # Updating Word fields on file open is executable document behavior,
+        # not layout.  Drop the setting after validating its normal leaf form;
+        # malformed variants remain a blocker.
+        for update_fields in list(root.findall(f"{{{_WML_NS}}}updateFields")):
+            valid_update_fields = (
+                dict(update_fields.attrib) == {f"{{{_WML_NS}}}val": "true"}
+                and len(update_fields) == 0
+                and not (update_fields.text or "").strip()
+                and not (update_fields.tail or "").strip()
+            )
+            root.remove(update_fields)
+            if not valid_update_fields:
+                found = True
+
+    if not name.startswith("word/theme/"):
+        found = _strip_inert_word_metadata(name, root) or found
+        for node in list(root.xpath(".//w:sdtPr/w:alias", namespaces={"w": _WML_NS})):
+            parent = node.getparent()
+            if parent is not None:
+                parent.remove(node)
+        for node in list(root.xpath(".//w:sdtPr/w:tag", namespaces={"w": _WML_NS})):
+            parent = node.getparent()
+            value = node.get(qn("w:val"), "")
+            valid_tag = (
+                _visible_wml_text_part(name)
+                and parent is not None
+                and etree.QName(parent).namespace == _WML_NS
+                and etree.QName(parent).localname == "sdtPr"
+                and dict(node.attrib) == {qn("w:val"): value}
+                and 0 < len(value) <= 256
+                and not any(ord(character) < 32 for character in value)
+                and len(node) == 0
+                and not (node.text or "").strip()
+                and not (node.tail or "").strip()
+            )
+            if parent is not None:
+                parent.remove(node)
+            if not valid_tag:
+                found = True
+
+    if name.startswith("word/theme/"):
+        # Theme display names are metadata, not document content.  Retain the
+        # required DrawingML shape with fixed non-sensitive names rather than
+        # copying a potentially user-defined label into the published file.
+        for theme_element in root.iter():
+            theme_qname = etree.QName(theme_element)
+            if theme_qname.namespace != _DRAWING_NS:
+                continue
+            if theme_qname.localname == "theme":
+                theme_element.set("name", "LocalAnonymizer Theme")
+            elif theme_qname.localname in {"clrScheme", "fontScheme"}:
+                theme_element.set("name", "LocalAnonymizer")
+
     allowed_elements_by_ns: dict[str, set[str] | frozenset[str] | None] = {
         allowed_element_ns: supported_elements
     }
@@ -2415,6 +3770,20 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                         found = True
                         continue
 
+        parent = element.getparent()
+        parent_qname = etree.QName(parent) if parent is not None else None
+        if (
+            parent_qname is not None
+            and parent_qname.namespace == _WML_NS
+            and parent_qname.localname == "tcMar"
+            and element_qname.namespace == _WML_NS
+            and element_qname.localname in _CELL_MARGIN_EDGES
+            and not _is_valid_cell_margin_edge(element)
+        ):
+            parent.remove(element)
+            found = True
+            continue
+
         text_allowed = (
             visible_text_part
             and element_qname.namespace == _WML_NS
@@ -2428,6 +3797,14 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
             element.tail = None
             found = True
 
+        parent = element.getparent()
+        parent_qname = etree.QName(parent) if parent is not None else None
+        parent_local = (
+            parent_qname.localname
+            if parent_qname is not None and parent_qname.namespace == _WML_NS
+            else None
+        )
+        rejected_leaf_attribute = False
         for attr in list(element.attrib):
             attr_qname = etree.QName(attr)
             if attr_qname.namespace == _WML_NS and attr_qname.localname.startswith("rsid"):
@@ -2476,7 +3853,8 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                 allowed_attribute = False
             if allowed_attribute and attr_qname.namespace == _WML_NS:
                 allowed_attribute = _safe_known_attribute_value(
-                    name, element_qname.localname, attr_qname.localname, element.attrib[attr]
+                    name, element_qname.localname, attr_qname.localname, element.attrib[attr],
+                    parent_local=parent_local,
                 )
             elif allowed_attribute and name.startswith("word/theme/"):
                 allowed_attribute = _safe_known_attribute_value(
@@ -2492,8 +3870,18 @@ def _scrub_unknown_docx_xml(name: str, root: etree._Element) -> tuple[etree._Ele
                     )
                 ):
                     found = True
+                    rejected_leaf_attribute = True
+        if (
+            rejected_leaf_attribute
+            and len(element) == 0
+            and not (element.text or "").strip()
+            and not (element.tail or "").strip()
+        ):
+            parent = element.getparent()
+            if parent is not None:
+                parent.remove(element)
     etree.cleanup_namespaces(root)
-    return root, found
+    return root, found and not soft_compat
 
 
 def _safe_builtin_custom_xml(name: str, data: bytes) -> bool:
@@ -2693,7 +4081,7 @@ def _canonicalize_package_identifiers(
                 if old_alt not in _SAFE_FONT_NAMES and old_alt not in font_map.values():
                     alt_name.set(qn("w:val"), "Arial")
     if re.fullmatch(r"word/theme/theme\d+\.xml", name):
-        root.set("name", "Office Theme")
+        root.set("name", "LocalAnonymizer Theme")
         for element in root.iter():
             if etree.QName(element).localname not in {"latin", "ea", "cs", "font"}:
                 continue
@@ -2999,14 +4387,54 @@ def _decode_reversible_graphic_fragment(encoded: str) -> etree._Element:
         r"(?:[a-z][a-z0-9+.-]*://|(?:file|javascript|mailto|ms-[a-z0-9+.-]+):|\\\\)",
         re.IGNORECASE,
     )
+    drawing_word_ns = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+    picture_ns = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+    vml_ns = "urn:schemas-microsoft-com:vml"
+    allowed_elements = {
+        _WML_NS: {"drawing", "pict", "txbxContent", "p", "pPr", "r", "rPr", "t", "br", "tab"},
+        drawing_word_ns: {
+            "inline", "anchor", "extent", "effectExtent", "docPr", "cNvGraphicFramePr",
+            "simplePos", "positionH", "positionV", "posOffset", "align", "wrapNone",
+            "wrapSquare", "wrapTight", "wrapThrough", "wrapTopAndBottom", "wrapPolygon",
+            "start", "line",
+        },
+        _DRAWING_NS: {
+            "graphic", "graphicData", "blip", "stretch", "fillRect", "srcRect", "tile",
+            "graphicFrameLocks", "picLocks", "xfrm", "off", "ext", "prstGeom", "avLst", "ln", "solidFill", "srgbClr",
+            "schemeClr", "alphaModFix", "noFill", "effectLst",
+        },
+        picture_ns: {"pic", "nvPicPr", "cNvPr", "cNvPicPr", "blipFill", "spPr"},
+        vml_ns: {"shape", "imagedata", "textbox"},
+    }
     for element in graphic.iter():
         if not isinstance(element.tag, str):
             raise RestorationError("Архив графики DOCX содержит недопустимый XML")
         element_qname = etree.QName(element)
+        if element_qname.localname not in allowed_elements.get(element_qname.namespace, set()):
+            raise RestorationError("Архив графики DOCX содержит недопустимый XML")
+        parent = element.getparent()
+        if parent is not None:
+            parent_qname = etree.QName(parent)
+            if element_qname.namespace == _WML_NS and element_qname.localname in {"drawing", "pict"}:
+                raise RestorationError("Архив графики DOCX содержит недопустимый XML")
+            if parent_qname.namespace == _WML_NS and parent_qname.localname == "drawing" and (
+                element_qname.namespace != drawing_word_ns or element_qname.localname not in {"inline", "anchor"}
+            ):
+                raise RestorationError("Архив графики DOCX содержит недопустимый XML")
+            if parent_qname.namespace == _WML_NS and parent_qname.localname == "pict" and element_qname.namespace != vml_ns:
+                raise RestorationError("Архив графики DOCX содержит недопустимый XML")
         if element_qname.localname.casefold() in forbidden_elements:
             raise RestorationError("Архив графики DOCX содержит запрещённый активный XML")
+        if parent is not None and not _valid_reversible_graphic_child(
+            etree.QName(parent), element_qname, drawing_word_ns, picture_ns, vml_ns
+        ):
+            raise RestorationError("Invalid protected graphics XML")
         for attr, value in element.attrib.items():
             attr_qname = etree.QName(attr)
+            if not _valid_reversible_graphic_attribute(
+                element_qname, attr_qname, drawing_word_ns, picture_ns, vml_ns
+            ):
+                raise RestorationError("Invalid protected graphics XML")
             allowed_schema_uri = (
                 element_qname.localname == "graphicData"
                 and attr_qname.localname == "uri"
@@ -3026,6 +4454,66 @@ def _decode_reversible_graphic_fragment(encoded: str) -> etree._Element:
             if not permitted_reference:
                 raise RestorationError("Архив графики DOCX содержит недопустимую ссылку в XML")
     return graphic
+
+
+def _valid_reversible_graphic_child(parent, child, wp_ns: str, pic_ns: str, vml_ns: str) -> bool:
+    """Allow only static DrawingML/VML picture parent-child QName pairs."""
+    children = {
+        (_WML_NS, "drawing"): {(wp_ns, "inline"), (wp_ns, "anchor")},
+        (_WML_NS, "pict"): {(vml_ns, "shape")},
+        (wp_ns, "inline"): {(wp_ns, "extent"), (wp_ns, "effectExtent"), (wp_ns, "docPr"), (wp_ns, "cNvGraphicFramePr"), (_DRAWING_NS, "graphic")},
+        (wp_ns, "anchor"): {(wp_ns, name) for name in ("simplePos", "positionH", "positionV", "extent", "effectExtent", "docPr", "cNvGraphicFramePr", "wrapNone", "wrapSquare", "wrapTight", "wrapThrough", "wrapTopAndBottom")} | {(_DRAWING_NS, "graphic")},
+        (wp_ns, "positionH"): {(wp_ns, "posOffset"), (wp_ns, "align")},
+        (wp_ns, "positionV"): {(wp_ns, "posOffset"), (wp_ns, "align")},
+        (wp_ns, "wrapTight"): {(wp_ns, "wrapPolygon")}, (wp_ns, "wrapThrough"): {(wp_ns, "wrapPolygon")},
+        (wp_ns, "wrapPolygon"): {(wp_ns, "start"), (wp_ns, "line")},
+        (wp_ns, "cNvGraphicFramePr"): {(_DRAWING_NS, "graphicFrameLocks")},
+        (_DRAWING_NS, "graphic"): {(_DRAWING_NS, "graphicData")},
+        (_DRAWING_NS, "graphicData"): {(pic_ns, "pic")},
+        (pic_ns, "pic"): {(pic_ns, "nvPicPr"), (pic_ns, "blipFill"), (pic_ns, "spPr")},
+        (pic_ns, "nvPicPr"): {(pic_ns, "cNvPr"), (pic_ns, "cNvPicPr")},
+        (pic_ns, "cNvPicPr"): {(_DRAWING_NS, "picLocks")},
+        (pic_ns, "blipFill"): {(_DRAWING_NS, "blip"), (_DRAWING_NS, "stretch"), (_DRAWING_NS, "srcRect"), (_DRAWING_NS, "tile")},
+        (_DRAWING_NS, "stretch"): {(_DRAWING_NS, "fillRect")},
+        (pic_ns, "spPr"): {(_DRAWING_NS, "xfrm"), (_DRAWING_NS, "prstGeom"), (_DRAWING_NS, "ln"), (_DRAWING_NS, "noFill"), (_DRAWING_NS, "solidFill"), (_DRAWING_NS, "effectLst")},
+        (_DRAWING_NS, "xfrm"): {(_DRAWING_NS, "off"), (_DRAWING_NS, "ext")},
+        (_DRAWING_NS, "prstGeom"): {(_DRAWING_NS, "avLst")},
+        (_DRAWING_NS, "solidFill"): {(_DRAWING_NS, "srgbClr"), (_DRAWING_NS, "schemeClr")},
+        (vml_ns, "shape"): {(vml_ns, "imagedata"), (vml_ns, "textbox")},
+        (vml_ns, "textbox"): {(_WML_NS, "txbxContent")},
+        (_WML_NS, "txbxContent"): {(_WML_NS, "p")},
+        (_WML_NS, "p"): {(_WML_NS, "pPr"), (_WML_NS, "r")},
+        (_WML_NS, "r"): {(_WML_NS, "rPr"), (_WML_NS, "t"), (_WML_NS, "br"), (_WML_NS, "tab")},
+    }
+    return (child.namespace, child.localname) in children.get((parent.namespace, parent.localname), set())
+
+
+def _valid_reversible_graphic_attribute(element, attribute, wp_ns: str, pic_ns: str, vml_ns: str) -> bool:
+    """QName allowlist for the static-picture grammar."""
+    wp14_ns = "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
+    allowed = {
+        (_WML_NS, "drawing"): set(), (_WML_NS, "pict"): set(),
+        (wp_ns, "inline"): {"distT", "distB", "distL", "distR"},
+        (wp_ns, "anchor"): {"distT", "distB", "distL", "distR", "simplePos", "relativeHeight", "behindDoc", "locked", "layoutInCell", "allowOverlap"},
+        (wp_ns, "extent"): {"cx", "cy"}, (wp_ns, "effectExtent"): {"l", "t", "r", "b"},
+        (wp_ns, "docPr"): {"id", "name", "descr", "title", "hidden"},
+        (wp_ns, "positionH"): {"relativeFrom"}, (wp_ns, "positionV"): {"relativeFrom"},
+        (wp_ns, "wrapSquare"): {"wrapText", "distT", "distB", "distL", "distR"},
+        (wp_ns, "wrapTight"): {"wrapText", "distL", "distR"}, (wp_ns, "wrapThrough"): {"wrapText", "distL", "distR"},
+        (_DRAWING_NS, "graphicFrameLocks"): {"noChangeAspect", "noGrp", "noMove", "noResize", "noRot", "noSelect"},
+        (_DRAWING_NS, "picLocks"): {"noChangeAspect"},
+        (_DRAWING_NS, "graphicData"): {"uri"}, (pic_ns, "cNvPr"): {"id", "name", "descr", "title", "hidden"},
+        (_DRAWING_NS, "blip"): {"cstate"}, (pic_ns, "blipFill"): {"rotWithShape", "dpi"},
+        (_DRAWING_NS, "xfrm"): {"rot", "flipH", "flipV"}, (_DRAWING_NS, "off"): {"x", "y"},
+        (_DRAWING_NS, "ext"): {"cx", "cy"}, (_DRAWING_NS, "prstGeom"): {"prst"},
+        (vml_ns, "shape"): {"id", "style", "type", "coordsize", "coordorigin", "filled", "stroked"},
+        (vml_ns, "imagedata"): {"src", "cropleft", "croptop", "cropright", "cropbottom", "title"},
+    }
+    if attribute.namespace == _OFFICE_REL_NS:
+        return (element.namespace, element.localname, attribute.localname) in {(_DRAWING_NS, "blip", "embed"), (vml_ns, "imagedata", "id")}
+    if attribute.namespace == wp14_ns:
+        return (element.namespace, element.localname, attribute.localname) in {(wp_ns, "inline", "anchorId"), (wp_ns, "inline", "editId"), (wp_ns, "anchor", "anchorId"), (wp_ns, "anchor", "editId")}
+    return attribute.namespace is None and attribute.localname in allowed.get((element.namespace, element.localname), set())
 
 
 def _restore_reversible_docx_graphics(
@@ -3393,7 +4881,7 @@ def _remove_dangling_relationship_references(path: Path) -> None:
         replacement.unlink(missing_ok=True)
 
 
-def _sanitize_package(path: Path, *, retain_graphics: bool = False) -> list[str]:
+def _sanitize_package(path: Path, *, retain_graphics: bool = False, soft_compat: bool = False) -> list[str]:
     _preflight_docx_package(path)
     unsupported: set[str] = set()
     replacement = path.with_suffix(".sanitize.tmp")
@@ -3460,46 +4948,13 @@ def _sanitize_package(path: Path, *, retain_graphics: bool = False) -> list[str]
                         except etree.C14NError:
                             original_c14n = None
                         _canonicalize_package_identifiers(name, root, style_map, font_map)
-                        if name.startswith("word/"):
-                            ns = {"w": _WML_NS}
-                            # Remove field instructions before generic attribute/text
-                            # validation. The visible cached result remains, while
-                            # arbitrary field payloads cannot trigger or survive review.
-                            for field in root.xpath(".//w:fldSimple", namespaces=ns):
-                                parent = field.getparent()
-                                if parent is not None:
-                                    index = parent.index(field)
-                                    for child in list(field):
-                                        parent.insert(index, child)
-                                        index += 1
-                                    parent.remove(field)
-                            for node in root.xpath(".//w:instrText|.//w:fldChar", namespaces=ns):
-                                parent = node.getparent()
-                                if parent is not None:
-                                    parent.remove(node)
-                            # Bookmark names and hyperlink targets are metadata channels.
-                            # Remove bookmark pairs and unwrap hyperlinks atomically so
-                            # required attributes are never stripped from a surviving node.
-                            for node in root.xpath(".//w:bookmarkStart|.//w:bookmarkEnd", namespaces=ns):
-                                parent = node.getparent()
-                                if parent is not None:
-                                    parent.remove(node)
-                            for hyperlink in root.xpath(".//w:hyperlink", namespaces=ns):
-                                parent = hyperlink.getparent()
-                                if parent is not None:
-                                    index = parent.index(hyperlink)
-                                    for child in list(hyperlink):
-                                        hyperlink.remove(child)
-                                        parent.insert(index, child)
-                                        index += 1
-                                    parent.remove(hyperlink)
                         for parent in list(root.iter()):
                             if not isinstance(parent.tag, str):
                                 continue
                             for child in list(parent):
                                 if not isinstance(child.tag, str):
                                     parent.remove(child)
-                        root, foreign_xml = _scrub_unknown_docx_xml(name, root)
+                        root, foreign_xml = _scrub_unknown_docx_xml(name, root, soft_compat=soft_compat)
                         if foreign_xml:
                             unsupported.add(name + ":foreign-xml")
                         if name.endswith(".rels"):
