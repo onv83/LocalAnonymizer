@@ -15,4 +15,3 @@
 - This is more comfortable with a long category list: more options are visible at once and the small window no longer needs to be scrolled as a whole.
 
 Rule behaviour, categories and dictionary format are unchanged.
-
