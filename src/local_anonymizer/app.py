@@ -40,9 +40,9 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "0.4.2"
-INDEX_ASSET = "index-v1.8.23.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.23.html"
+APP_VERSION = "0.4.3"
+INDEX_ASSET = "index-v1.8.25.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.25.html"
 
 
 def _read_clipboard_text() -> str:
@@ -1064,6 +1064,13 @@ class AppApi:
         language = self._read_ui_settings().get("language")
         return language if language in {"ru", "en"} else "ru"
 
+    def get_soft_compat(self) -> bool:
+        return bool(self._read_ui_settings().get("soft_compat", False))
+
+    def set_soft_compat(self, enabled: bool) -> dict:
+        self._write_ui_settings(soft_compat=bool(enabled))
+        return {"ok": True, "soft_compat": bool(enabled)}
+
     def set_language(self, language: str) -> dict:
         if language not in {"ru", "en"}:
             raise ValueError("Неизвестный язык")
@@ -1264,7 +1271,8 @@ class AppApi:
             return {"ok": False}
         destination = Path(destinations[0])
         report = self.service.restore_from_pair(
-            anonymized, destination, recovery_path=recovery
+            anonymized, destination, recovery_path=recovery,
+            soft_compat=self.get_soft_compat(),
         )
         return {"ok": True, "path": str(destination),
                 "unknown_markers": report["unknown_markers"]}

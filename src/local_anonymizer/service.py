@@ -20,7 +20,7 @@ from docx import Document
 from openpyxl import load_workbook
 from lxml import etree
 
-from .documents import DocxProcessor, _paragraph_text, _paragraphs
+from .documents import DocxProcessor, _paragraph_text, _paragraphs, _validate_restore_mapping
 from .docx_preview import render_docx_preview
 from .formats import XlsxProcessor, _read_text, process_text_file, restore_text_file
 from .odt import (
@@ -498,7 +498,8 @@ class AnonymizerService:
         return None
 
     def restore(self, document_id: str, edited: str | Path,
-                destination: str | Path | None = None) -> dict:
+                destination: str | Path | None = None,
+                *, soft_compat: bool = False) -> dict:
         with self._document_lock(document_id):
             row = self.storage.get_document(document_id)
             operation_id = row.get("operation_id")
@@ -510,12 +511,15 @@ class AnonymizerService:
                       self.storage.documents_dir / document_id /
                       (edited.stem + ".restored" + edited.suffix.lower()))
             return self._restore_with_bundle(
-                edited, output, document_id, operation_id, mapping, package_archive
+                edited, output, document_id, operation_id, mapping, package_archive,
+                soft_compat=soft_compat,
             )
 
     def _restore_with_bundle(self, edited: Path, output: Path, document_id: str,
                              operation_id: str, mapping: dict[str, str],
-                             package_archive: dict | None) -> dict:
+                             package_archive: dict | None,
+                             soft_compat: bool = False) -> dict:
+        mapping = _validate_restore_mapping(mapping)
         suffix = edited.suffix.lower()
         if suffix not in {".docx", ".odt", ".xlsx", ".txt", ".csv", ".md", ".log"}:
             raise ValueError("Неподдерживаемый формат восстановления")
@@ -534,7 +538,8 @@ class AnonymizerService:
             with _private_scratch(output.parent, suffix) as staged:
                 if suffix == ".docx":
                     unknown = DocxProcessor().restore(
-                        snapshot, staged, mapping, package_archive=package_archive
+                        snapshot, staged, mapping, package_archive=package_archive,
+                        soft_compat=soft_compat,
                     )
                 elif suffix == ".odt":
                     unknown = OdtProcessor().restore(
@@ -661,7 +666,8 @@ class AnonymizerService:
         return matches[0]
 
     def restore_from_pair(self, anonymized: str | Path, destination: str | Path,
-                          *, recovery_path: str | Path | None = None) -> dict:
+                          *, recovery_path: str | Path | None = None,
+                          soft_compat: bool = False) -> dict:
         anonymized = Path(anonymized)
         document_id, operation_id = _read_artifact_identity(anonymized)
         recovery = (Path(recovery_path) if recovery_path is not None
@@ -682,7 +688,8 @@ class AnonymizerService:
                 payload["bundle"], document_id, operation_id
             )
         report = self._restore_with_bundle(
-            anonymized, Path(destination), document_id, operation_id, mapping, package_archive
+            anonymized, Path(destination), document_id, operation_id, mapping, package_archive,
+            soft_compat=soft_compat,
         )
         report["recovery_path"] = str(recovery)
         return report

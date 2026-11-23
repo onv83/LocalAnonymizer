@@ -206,12 +206,14 @@ class Storage:
                 or payload.get("operation_id") != operation_id):
             raise MappingError("Файл восстановления не соответствует обезличенному документу")
         mapping = payload.get("mapping")
-        if not isinstance(mapping, dict) or payload.get("marker_manifest") != sorted(mapping):
+        if isinstance(mapping, dict) and payload.get("marker_manifest") != sorted(mapping):
             raise MappingError("Повреждён манифест маркеров")
         package_archive = payload.get("package_archive") if payload.get("schema") == 2 else None
         if package_archive is not None and not isinstance(package_archive, dict):
             raise MappingError("Повреждён защищённый архив документа")
-        return {str(k): str(v) for k, v in mapping.items()}, package_archive
+        # Preserve the decoded types so the public format restore boundary can
+        # reject malformed mappings instead of silently coercing them.
+        return mapping, package_archive
 
     def load_restore_bundle(self, document_id: str, operation_id: str) -> tuple[dict[str, str], dict | None]:
         envelope = self.load_restore_envelope(document_id, operation_id)
