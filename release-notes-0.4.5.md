@@ -11,4 +11,3 @@
 
 - On a wide screen the dialog no longer extends past the visible area: its height is bounded by the app window, the replacement list scrolls inside it, and the Cancel / Add rule buttons stay at the bottom without being clipped.
 - Size: up to 760 px wide and 720 px tall (full width on narrow screens); the “What to hide” field is larger.
-
