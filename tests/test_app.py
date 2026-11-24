@@ -2368,7 +2368,7 @@ def test_gui_entry_url_is_versioned_to_bypass_stale_webview_cache(tmp_path, monk
     assert app_module.main([]) == 0
     assert captured["url"].endswith(f"/{app_module.INDEX_ASSET}")
     html = app_module.asset_path(app_module.INDEX_ASSET).read_text(encoding="utf-8")
-    assert '<script src="app-v1.8.28.js"></script>' in html
+    assert '<script src="app-v1.8.30.js"></script>' in html
     assert '<script src="dictionary-rules-v1.8.22.js"></script>' in html
 
 
@@ -3430,13 +3430,13 @@ def test_docx_preview_omits_malformed_optional_formatting_instead_of_crashing(tm
 
 
 def test_active_ui_displays_release_version_in_header_footer_and_scripts():
-    assert app_module.APP_VERSION == "0.4.5"
+    assert app_module.APP_VERSION == "0.4.6"
     for language in ("", "-en"):
-        html = app_module.asset_path(f"index{language}-v1.8.29.html").read_text(encoding="utf-8")
-        javascript = app_module.asset_path(f"app{language}-v1.8.28.js").read_text(encoding="utf-8")
-        assert "· 0.4.5</h1>" in html
-        assert "0.4.5.</footer>" in html
-        assert "APP_VERSION='0.4.5'" in javascript
+        html = app_module.asset_path(f"index{language}-v1.8.30.html").read_text(encoding="utf-8")
+        javascript = app_module.asset_path(f"app{language}-v1.8.30.js").read_text(encoding="utf-8")
+        assert "· 0.4.6</h1>" in html
+        assert "0.4.6.</footer>" in html
+        assert "APP_VERSION='0.4.6'" in javascript
 
 
 def test_active_ui_secret_markers_describe_file_pair_recovery():
@@ -3445,7 +3445,7 @@ def test_active_ui_secret_markers_describe_file_pair_recovery():
         ("-en", "permanently removed", "Secret is restored through the document + .larecovery pair"),
     )
     for language, stale, required in cases:
-        javascript = app_module.asset_path(f"app{language}-v1.8.28.js").read_text(encoding="utf-8")
+        javascript = app_module.asset_path(f"app{language}-v1.8.30.js").read_text(encoding="utf-8")
         assert stale not in javascript.casefold()
         assert required in javascript
     # The always-on category row must name the reversible [SECRET-N] marker
@@ -3467,12 +3467,12 @@ def test_active_ui_secret_markers_describe_file_pair_recovery():
 
 
 def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_profile_bridge():
-    assert app_module.INDEX_ASSET == "index-v1.8.29.html"
-    assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.29.html"
+    assert app_module.INDEX_ASSET == "index-v1.8.30.html"
+    assert app_module.ENGLISH_INDEX_ASSET == "index-en-v1.8.30.html"
     for language in ("", "-en"):
-        html = app_module.asset_path(f"index{language}-v1.8.29.html").read_text(encoding="utf-8")
+        html = app_module.asset_path(f"index{language}-v1.8.30.html").read_text(encoding="utf-8")
         assert 'src="dictionary-rules-v1.8.22.js"' in html
-        assert f'src="app{language}-v1.8.28.js"' in html
+        assert f'src="app{language}-v1.8.30.js"' in html
 
     javascript = app_module.asset_path("dictionary-rules-v1.8.22.js").read_text(encoding="utf-8")
     for required in (
@@ -3496,7 +3496,7 @@ def test_dictionary_rule_editor_v24_is_versioned_bilingual_and_uses_existing_pro
     for required in ("height:calc(100% - 34px)", "flex-direction:column", "overflow:hidden"):
         assert required in css
 
-    for script_name in ("app-v1.8.28.js", "app-en-v1.8.28.js"):
+    for script_name in ("app-v1.8.30.js", "app-en-v1.8.30.js"):
         javascript = app_module.asset_path(script_name).read_text(encoding="utf-8")
         assert "dictionary-rules-sync" in javascript
         assert "dictionaryUnsavedProfileWarning" in javascript
@@ -3527,7 +3527,7 @@ def test_dictionary_rule_editor_v24_browser_acceptance(tmp_path: Path):
         pytest.skip("Microsoft Edge is required for the dictionary-editor browser regression")
 
     verifier = Path(__file__).parents[1] / "scripts" / "verify_dictionary_rules_v24.mjs"
-    for language_index, html_name in enumerate(("index-v1.8.29.html", "index-en-v1.8.29.html")):
+    for language_index, html_name in enumerate(("index-v1.8.30.html", "index-en-v1.8.30.html")):
         for viewport_width in (390, 1600):
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
@@ -3580,3 +3580,119 @@ def test_dictionary_rule_editor_v24_browser_acceptance(tmp_path: Path):
                 except subprocess.TimeoutExpired:
                     browser.terminate()
                     browser.wait(timeout=5)
+
+
+
+
+def _build_pair_for_soft_restore(tmp_path, *, unknown_formatting: bool):
+    from zipfile import ZIP_DEFLATED, ZipFile
+    from lxml import etree
+    from local_anonymizer.service import AnonymizerService
+
+    source = tmp_path / "soft-source.docx"
+    document = Document()
+    document.add_paragraph("Иванов Сергей Петрович")
+    document.save(source)
+    service = AnonymizerService(tmp_path / "soft-library")
+    document_id = service.import_file(source)
+    service.anonymize(document_id)
+    pair = service.export_pair(document_id, tmp_path / "soft-portable.docx", confirmation=True)
+    if unknown_formatting:
+        path = pair["anonymized_path"]
+        with ZipFile(path) as archive:
+            parts = {info.filename: archive.read(info.filename) for info in archive.infolist()}
+        root = etree.fromstring(parts["word/document.xml"])
+        paragraph = next(root.iter(qn("w:p")))
+        properties = paragraph.find(qn("w:pPr"))
+        if properties is None:
+            properties = etree.Element(qn("w:pPr"))
+            paragraph.insert(0, properties)
+        frame = etree.SubElement(properties, qn("w:framePr"))
+        frame.set(qn("w:h"), "100")
+        frame.set(qn("w:w"), "100")
+        parts["word/document.xml"] = etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True
+        )
+        with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+            for name, payload in parts.items():
+                archive.writestr(name, payload)
+    service.storage.delete_document(document_id)
+    return pair
+
+
+class _SaveDialogStub:
+    def __init__(self, destination: Path):
+        self.destination = destination
+
+    def create_file_dialog(self, *_args, **_kwargs):
+        return [str(self.destination)]
+
+
+def _texts(document):
+    return [paragraph.text for paragraph in document.paragraphs]
+
+
+def test_restore_pair_auto_retries_soft_when_strict_refuses_word_formatting(tmp_path):
+    pair = _build_pair_for_soft_restore(tmp_path, unknown_formatting=True)
+    api = AppApi(tmp_path / "soft-app")
+    api._restore_pair = (pair["anonymized_path"], pair["recovery_path"])
+    destination = tmp_path / "restored.docx"
+    api._window = _SaveDialogStub(destination)
+
+    result = api.restore_matched_file(False)
+
+    assert result["ok"] is True
+    assert result["soft_compat_used"] is True
+    assert result["unknown_markers"] == []
+    assert destination.exists()
+    assert "Иванов Сергей Петрович" in _texts(Document(destination))
+
+
+def test_restore_pair_strict_success_keeps_strict_mode(tmp_path):
+    pair = _build_pair_for_soft_restore(tmp_path, unknown_formatting=False)
+    api = AppApi(tmp_path / "strict-app")
+    api._restore_pair = (pair["anonymized_path"], pair["recovery_path"])
+    destination = tmp_path / "restored-strict.docx"
+    api._window = _SaveDialogStub(destination)
+
+    result = api.restore_matched_file(False)
+
+    assert result["ok"] is True
+    assert result["soft_compat_used"] is False
+    assert "Иванов Сергей Петрович" in _texts(Document(destination))
+
+
+def test_restore_pair_explicit_soft_argument_overrides_saved_setting(tmp_path):
+    pair = _build_pair_for_soft_restore(tmp_path, unknown_formatting=True)
+    api = AppApi(tmp_path / "override-app")
+    api.set_soft_compat(False)
+    api._restore_pair = (pair["anonymized_path"], pair["recovery_path"])
+    destination = tmp_path / "restored-override.docx"
+    api._window = _SaveDialogStub(destination)
+
+    result = api.restore_matched_file(True)
+
+    assert result["ok"] is True
+    assert result["soft_compat_used"] is True
+    assert api.get_soft_compat() is True
+    assert destination.exists()
+
+
+def test_soft_compat_mode_still_blocks_active_content_parts(tmp_path):
+    from zipfile import ZIP_DEFLATED, ZipFile
+    from local_anonymizer.documents import _sanitize_package
+
+    source = tmp_path / "active-content.docx"
+    document = Document()
+    document.add_paragraph("Обычный текст")
+    document.save(source)
+    with ZipFile(source) as archive:
+        parts = {info.filename: archive.read(info.filename) for info in archive.infolist()}
+    parts["word/embeddings/oleObject1.bin"] = b"OLE_PAYLOAD_CANARY"
+    with ZipFile(source, "w", ZIP_DEFLATED) as archive:
+        for name, payload in parts.items():
+            archive.writestr(name, payload)
+
+    warnings = _sanitize_package(source, soft_compat=True)
+
+    assert any("word/embeddings/oleObject1.bin" in str(warning) for warning in warnings)
