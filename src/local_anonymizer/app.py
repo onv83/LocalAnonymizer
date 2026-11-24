@@ -40,9 +40,9 @@ except ImportError:
     BUILD_GIT_REVISION = "0" * 40
     BUILD_GIT_DIFF_SHA256 = "0" * 64
 
-APP_VERSION = "0.4.5"
-INDEX_ASSET = "index-v1.8.29.html"
-ENGLISH_INDEX_ASSET = "index-en-v1.8.29.html"
+APP_VERSION = "0.4.6"
+INDEX_ASSET = "index-v1.8.30.html"
+ENGLISH_INDEX_ASSET = "index-en-v1.8.30.html"
 
 
 def _read_clipboard_text() -> str:
@@ -1253,7 +1253,7 @@ class AppApi:
         return {"ok": True, "anonymized_name": anonymized.name,
                 "recovery_name": recovery.name}
 
-    def restore_matched_file(self) -> dict:
+    def restore_matched_file(self, soft_compat: bool | None = None) -> dict:
         if self._restore_pair is None:
             raise RuntimeError("Сначала выберите обезличенный файл и подтвердите пару")
         anonymized, recovery = self._restore_pair
@@ -1270,12 +1270,28 @@ class AppApi:
         if not destinations:
             return {"ok": False}
         destination = Path(destinations[0])
-        report = self.service.restore_from_pair(
-            anonymized, destination, recovery_path=recovery,
-            soft_compat=self.get_soft_compat(),
-        )
+        enabled = self.get_soft_compat() if soft_compat is None else bool(soft_compat)
+        if enabled != self.get_soft_compat():
+            self._write_ui_settings(soft_compat=enabled)
+        used_soft = enabled
+        try:
+            report = self.service.restore_from_pair(
+                anonymized, destination, recovery_path=recovery,
+                soft_compat=enabled,
+            )
+        except Exception as exc:
+            if enabled or "неподдерживаемые элементы" not in str(exc):
+                raise
+            # A strict restore refused non-standard Word formatting: retry once
+            # in soft mode so text and replacements still come back.
+            report = self.service.restore_from_pair(
+                anonymized, destination, recovery_path=recovery,
+                soft_compat=True,
+            )
+            used_soft = True
         return {"ok": True, "path": str(destination),
-                "unknown_markers": report["unknown_markers"]}
+                "unknown_markers": report["unknown_markers"],
+                "soft_compat_used": used_soft}
 
     def export_all_anonymized(self) -> dict:
         paths = self._window.create_file_dialog(

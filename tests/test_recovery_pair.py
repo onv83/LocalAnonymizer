@@ -166,7 +166,7 @@ def test_app_exports_two_files_then_confirms_pair_before_restore(tmp_path):
         "recovery_name": recovery.name,
     }
     report = api.restore_matched_file()
-    assert report == {"ok": True, "path": str(restored), "unknown_markers": []}
+    assert report == {"ok": True, "path": str(restored), "unknown_markers": [], "soft_compat_used": False}
     assert restored.read_text(encoding="utf-8") == "Иванов Сергей Петрович"
 
 
